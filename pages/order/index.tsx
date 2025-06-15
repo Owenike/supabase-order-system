@@ -86,9 +86,12 @@ export default function OrderPage() {
   const total = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
   useEffect(() => {
-    const id = typeof storeIdFromQuery === 'string' ? storeIdFromQuery : localStorage.getItem('store_id')
+    if (!router.isReady) return
+    const id = typeof storeIdFromQuery === 'string' ? storeIdFromQuery : ''
     if (!id) return
     setStoreId(id)
+    localStorage.setItem('store_id', id)
+    console.log('[store_id]', id)
     fetchMenus(id)
     fetchCategories(id)
   }, [router.isReady, storeIdFromQuery])
@@ -98,33 +101,47 @@ export default function OrderPage() {
     fetchOrders()
   }, [storeId, tableParam])
 
+  useEffect(() => {
+    console.log('🧾 menus:', menus)
+    console.log('📚 categories:', categories)
+  }, [menus, categories])
+
   const fetchOrders = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('orders')
       .select('*')
       .eq('store_id', storeId)
       .eq('table_number', tableParam)
       .eq('status', 'pending')
       .order('created_at', { ascending: true })
+    if (error) console.error('fetchOrders error:', error)
     if (data) setOrderHistory(data)
   }
 
   const fetchMenus = async (storeId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('menus')
       .select('*')
       .eq('store_id', storeId)
       .eq('is_available', true)
       .order('created_at', { ascending: true })
+
+    console.log('[menus]', data, error)
+
+    if (error) console.error('fetchMenus error:', error)
     if (data) setMenus(data)
   }
 
   const fetchCategories = async (storeId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('categories')
       .select('*')
       .eq('store_id', storeId)
       .order('created_at', { ascending: true })
+
+    console.log('[categories]', data, error)
+
+    if (error) console.error('fetchCategories error:', error)
     if (data) setCategories(data)
   }
 
@@ -164,7 +181,7 @@ export default function OrderPage() {
   const submitOrder = async () => {
     if (!storeId || typeof tableParam !== 'string') return
     const noteText = tableParam === '外帶'
-      ? `【姓名】${customerName}｜電話 ${customerPhone}${note ? `｜備註：${note}` : ''}`
+      ? `姓名：${customerName} | 電話：${customerPhone}${note ? ` | 備註：${note}` : ''}`
       : note
 
     const totalAmount = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
@@ -189,6 +206,7 @@ export default function OrderPage() {
       setConfirming(false)
     }
   }
+
   if (!storeId) return <p className="text-red-500 p-4">❗請從正確的點餐連結進入</p>
 
   return (
@@ -235,7 +253,7 @@ export default function OrderPage() {
             <div key={cat.id} className="mb-6">
               <h2 className="text-xl font-semibold mb-2 border-l-4 pl-2 border-yellow-400 text-yellow-700">{cat.name}</h2>
               <ul className="grid gap-4">
-                {menus.filter(m => m.category_id === cat.id).map(menu => (
+                {menus.filter(m => String(m.category_id) === String(cat.id)).map(menu => (
                   <li key={menu.id} className="border rounded-lg p-4 shadow hover:shadow-md transition">
                     <div className="flex justify-between items-start">
                       <div>
@@ -257,8 +275,18 @@ export default function OrderPage() {
 
           {tableParam === '外帶' && (
             <div className="mb-6 space-y-2">
-              <input className="w-full border p-2 rounded" placeholder={t.name} value={customerName} onChange={e => setCustomerName(e.target.value)} />
-              <input className="w-full border p-2 rounded" placeholder={t.phone} value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
+              <input
+                className="w-full border p-2 rounded"
+                placeholder={t.name}
+                value={customerName}
+                onChange={e => setCustomerName(e.target.value)}
+              />
+              <input
+                className="w-full border p-2 rounded"
+                placeholder={t.phone}
+                value={customerPhone}
+                onChange={e => setCustomerPhone(e.target.value)}
+              />
             </div>
           )}
 
