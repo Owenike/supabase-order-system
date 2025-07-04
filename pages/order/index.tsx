@@ -91,7 +91,6 @@ export default function OrderPage() {
     if (!id) return
     setStoreId(id)
     localStorage.setItem('store_id', id)
-    console.log('[store_id]', id)
     fetchMenus(id)
     fetchCategories(id)
   }, [router.isReady, storeIdFromQuery])
@@ -119,17 +118,25 @@ export default function OrderPage() {
   }
 
   const fetchMenus = async (storeId: string) => {
+    if (!storeId) {
+      console.warn('⚠️ storeId 為空，略過 fetchMenus')
+      return
+    }
+
     const { data, error } = await supabase
-      .from('menus')
+      .from('menu_items')
       .select('*')
       .eq('store_id', storeId)
-      .eq('is_available', true)
+      .or('is_available.eq.true,is_available.is.null')
       .order('created_at', { ascending: true })
 
-    console.log('[menus]', data, error)
+    if (error) {
+      console.error('❌ fetchMenus error:', error.message)
+      return
+    }
 
-    if (error) console.error('fetchMenus error:', error)
-    if (data) setMenus(data)
+    console.log('✅ menus fetched:', data)
+    setMenus(data || [])
   }
 
   const fetchCategories = async (storeId: string) => {
@@ -138,10 +145,6 @@ export default function OrderPage() {
       .select('*')
       .eq('store_id', storeId)
       .order('created_at', { ascending: true })
-
-    console.log('[categories]', data, error)
-
-    if (error) console.error('fetchCategories error:', error)
     if (data) setCategories(data)
   }
 
@@ -225,7 +228,7 @@ export default function OrderPage() {
 
       {!confirming ? (
         <>
-          {orderHistory.length > 0 && (
+          {orderHistory.length > 0 && tableParam !== '外帶' && (
             <button
               onClick={() => setShowPrevious(!showPrevious)}
               className="mb-4 px-4 py-2 rounded bg-gray-200 text-gray-800 hover:bg-gray-300"
@@ -327,7 +330,13 @@ export default function OrderPage() {
               <li key={idx}>{item.name} × {item.quantity}（NT$ {item.price}）</li>
             ))}
           </ul>
-          {note && <p className="text-sm text-gray-700 mb-3">📝 {note}</p>}
+          {tableParam === '外帶' && (
+            <>
+              <p className="text-sm text-gray-700 mb-1">👤 姓名：{customerName}</p>
+              <p className="text-sm text-gray-700 mb-1">📞 電話：{customerPhone}</p>
+            </>
+          )}
+          {note && <p className="text-sm text-gray-700 mb-3">📝 備註：{note}</p>}
           <p className="font-bold mb-4">{t.total}：NT$ {total}</p>
           <div className="flex gap-3">
             <button onClick={() => setConfirming(false)} className="px-4 py-2 rounded border">{t.back}</button>

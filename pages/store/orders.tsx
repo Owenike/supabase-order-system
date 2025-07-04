@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
 export default function StoreOrdersPage() {
-  const [storeId, setStoreId] = useState<string | null>(null)
   const [orders, setOrders] = useState<any[]>([])
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all')
   const [lang, setLang] = useState<'zh' | 'en'>('zh')
+  const [range, setRange] = useState<'today' | 'week' | 'custom'>('today')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [storeId, setStoreId] = useState<string | null>(null)
 
   const t = {
     zh: {
@@ -22,6 +25,11 @@ export default function StoreOrdersPage() {
       done: '✅ 已完成',
       noOrders: '目前沒有訂單',
       noPending: '🔔 無未處理訂單',
+      today: '今日',
+      week: '本週',
+      custom: '自訂',
+      from: '起始日',
+      to: '結束日',
     },
     en: {
       title: 'Order Management',
@@ -37,28 +45,58 @@ export default function StoreOrdersPage() {
       done: '✅ Done',
       noOrders: 'No orders currently',
       noPending: '🔔 No pending orders',
+      today: 'Today',
+      week: 'This Week',
+      custom: 'Custom',
+      from: 'From',
+      to: 'To',
     },
   }[lang]
 
   useEffect(() => {
-    const id = localStorage.getItem('store_id')
-    if (!id) return
-    setStoreId(id)
-    fetchOrders(id)
-
-    const interval = setInterval(() => {
-      fetchOrders(id)
-    }, 5000)
-
-    return () => clearInterval(interval)
+    const stored = localStorage.getItem('store_id')
+    if (stored) setStoreId(stored)
   }, [])
 
-  const fetchOrders = async (storeId: string) => {
-    const { data } = await supabase
+  useEffect(() => {
+    if (!storeId) return
+
+    const now = new Date()
+    let start = new Date()
+    let end = new Date()
+
+    if (range === 'today') {
+      start.setHours(0, 0, 0, 0)
+      end.setHours(23, 59, 59, 999)
+    } else if (range === 'week') {
+      const day = now.getDay() || 7
+      start.setDate(now.getDate() - day + 1)
+      start.setHours(0, 0, 0, 0)
+      end.setHours(23, 59, 59, 999)
+    } else if (range === 'custom' && startDate && endDate) {
+      start = new Date(startDate + 'T00:00:00')
+      end = new Date(endDate + 'T23:59:59')
+    } else {
+      return
+    }
+
+    fetchOrders(storeId, start.toISOString(), end.toISOString())
+  }, [storeId, range, startDate, endDate])
+
+  const fetchOrders = async (storeId: string, from: string, to: string) => {
+    const { data, error } = await supabase
       .from('orders')
       .select('*')
       .eq('store_id', storeId)
+      .gte('created_at', from)
+      .lte('created_at', to)
       .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('❌ 查詢失敗：', error.message)
+      return
+    }
+
     setOrders(data || [])
   }
 
@@ -69,12 +107,30 @@ export default function StoreOrdersPage() {
       .eq('id', id)
 
     if (error) {
-      console.error('更新失敗：', error.message)
+      console.error('❌ 更新失敗：', error.message)
       alert('訂單更新失敗，請稍後再試')
       return
     }
 
-    if (storeId) fetchOrders(storeId)
+    if (!storeId) return
+    const now = new Date()
+    let from = new Date()
+    let to = new Date()
+
+    if (range === 'today') {
+      from.setHours(0, 0, 0, 0)
+      to.setHours(23, 59, 59, 999)
+    } else if (range === 'week') {
+      const day = now.getDay() || 7
+      from.setDate(now.getDate() - day + 1)
+      from.setHours(0, 0, 0, 0)
+      to.setHours(23, 59, 59, 999)
+    } else {
+      from = new Date(startDate + 'T00:00:00')
+      to = new Date(endDate + 'T23:59:59')
+    }
+
+    fetchOrders(storeId, from.toISOString(), to.toISOString())
   }
 
   const filteredOrders = orders.filter(order => {
@@ -84,7 +140,7 @@ export default function StoreOrdersPage() {
   })
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-5xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">📦 {t.title}</h1>
         <button
@@ -93,6 +149,31 @@ export default function StoreOrdersPage() {
         >
           {lang === 'zh' ? 'EN' : '中'}
         </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <button onClick={() => setRange('today')} className={`px-4 py-1 rounded ${range === 'today' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>{t.today}</button>
+        <button onClick={() => setRange('week')} className={`px-4 py-1 rounded ${range === 'week' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>{t.week}</button>
+        <button onClick={() => setRange('custom')} className={`px-4 py-1 rounded ${range === 'custom' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>{t.custom}</button>
+
+        {range === 'custom' && (
+          <>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="border p-1 rounded"
+              placeholder={t.from}
+            />
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="border p-1 rounded"
+              placeholder={t.to}
+            />
+          </>
+        )}
       </div>
 
       <div className="flex gap-3 mb-6">

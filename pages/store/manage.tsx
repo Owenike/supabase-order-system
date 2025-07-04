@@ -31,7 +31,7 @@ export default function StoreManagePage() {
 
   const fetchMenus = async (storeId: string) => {
     const { data } = await supabase
-      .from('menus')
+      .from('menu_items')
       .select('*')
       .eq('store_id', storeId)
       .order('created_at', { ascending: true })
@@ -48,7 +48,7 @@ export default function StoreManagePage() {
       .eq('name', newCategory)
 
     if (existing && existing.length > 0) {
-      alert(`分類名稱「${newCategory}」已存在，請改用其他名稱`)
+      alert(`\u5206\u985e\u540d\u7a31\u300c${newCategory}\u300d\u5df2\u5b58\u5728\uff0c\u8acb\u6539\u7528\u5176\u4ed6\u540d\u7a31`)
       return
     }
 
@@ -61,17 +61,17 @@ export default function StoreManagePage() {
     if (!newMenu.name || !newMenu.price || !newMenu.categoryId || !storeId) return
 
     const { data: existing } = await supabase
-      .from('menus')
+      .from('menu_items')
       .select('id')
       .eq('store_id', storeId)
       .eq('name', newMenu.name)
 
     if (existing && existing.length > 0) {
-      alert(`菜單名稱「${newMenu.name}」已存在，請改用其他名稱`)
+      alert(`\u83dc\u55ae\u540d\u7a31\u300c${newMenu.name}\u300d\u5df2\u5b58\u5728\uff0c\u8acb\u6539\u7528\u5176\u4ed6\u540d\u7a31`)
       return
     }
 
-    await supabase.from('menus').insert({
+    await supabase.from('menu_items').insert({
       name: newMenu.name,
       price: Number(newMenu.price),
       description: newMenu.description,
@@ -84,12 +84,12 @@ export default function StoreManagePage() {
   }
 
   const handleToggleAvailable = async (id: string, current: boolean) => {
-    await supabase.from('menus').update({ is_available: !current }).eq('id', id)
+    await supabase.from('menu_items').update({ is_available: !current }).eq('id', id)
     fetchMenus(storeId!)
   }
 
   const handleDeleteMenu = async (id: string) => {
-    await supabase.from('menus').delete().eq('id', id)
+    await supabase.from('menu_items').delete().eq('id', id)
     fetchMenus(storeId!)
   }
 
@@ -121,7 +121,7 @@ export default function StoreManagePage() {
 
   const handleSaveMenu = async (id: string) => {
     await supabase
-      .from('menus')
+      .from('menu_items')
       .update({
         name: editingMenu.name,
         price: Number(editingMenu.price),
@@ -134,9 +134,9 @@ export default function StoreManagePage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">🍽 店家後台管理</h1>
+      <h1 className="text-2xl font-bold mb-4">\ud83c\udf7d 店家後台管理</h1>
 
-      {/* 新增分類 */}
+      {/* \u65b0\u589e\u5206\u985e */}
       <div className="mb-6">
         <h2 className="font-semibold mb-2">新增分類</h2>
         <div className="flex gap-2">
@@ -156,7 +156,7 @@ export default function StoreManagePage() {
         </div>
       </div>
 
-      {/* 新增菜單 */}
+      {/* \u65b0\u589e\u83dc\u55ae */}
       <div className="mb-6">
         <h2 className="font-semibold mb-2">新增菜單</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
@@ -200,7 +200,7 @@ export default function StoreManagePage() {
         </button>
       </div>
 
-      {/* 現有分類與菜單 */}
+      {/* \u73fe\u6709\u5206\u985e\u8207\u83dc\u55ae */}
       <div>
         <h2 className="font-semibold mb-2">現有分類與菜單</h2>
         {categories.map(cat => (
