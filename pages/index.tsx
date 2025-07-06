@@ -1,11 +1,23 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
+import Image from 'next/image'
+
+interface OrderItem {
+  name: string
+  quantity: number
+}
+
+interface Order {
+  table_number: string
+  spicy_level?: string
+  items?: OrderItem[]
+}
 
 export default function StoreHomePage() {
   const router = useRouter()
   const [storeName, setStoreName] = useState('')
-  const [latestOrder, setLatestOrder] = useState<any>(null)
+  const [latestOrder, setLatestOrder] = useState<Order | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
 
   useEffect(() => {
@@ -51,7 +63,7 @@ export default function StoreHomePage() {
           filter: `store_id=eq.${storeId}`,
         },
         (payload) => {
-          setLatestOrder(payload.new)
+          setLatestOrder(payload.new as Order)
           audioRef.current?.play()
         }
       )
@@ -60,7 +72,7 @@ export default function StoreHomePage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [router])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -72,17 +84,12 @@ export default function StoreHomePage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-white to-gray-100 p-6">
       {/* ✅ 系統品牌 Logo（強制顯示） */}
-      <img
+      <Image
         src="/logo.png"
         alt="系統品牌 Logo"
         width={100}
         height={100}
-        style={{
-          borderRadius: '9999px',
-          border: '2px solid red',
-          marginBottom: '24px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-        }}
+        className="rounded-full border-2 border-red-500 mb-6 shadow-lg"
       />
 
       <h1 className="text-3xl font-bold mb-2 text-center text-black">
@@ -97,10 +104,12 @@ export default function StoreHomePage() {
           <p className="text-lg font-bold text-yellow-800">
             🔔 新訂單：桌號 {latestOrder.table_number}
           </p>
-          <p className="text-sm text-red-700">辣度：{latestOrder.spicy_level}</p>
+          {latestOrder.spicy_level && (
+            <p className="text-sm text-red-700">辣度：{latestOrder.spicy_level}</p>
+          )}
           <p className="text-sm text-gray-700">
             品項：
-            {latestOrder.items?.map((item: any, index: number) => (
+            {latestOrder.items?.map((item, index) => (
               <span key={index}>
                 {item.name} x{item.quantity}&nbsp;
               </span>

@@ -1,8 +1,24 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
+interface OrderItem {
+  name: string
+  quantity: number
+}
+
+interface Order {
+  id: string
+  store_id: string
+  table_number: string
+  items: OrderItem[]
+  note?: string
+  spicy_level?: string
+  status?: string
+  created_at: string
+}
+
 export default function StoreOrdersPage() {
-  const [orders, setOrders] = useState<any[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all')
   const [lang, setLang] = useState<'zh' | 'en'>('zh')
   const [range, setRange] = useState<'today' | 'week' | 'custom'>('today')
@@ -29,7 +45,7 @@ export default function StoreOrdersPage() {
       week: '本週',
       custom: '自訂',
       from: '起始日',
-      to: '結束日',
+      to: '結束日'
     },
     en: {
       title: 'Order Management',
@@ -49,8 +65,8 @@ export default function StoreOrdersPage() {
       week: 'This Week',
       custom: 'Custom',
       from: 'From',
-      to: 'To',
-    },
+      to: 'To'
+    }
   }[lang]
 
   useEffect(() => {
@@ -113,6 +129,7 @@ export default function StoreOrdersPage() {
     }
 
     if (!storeId) return
+
     const now = new Date()
     let from = new Date()
     let to = new Date()
@@ -199,7 +216,7 @@ export default function StoreOrdersPage() {
 
               <div className="text-sm text-gray-700 mb-1">
                 <strong>{t.items}：</strong>
-                {order.items?.map((item: any, idx: number) => (
+                {order.items?.map((item, idx) => (
                   <span key={idx}>{item.name} ×{item.quantity}&nbsp;</span>
                 ))}
               </div>

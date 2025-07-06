@@ -2,10 +2,18 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
+interface StoreAccount {
+  id: string
+  email: string
+  store_name: string
+  is_active: boolean
+  created_at: string
+}
+
 export default function AdminDashboard() {
   const router = useRouter()
-  const [stores, setStores] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [stores, setStores] = useState<StoreAccount[]>([])
+  const [loading, setLoading] = useState<boolean>(true)
 
   useEffect(() => {
     const adminId = localStorage.getItem('admin_id')
@@ -14,7 +22,7 @@ export default function AdminDashboard() {
       return
     }
     fetchStores()
-  }, [])
+  }, [router])
 
   const fetchStores = async () => {
     setLoading(true)
@@ -22,7 +30,7 @@ export default function AdminDashboard() {
       .from('store_accounts')
       .select('*')
       .order('created_at', { ascending: false })
-    if (!error) setStores(data || [])
+    if (!error) setStores(data as StoreAccount[] || [])
     setLoading(false)
   }
 
@@ -63,7 +71,7 @@ export default function AdminDashboard() {
             </tr>
           </thead>
           <tbody>
-            {stores.map(store => (
+            {stores.map((store) => (
               <tr key={store.id} className="border-t">
                 <td className="px-4 py-2">{store.email}</td>
                 <td className="px-4 py-2">{store.store_name}</td>

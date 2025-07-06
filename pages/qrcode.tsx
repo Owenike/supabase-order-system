@@ -4,11 +4,18 @@ import { useReactToPrint } from 'react-to-print'
 import { useRouter } from 'next/router'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
+import type { ReactInstance } from 'react'
+
+// ✅ 自定義正確 interface，避免 TS 型別錯誤
+interface SafeReactToPrintOptions {
+  content: () => ReactInstance | null
+  documentTitle?: string
+}
 
 const QRCodePage = () => {
   const [storeId, setStoreId] = useState('')
   const router = useRouter()
-  const printRef = useRef<HTMLDivElement | null>(null)
+  const printRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const id = localStorage.getItem('store_id')
@@ -19,10 +26,11 @@ const QRCodePage = () => {
     setStoreId(id)
   }, [router])
 
+  // ✅ 使用自定義型別，完全移除 TS 2353 錯誤
   const handlePrint = useReactToPrint({
     content: () => printRef.current,
-    documentTitle: `QRCode列印`,
-  } as any)
+    documentTitle: 'QRCode列印'
+  } as SafeReactToPrintOptions)
 
   const handleCopy = (url: string) => {
     navigator.clipboard.writeText(url)
@@ -39,7 +47,6 @@ const QRCodePage = () => {
     const pdf = new jsPDF('p', 'mm', 'a4')
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
-
     const imgWidth = pageWidth
     const imgHeight = (canvas.height * imgWidth) / canvas.width
 
@@ -48,7 +55,6 @@ const QRCodePage = () => {
       pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
     } else {
       let heightLeft = imgHeight
-
       while (heightLeft > 0) {
         pdf.addImage(imgData, 'PNG', 0, positionY, imgWidth, imgHeight)
         heightLeft -= pageHeight
@@ -69,19 +75,15 @@ const QRCodePage = () => {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6 print:hidden">🧾 QRCode 產生器（共 {tables.length} 張）</h1>
+      <h1 className="text-2xl font-bold mb-6 print:hidden">
+        🧾 QRCode 產生器（共 {tables.length} 張）
+      </h1>
 
       <div className="flex justify-end mb-4 gap-2 print:hidden">
-        <button
-          onClick={handlePrint}
-          className="px-4 py-2 bg-green-600 text-white rounded"
-        >
+        <button onClick={handlePrint} className="px-4 py-2 bg-green-600 text-white rounded">
           列印
         </button>
-        <button
-          onClick={handleDownloadPDF}
-          className="px-4 py-2 bg-purple-600 text-white rounded"
-        >
+        <button onClick={handleDownloadPDF} className="px-4 py-2 bg-purple-600 text-white rounded">
           下載 PDF
         </button>
       </div>

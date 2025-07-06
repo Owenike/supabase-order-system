@@ -1,16 +1,31 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
+interface Category {
+  id: string
+  name: string
+}
+
+interface MenuItem {
+  id: string
+  name: string
+  price: number
+  description?: string
+  category_id: string
+  store_id: string
+  is_available: boolean
+}
+
 export default function StoreManagePage() {
   const [storeId, setStoreId] = useState<string | null>(null)
-  const [categories, setCategories] = useState<any[]>([])
-  const [menus, setMenus] = useState<any[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [menus, setMenus] = useState<MenuItem[]>([])
   const [newCategory, setNewCategory] = useState('')
-  const [newMenu, setNewMenu] = useState({ name: '', price: '', categoryId: '', description: '' })
+  const [newMenu, setNewMenu] = useState<{ name: string; price: string; categoryId: string; description: string }>({ name: '', price: '', categoryId: '', description: '' })
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [editingMenuId, setEditingMenuId] = useState<string | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
-  const [editingMenu, setEditingMenu] = useState({ name: '', price: '', description: '' })
+  const [editingMenu, setEditingMenu] = useState<{ name: string; price: string; description: string }>({ name: '', price: '', description: '' })
 
   useEffect(() => {
     const storedId = localStorage.getItem('store_id')
@@ -48,7 +63,7 @@ export default function StoreManagePage() {
       .eq('name', newCategory)
 
     if (existing && existing.length > 0) {
-      alert(`\u5206\u985e\u540d\u7a31\u300c${newCategory}\u300d\u5df2\u5b58\u5728\uff0c\u8acb\u6539\u7528\u5176\u4ed6\u540d\u7a31`)
+      alert(`分類名稱「${newCategory}」已存在，請改用其他名稱`)
       return
     }
 
@@ -67,7 +82,7 @@ export default function StoreManagePage() {
       .eq('name', newMenu.name)
 
     if (existing && existing.length > 0) {
-      alert(`\u83dc\u55ae\u540d\u7a31\u300c${newMenu.name}\u300d\u5df2\u5b58\u5728\uff0c\u8acb\u6539\u7528\u5176\u4ed6\u540d\u7a31`)
+      alert(`菜單名稱「${newMenu.name}」已存在，請改用其他名稱`)
       return
     }
 
@@ -79,6 +94,7 @@ export default function StoreManagePage() {
       store_id: storeId,
       is_available: true
     })
+
     setNewMenu({ name: '', price: '', categoryId: '', description: '' })
     fetchMenus(storeId)
   }
@@ -110,11 +126,11 @@ export default function StoreManagePage() {
     fetchCategories(storeId!)
   }
 
-  const handleEditMenu = (menu: any) => {
+  const handleEditMenu = (menu: MenuItem) => {
     setEditingMenuId(menu.id)
     setEditingMenu({
       name: menu.name,
-      price: menu.price,
+      price: String(menu.price),
       description: menu.description || ''
     })
   }
@@ -134,9 +150,8 @@ export default function StoreManagePage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">\ud83c\udf7d 店家後台管理</h1>
+      <h1 className="text-2xl font-bold mb-4">🍽 店家後台管理</h1>
 
-      {/* \u65b0\u589e\u5206\u985e */}
       <div className="mb-6">
         <h2 className="font-semibold mb-2">新增分類</h2>
         <div className="flex gap-2">
@@ -156,7 +171,6 @@ export default function StoreManagePage() {
         </div>
       </div>
 
-      {/* \u65b0\u589e\u83dc\u55ae */}
       <div className="mb-6">
         <h2 className="font-semibold mb-2">新增菜單</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
@@ -200,7 +214,6 @@ export default function StoreManagePage() {
         </button>
       </div>
 
-      {/* \u73fe\u6709\u5206\u985e\u8207\u83dc\u55ae */}
       <div>
         <h2 className="font-semibold mb-2">現有分類與菜單</h2>
         {categories.map(cat => (

@@ -9,6 +9,7 @@ interface MenuItem {
   store_id: string
   category_id: string
   description?: string
+  is_available?: boolean | null
 }
 
 interface Category {
@@ -93,7 +94,7 @@ export default function OrderPage() {
     localStorage.setItem('store_id', id)
     fetchMenus(id)
     fetchCategories(id)
-  }, [router.isReady, storeIdFromQuery])
+  }, [router.isReady, storeIdFromQuery, router])
 
   useEffect(() => {
     if (!storeId || !tableParam) return
