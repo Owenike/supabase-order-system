@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -15,6 +15,21 @@ export default function AdminDashboard() {
   const [stores, setStores] = useState<StoreAccount[]>([])
   const [loading, setLoading] = useState<boolean>(true)
 
+  const fetchStores = useCallback(async () => {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('store_accounts')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (!error && data) {
+      setStores(data as StoreAccount[])
+    } else {
+      setStores([])
+    }
+    setLoading(false)
+  }, [])
+
   useEffect(() => {
     const adminId = localStorage.getItem('admin_id')
     if (!adminId) {
@@ -22,17 +37,7 @@ export default function AdminDashboard() {
       return
     }
     fetchStores()
-  }, [router])
-
-  const fetchStores = async () => {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('store_accounts')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (!error) setStores(data as StoreAccount[] || [])
-    setLoading(false)
-  }
+  }, [router, fetchStores]) // ✅ 補上 fetchStores
 
   const toggleActive = async (id: string, current: boolean) => {
     await supabase.from('store_accounts').update({ is_active: !current }).eq('id', id)
@@ -75,8 +80,12 @@ export default function AdminDashboard() {
               <tr key={store.id} className="border-t">
                 <td className="px-4 py-2">{store.email}</td>
                 <td className="px-4 py-2">{store.store_name}</td>
-                <td className="px-4 py-2">{store.is_active ? '✅ 啟用' : '⛔ 停用'}</td>
-                <td className="px-4 py-2">{new Date(store.created_at).toLocaleString()}</td>
+                <td className="px-4 py-2">
+                  {store.is_active ? '✅ 啟用' : '⛔ 停用'}
+                </td>
+                <td className="px-4 py-2">
+                  {new Date(store.created_at).toLocaleString()}
+                </td>
                 <td className="px-4 py-2 space-x-2">
                   <button
                     onClick={() => toggleActive(store.id, store.is_active)}
