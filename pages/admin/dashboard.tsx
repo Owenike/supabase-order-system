@@ -22,11 +22,13 @@ export default function AdminDashboard() {
       .select('*')
       .order('created_at', { ascending: false })
 
-    if (!error && data) {
-      setStores(data as StoreAccount[])
-    } else {
+    if (error) {
+      console.error('載入失敗', error.message)
       setStores([])
+    } else {
+      setStores(data || [])
     }
+
     setLoading(false)
   }, [])
 
@@ -37,17 +39,35 @@ export default function AdminDashboard() {
       return
     }
     fetchStores()
-  }, [router, fetchStores]) // ✅ 補上 fetchStores
+  }, [router, fetchStores])
 
   const toggleActive = async (id: string, current: boolean) => {
-    await supabase.from('store_accounts').update({ is_active: !current }).eq('id', id)
-    fetchStores()
+    const { error } = await supabase
+      .from('store_accounts')
+      .update({ is_active: !current })
+      .eq('id', id)
+
+    if (error) {
+      console.error('更新失敗', error.message)
+      alert('更新失敗，請稍後再試')
+    } else {
+      fetchStores()
+    }
   }
 
   const deleteStore = async (id: string) => {
     if (confirm('確定要刪除這個店家帳號嗎？')) {
-      await supabase.from('store_accounts').delete().eq('id', id)
-      fetchStores()
+      const { error } = await supabase
+        .from('store_accounts')
+        .delete()
+        .eq('id', id)
+
+      if (error) {
+        console.error('刪除失敗', error.message)
+        alert('刪除失敗，請稍後再試')
+      } else {
+        fetchStores()
+      }
     }
   }
 

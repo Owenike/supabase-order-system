@@ -22,8 +22,8 @@ export default function StoreOrdersPage() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all')
   const [lang, setLang] = useState<'zh' | 'en'>('zh')
   const [range, setRange] = useState<'today' | 'week' | 'custom'>('today')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [startDate, setStartDate] = useState<string>('')
+  const [endDate, setEndDate] = useState<string>('')
   const [storeId, setStoreId] = useState<string | null>(null)
 
   const t = {
@@ -113,7 +113,7 @@ export default function StoreOrdersPage() {
       return
     }
 
-    setOrders(data || [])
+    setOrders(data as Order[])
   }
 
   const handleComplete = async (id: string) => {
@@ -150,7 +150,7 @@ export default function StoreOrdersPage() {
     fetchOrders(storeId, from.toISOString(), to.toISOString())
   }
 
-  const filteredOrders = orders.filter(order => {
+  const filteredOrders = orders.filter((order: Order) => {
     if (filter === 'pending') return order.status !== 'completed'
     if (filter === 'completed') return order.status === 'completed'
     return true
@@ -205,7 +205,7 @@ export default function StoreOrdersPage() {
         </p>
       ) : (
         <div className="grid gap-4">
-          {filteredOrders.map(order => (
+          {filteredOrders.map((order: Order) => (
             <div key={order.id} className="border rounded-lg p-4 shadow hover:shadow-md transition">
               <div className="flex justify-between items-center mb-2">
                 <h2 className="font-semibold">
@@ -216,7 +216,7 @@ export default function StoreOrdersPage() {
 
               <div className="text-sm text-gray-700 mb-1">
                 <strong>{t.items}：</strong>
-                {order.items?.map((item, idx) => (
+                {order.items?.map((item: OrderItem, idx: number) => (
                   <span key={idx}>{item.name} ×{item.quantity}&nbsp;</span>
                 ))}
               </div>

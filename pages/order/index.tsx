@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -85,7 +85,6 @@ export default function OrderPage() {
 
   const t = langMap[lang]
   const total = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
-
   useEffect(() => {
     if (!router.isReady) return
     const id = typeof storeIdFromQuery === 'string' ? storeIdFromQuery : ''
@@ -176,7 +175,7 @@ export default function OrderPage() {
     if (selectedItems.length === 0) return setErrorMsg(t.errorNoItem)
     if (tableParam === '外帶') {
       if (!customerName.trim()) return setErrorMsg(t.errorName)
-      if (!/^09\d{8}$/.test(customerPhone.trim())) return setErrorMsg(t.errorPhone)
+      if (!/^09\\d{8}$/.test(customerPhone.trim())) return setErrorMsg(t.errorPhone)
     }
     setErrorMsg('')
     setConfirming(true)
@@ -212,20 +211,29 @@ export default function OrderPage() {
   }
 
   if (!storeId) return <p className="text-red-500 p-4">❗請從正確的點餐連結進入</p>
-
   return (
     <div className="p-4 max-w-2xl mx-auto">
       <button
         onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
         className="absolute top-4 right-4 text-sm border px-2 py-1 rounded"
-      >{lang === 'zh' ? 'EN' : '中'}</button>
+      >
+        {lang === 'zh' ? 'EN' : '中'}
+      </button>
 
       <h1 className="text-2xl font-bold mb-4">
         {tableParam === '外帶' ? `🛍 ${t.takeaway}` : `📝 ${t.title}`}
       </h1>
 
-      {success && <div className="bg-green-100 text-green-700 p-3 rounded mb-4 shadow">{t.success}</div>}
-      {errorMsg && <div className="bg-red-100 text-red-700 p-3 rounded mb-4 shadow">❌ {errorMsg}</div>}
+      {success && (
+        <div className="bg-green-100 text-green-700 p-3 rounded mb-4 shadow">
+          {t.success}
+        </div>
+      )}
+      {errorMsg && (
+        <div className="bg-red-100 text-red-700 p-3 rounded mb-4 shadow">
+          ❌ {errorMsg}
+        </div>
+      )}
 
       {!confirming ? (
         <>
@@ -233,20 +241,28 @@ export default function OrderPage() {
             <button
               onClick={() => setShowPrevious(!showPrevious)}
               className="mb-4 px-4 py-2 rounded bg-gray-200 text-gray-800 hover:bg-gray-300"
-            >📋 {t.viewLast}</button>
+            >
+              📋 {t.viewLast}
+            </button>
           )}
 
           {showPrevious && (
             <div className="mb-6 space-y-4">
               {orderHistory.map((order, idx) => (
                 <div key={idx} className="bg-gray-50 border border-gray-300 p-4 rounded">
-                  <h2 className="font-semibold mb-2">{t.confirmTitle}（第 {idx + 1} 筆）</h2>
+                  <h2 className="font-semibold mb-2">
+                    {t.confirmTitle}（第 {idx + 1} 筆）
+                  </h2>
                   <ul className="list-disc pl-5 text-sm mb-2">
                     {order.items.map((item, i) => (
-                      <li key={i}>{item.name} × {item.quantity}（NT$ {item.price}）</li>
+                      <li key={i}>
+                        {item.name} × {item.quantity}（NT$ {item.price}）
+                      </li>
                     ))}
                   </ul>
-                  {order.note && <p className="text-sm text-gray-700 mb-2">📝 {order.note}</p>}
+                  {order.note && (
+                    <p className="text-sm text-gray-700 mb-2">📝 {order.note}</p>
+                  )}
                   <p className="font-bold">總計：NT$ {order.total}</p>
                 </div>
               ))}
@@ -263,12 +279,26 @@ export default function OrderPage() {
                       <div>
                         <div className="font-semibold text-lg mb-1">{menu.name}</div>
                         <div className="text-sm text-gray-600">NT$ {menu.price}</div>
-                        {menu.description && <div className="text-xs text-gray-400 mt-1">{menu.description}</div>}
+                        {menu.description && (
+                          <div className="text-xs text-gray-400 mt-1">{menu.description}</div>
+                        )}
                       </div>
                       <div className="flex gap-2 items-center">
-                        <button onClick={() => reduceItem(menu.id)} className="w-8 h-8 bg-red-500 text-white rounded-full hover:bg-red-600">－</button>
-                        <span className="min-w-[20px] text-center">{selectedItems.find(i => i.id === menu.id)?.quantity || 0}</span>
-                        <button onClick={() => toggleItem(menu)} className="w-8 h-8 bg-green-500 text-white rounded-full hover:bg-green-600">＋</button>
+                        <button
+                          onClick={() => reduceItem(menu.id)}
+                          className="w-8 h-8 bg-red-500 text-white rounded-full hover:bg-red-600"
+                        >
+                          －
+                        </button>
+                        <span className="min-w-[20px] text-center">
+                          {selectedItems.find(i => i.id === menu.id)?.quantity || 0}
+                        </span>
+                        <button
+                          onClick={() => toggleItem(menu)}
+                          className="w-8 h-8 bg-green-500 text-white rounded-full hover:bg-green-600"
+                        >
+                          ＋
+                        </button>
                       </div>
                     </div>
                   </li>
@@ -316,7 +346,9 @@ export default function OrderPage() {
 
           <div className="sticky bottom-4 bg-white pt-4 pb-2">
             <div className="flex justify-between items-center">
-              <span className="text-xl font-bold">{t.total}：NT$ {total}</span>
+              <span className="text-xl font-bold">
+                {t.total}：NT$ {total}
+              </span>
               <button onClick={handleConfirm} className="bg-yellow-500 text-white px-6 py-2 rounded">
                 {t.confirm}
               </button>
@@ -328,7 +360,9 @@ export default function OrderPage() {
           <h2 className="text-lg font-bold mb-2">{t.confirmTitle}</h2>
           <ul className="list-disc pl-5 text-sm mb-3">
             {selectedItems.map((item, idx) => (
-              <li key={idx}>{item.name} × {item.quantity}（NT$ {item.price}）</li>
+              <li key={idx}>
+                {item.name} × {item.quantity}（NT$ {item.price}）
+              </li>
             ))}
           </ul>
           {tableParam === '外帶' && (
@@ -340,8 +374,12 @@ export default function OrderPage() {
           {note && <p className="text-sm text-gray-700 mb-3">📝 備註：{note}</p>}
           <p className="font-bold mb-4">{t.total}：NT$ {total}</p>
           <div className="flex gap-3">
-            <button onClick={() => setConfirming(false)} className="px-4 py-2 rounded border">{t.back}</button>
-            <button onClick={submitOrder} className="px-4 py-2 rounded bg-blue-600 text-white">{t.submit}</button>
+            <button onClick={() => setConfirming(false)} className="px-4 py-2 rounded border">
+              {t.back}
+            </button>
+            <button onClick={submitOrder} className="px-4 py-2 rounded bg-blue-600 text-white">
+              {t.submit}
+            </button>
           </div>
         </div>
       )}

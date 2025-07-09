@@ -51,13 +51,12 @@ export default function StoreHomePage() {
   }, [router])
 
   useEffect(() => {
-    fetchStoreInfo()
+    void fetchStoreInfo()
 
     const storeId = localStorage.getItem('store_id')
     if (!storeId) return
 
-    // ✅ 最終正規寫法：直接用 Supabase 官方型別
-    supabase
+    const channel = supabase
       .channel('order_notifications')
       .on(
         'postgres_changes' as const,
@@ -73,7 +72,11 @@ export default function StoreHomePage() {
         }
       )
       .subscribe()
-  }, [fetchStoreInfo])
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [fetchStoreInfo, router])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

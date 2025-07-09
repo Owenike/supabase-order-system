@@ -4,6 +4,8 @@ import { supabase } from '@/lib/supabaseClient'
 interface Category {
   id: string
   name: string
+  created_at?: string
+  store_id?: string
 }
 
 interface MenuItem {
@@ -14,6 +16,7 @@ interface MenuItem {
   category_id: string
   store_id: string
   is_available: boolean
+  created_at?: string
 }
 
 export default function StoreManagePage() {
@@ -36,21 +39,23 @@ export default function StoreManagePage() {
   }, [])
 
   const fetchCategories = async (storeId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('categories')
       .select('*')
       .eq('store_id', storeId)
       .order('created_at', { ascending: true })
-    setCategories(data || [])
+    if (error) console.error('fetchCategories error:', error)
+    if (data) setCategories(data)
   }
 
   const fetchMenus = async (storeId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('menu_items')
       .select('*')
       .eq('store_id', storeId)
       .order('created_at', { ascending: true })
-    setMenus(data || [])
+    if (error) console.error('fetchMenus error:', error)
+    if (data) setMenus(data)
   }
 
   const handleAddCategory = async () => {
@@ -101,18 +106,20 @@ export default function StoreManagePage() {
 
   const handleToggleAvailable = async (id: string, current: boolean) => {
     await supabase.from('menu_items').update({ is_available: !current }).eq('id', id)
-    fetchMenus(storeId!)
+    if (storeId) fetchMenus(storeId)
   }
 
   const handleDeleteMenu = async (id: string) => {
     await supabase.from('menu_items').delete().eq('id', id)
-    fetchMenus(storeId!)
+    if (storeId) fetchMenus(storeId)
   }
 
   const handleDeleteCategory = async (id: string) => {
     await supabase.from('categories').delete().eq('id', id)
-    fetchCategories(storeId!)
-    fetchMenus(storeId!)
+    if (storeId) {
+      fetchCategories(storeId)
+      fetchMenus(storeId)
+    }
   }
 
   const handleEditCategory = (id: string, name: string) => {
@@ -123,7 +130,7 @@ export default function StoreManagePage() {
   const handleSaveCategory = async (id: string) => {
     await supabase.from('categories').update({ name: editingCategoryName }).eq('id', id)
     setEditingCategoryId(null)
-    fetchCategories(storeId!)
+    if (storeId) fetchCategories(storeId)
   }
 
   const handleEditMenu = (menu: MenuItem) => {
@@ -145,7 +152,7 @@ export default function StoreManagePage() {
       })
       .eq('id', id)
     setEditingMenuId(null)
-    fetchMenus(storeId!)
+    if (storeId) fetchMenus(storeId)
   }
 
   return (

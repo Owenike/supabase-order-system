@@ -1,16 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { QRCodeCanvas } from 'qrcode.react'
-import { useReactToPrint } from 'react-to-print'
+import { useReactToPrint, UseReactToPrintOptions } from 'react-to-print'
 import { useRouter } from 'next/router'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import type { ReactInstance } from 'react'
-
-// ✅ 自定義正確 interface，避免 TS 型別錯誤
-interface SafeReactToPrintOptions {
-  content: () => ReactInstance | null
-  documentTitle?: string
-}
 
 const QRCodePage = () => {
   const [storeId, setStoreId] = useState('')
@@ -26,11 +20,10 @@ const QRCodePage = () => {
     setStoreId(id)
   }, [router])
 
-  // ✅ 使用自定義型別，完全移除 TS 2353 錯誤
   const handlePrint = useReactToPrint({
     content: () => printRef.current,
-    documentTitle: 'QRCode列印'
-  } as SafeReactToPrintOptions)
+    documentTitle: 'QRCode列印',
+  } as UseReactToPrintOptions) // ✅ 加上型別註記以避免 ts(2353)
 
   const handleCopy = (url: string) => {
     navigator.clipboard.writeText(url)
@@ -70,20 +63,30 @@ const QRCodePage = () => {
 
   if (!storeId) return null
 
-  const baseUrl = 'http://localhost:3000/order'
+  const baseUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/order`
+      : 'https://example.com/order'
+
   const tables = Array.from({ length: 30 }, (_, i) => (i + 1).toString())
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto bg-white print:bg-white">
       <h1 className="text-2xl font-bold mb-6 print:hidden">
         🧾 QRCode 產生器（共 {tables.length} 張）
       </h1>
 
       <div className="flex justify-end mb-4 gap-2 print:hidden">
-        <button onClick={handlePrint} className="px-4 py-2 bg-green-600 text-white rounded">
+        <button
+          onClick={handlePrint}
+          className="px-4 py-2 bg-green-600 text-white rounded"
+        >
           列印
         </button>
-        <button onClick={handleDownloadPDF} className="px-4 py-2 bg-purple-600 text-white rounded">
+        <button
+          onClick={handleDownloadPDF}
+          className="px-4 py-2 bg-purple-600 text-white rounded"
+        >
           下載 PDF
         </button>
       </div>
@@ -92,7 +95,10 @@ const QRCodePage = () => {
         {tables.map((table) => {
           const url = `${baseUrl}?store=${storeId}&table=${table}`
           return (
-            <div key={table} className="border rounded p-4 flex flex-col items-center">
+            <div
+              key={table}
+              className="border rounded p-4 flex flex-col items-center"
+            >
               <QRCodeCanvas value={url} size={120} />
               <p className="mt-2 font-semibold">桌號：{table}</p>
               <p className="text-xs text-center break-all">{url}</p>
