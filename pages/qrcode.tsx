@@ -4,7 +4,6 @@ import { useReactToPrint, UseReactToPrintOptions } from 'react-to-print'
 import { useRouter } from 'next/router'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
-import type { ReactInstance } from 'react'
 
 const QRCodePage = () => {
   const [storeId, setStoreId] = useState('')
@@ -23,7 +22,7 @@ const QRCodePage = () => {
   const handlePrint = useReactToPrint({
     content: () => printRef.current,
     documentTitle: 'QRCode列印',
-  } as UseReactToPrintOptions) // ✅ 加上型別註記以避免 ts(2353)
+  } as UseReactToPrintOptions)
 
   const handleCopy = (url: string) => {
     navigator.clipboard.writeText(url)

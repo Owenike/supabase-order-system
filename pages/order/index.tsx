@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -18,7 +18,7 @@ interface Category {
 }
 
 interface OrderRecord {
-  items: { name: string; quantity: number; price: number }[]
+  items: { id?: string; name: string; quantity: number; price: number }[]
   note: string
   total: number
   status?: string
@@ -72,7 +72,7 @@ export default function OrderPage() {
   const [storeId, setStoreId] = useState('')
   const [menus, setMenus] = useState<MenuItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [selectedItems, setSelectedItems] = useState<{ id: string, name: string, price: number, quantity: number }[]>([])
+  const [selectedItems, setSelectedItems] = useState<{ id: string; name: string; price: number; quantity: number }[]>([])
   const [note, setNote] = useState('')
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
@@ -85,6 +85,7 @@ export default function OrderPage() {
 
   const t = langMap[lang]
   const total = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+
   useEffect(() => {
     if (!router.isReady) return
     const id = typeof storeIdFromQuery === 'string' ? storeIdFromQuery : ''
@@ -145,6 +146,7 @@ export default function OrderPage() {
       .select('*')
       .eq('store_id', storeId)
       .order('created_at', { ascending: true })
+    if (error) console.error('fetchCategories error:', error.message)
     if (data) setCategories(data)
   }
 
@@ -175,7 +177,7 @@ export default function OrderPage() {
     if (selectedItems.length === 0) return setErrorMsg(t.errorNoItem)
     if (tableParam === '外帶') {
       if (!customerName.trim()) return setErrorMsg(t.errorName)
-      if (!/^09\\d{8}$/.test(customerPhone.trim())) return setErrorMsg(t.errorPhone)
+      if (!/^09\d{8}$/.test(customerPhone.trim())) return setErrorMsg(t.errorPhone)
     }
     setErrorMsg('')
     setConfirming(true)
@@ -198,8 +200,10 @@ export default function OrderPage() {
       total: totalAmount
     })
 
-    if (error) setErrorMsg(t.fail + '（' + error.message + '）')
-    else {
+    if (error) {
+      setErrorMsg(t.fail + '（' + error.message + '）')
+      console.error('submitOrder error:', error)
+    } else {
       setSuccess(true)
       fetchOrders()
       setSelectedItems([])
@@ -211,6 +215,7 @@ export default function OrderPage() {
   }
 
   if (!storeId) return <p className="text-red-500 p-4">❗請從正確的點餐連結進入</p>
+
   return (
     <div className="p-4 max-w-2xl mx-auto">
       <button
@@ -229,6 +234,7 @@ export default function OrderPage() {
           {t.success}
         </div>
       )}
+
       {errorMsg && (
         <div className="bg-red-100 text-red-700 p-3 rounded mb-4 shadow">
           ❌ {errorMsg}

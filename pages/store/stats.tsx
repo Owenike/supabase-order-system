@@ -18,7 +18,22 @@ interface DailyStat {
   revenue: number
 }
 
+interface OrderItem {
+  name: string
+  quantity: number
+  price: number
+}
+
+interface Order {
+  id: string
+  created_at: string
+  table_number: string
+  items: OrderItem[]
+  note?: string
+}
+
 export default function StoreStatsPage() {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [storeId, setStoreId] = useState<string | null>(null)
   const [inStats, setInStats] = useState<MenuItemStat[]>([])
   const [outStats, setOutStats] = useState<MenuItemStat[]>([])
@@ -28,7 +43,7 @@ export default function StoreStatsPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [dailyData, setDailyData] = useState<DailyStat[]>([])
-  const [orderList, setOrderList] = useState<any[]>([])
+  const [orderList, setOrderList] = useState<Order[]>([])
 
   useEffect(() => {
     const id = localStorage.getItem('store_id')
@@ -63,15 +78,15 @@ export default function StoreStatsPage() {
     const outMap: Record<string, { quantity: number, amount: number }> = {}
     let inRev = 0
     let outRev = 0
-    let dailyMap: Record<string, { orders: number, revenue: number }> = {}
+    const dailyMap: Record<string, { orders: number, revenue: number }> = {}
 
-    data.forEach(order => {
+    data.forEach((order: Order) => {
       const isTakeout = order.table_number === '外帶'
       const date = dayjs(order.created_at).format('YYYY-MM-DD')
       if (!dailyMap[date]) dailyMap[date] = { orders: 0, revenue: 0 }
       dailyMap[date].orders++
 
-      order.items?.forEach((item: any) => {
+      order.items?.forEach((item) => {
         const target = isTakeout ? outMap : inMap
         if (!target[item.name]) target[item.name] = { quantity: 0, amount: 0 }
         target[item.name].quantity += item.quantity
@@ -174,7 +189,7 @@ export default function StoreStatsPage() {
               <div className="text-gray-500 mb-1">{dayjs(order.created_at).format('YYYY-MM-DD HH:mm')}</div>
               <div className="mb-1">桌號：{order.table_number}</div>
               <ul className="list-disc pl-5">
-                {order.items?.map((item: any, idx: number) => (
+                {order.items?.map((item, idx) => (
                   <li key={idx}>{item.name} × {item.quantity}（NT$ {item.price * item.quantity}）</li>
                 ))}
               </ul>

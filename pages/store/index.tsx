@@ -30,6 +30,7 @@ const langMap = {
 export default function StoreHomePage() {
   const router = useRouter()
   const [storeName, setStoreName] = useState('')
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [latestOrder, setLatestOrder] = useState<any>(null)
   const [lang, setLang] = useState<'zh' | 'en'>('zh')
   const [showAlert, setShowAlert] = useState(false)
@@ -103,7 +104,6 @@ export default function StoreHomePage() {
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-white to-gray-100 p-6 px-4 sm:px-6 pb-24">
-      {/* 語言切換按鈕 */}
       <button
         onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
         className="absolute top-4 right-4 text-sm text-gray-500 border px-2 py-1 rounded hover:bg-gray-100"
@@ -111,14 +111,12 @@ export default function StoreHomePage() {
         {lang === 'zh' ? 'EN' : '中'}
       </button>
 
-      {/* 視覺新訂單提示 */}
       {showAlert && (
         <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg animate-pulse z-50">
           {t.newOrder}
         </div>
       )}
 
-      {/* LOGO with animation */}
       <img
         src="/logo.png"
         alt="系統品牌 Logo"
@@ -176,7 +174,6 @@ export default function StoreHomePage() {
 
       <audio ref={audioRef} src="/ding.mp3" preload="auto" />
 
-      {/* 波浪背景（自然曲線） */}
       <div className="absolute -bottom-4 left-0 w-full overflow-hidden leading-none pointer-events-none">
         <svg viewBox="0 0 1200 120" preserveAspectRatio="none" className="w-full h-24">
           <path
