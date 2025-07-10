@@ -13,10 +13,10 @@ export default function CreateUserPage() {
     setLoading(true)
     setMessage('')
 
-    // ✅ 限制密碼只能包含英文與數字（ASCII 文字）
+    // ✅ 限制密碼只能包含英文與數字（ASCII）
     const isValid = /^[a-zA-Z0-9]+$/.test(password)
     if (!isValid) {
-      setMessage('❌ 密碼僅限輸入英文與數字，請勿包含中文或特殊符號')
+      setMessage('❌ 密碼僅限輸入英文與數字，請勿使用中文、符號、emoji、全形字元')
       setLoading(false)
       return
     }
@@ -58,6 +58,7 @@ export default function CreateUserPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="off"
             style={{ width: '100%', padding: '8px', fontSize: '16px' }}
           />
         </div>
@@ -66,8 +67,13 @@ export default function CreateUserPage() {
           <input
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              // ✅ 自動過濾非 ASCII 字元（只保留英文與數字）
+              const asciiOnly = e.target.value.replace(/[^a-zA-Z0-9]/g, '')
+              setPassword(asciiOnly)
+            }}
             required
+            autoComplete="off"
             placeholder="僅限英文與數字"
             style={{ width: '100%', padding: '8px', fontSize: '16px' }}
           />
