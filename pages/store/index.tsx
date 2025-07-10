@@ -2,6 +2,14 @@ import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
+interface Order {
+  id: string
+  created_at: string
+  table_number: string
+  items: { name: string; quantity: number; price: number }[]
+  note?: string
+}
+
 const langMap = {
   zh: {
     title: '歡迎進入店家後台',
@@ -30,8 +38,7 @@ const langMap = {
 export default function StoreHomePage() {
   const router = useRouter()
   const [storeName, setStoreName] = useState('')
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [latestOrder, setLatestOrder] = useState<any>(null)
+  const [latestOrder, setLatestOrder] = useState<Order | null>(null)
   const [lang, setLang] = useState<'zh' | 'en'>('zh')
   const [showAlert, setShowAlert] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -81,7 +88,7 @@ export default function StoreHomePage() {
           filter: `store_id=eq.${storeId}`,
         },
         (payload) => {
-          setLatestOrder(payload.new)
+          setLatestOrder(payload.new as Order)
           audioRef.current?.play()
           setShowAlert(true)
           setTimeout(() => setShowAlert(false), 3000)
@@ -92,7 +99,7 @@ export default function StoreHomePage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [])
+  }, [router])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
