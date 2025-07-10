@@ -38,6 +38,7 @@ const langMap = {
 export default function StoreHomePage() {
   const router = useRouter()
   const [storeName, setStoreName] = useState('')
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [latestOrder, setLatestOrder] = useState<Order | null>(null)
   const [lang, setLang] = useState<'zh' | 'en'>('zh')
   const [showAlert, setShowAlert] = useState(false)
