@@ -3,10 +3,9 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import { createClient } from '@supabase/supabase-js'
 
-// 替換成你自己的 Supabase 資訊
 const supabase = createClient(
   'https://cdzgifdgcaeswcdewwdl.supabase.co',
-  '你的-service-role-key'
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNkemdpZmRnY2Flc3djZGV3d2RsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0ODIwMjcwNSwiZXhwIjoyMDYzNzc4NzA1fQ.ZpUE0ZAcaq8C3fQDVkGd4rxfP2my9EmhRNlTpXfZSfY'
 )
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
