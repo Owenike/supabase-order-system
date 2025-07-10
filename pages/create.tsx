@@ -31,7 +31,7 @@ export default function CreateUserPage() {
       } else {
         setMessage(`❌ 建立失敗：${data.error}`)
       }
-    } catch (_) {
+    } catch {
       setMessage('❌ 無法連線到伺服器')
     } finally {
       setLoading(false)
