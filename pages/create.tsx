@@ -29,7 +29,8 @@ export default function CreateUserPage() {
         setEmail('')
         setPassword('')
       } else {
-        setMessage(`❌ 建立失敗：${data.error}`)
+        console.error('建立失敗錯誤內容：', data.error)
+        setMessage('❌ 建立失敗，請確認輸入資訊是否正確')
       }
     } catch {
       setMessage('❌ 無法連線到伺服器')
@@ -78,7 +79,9 @@ export default function CreateUserPage() {
         </button>
       </form>
       {message && (
-        <p style={{ marginTop: 20, fontWeight: 'bold' }}>{message}</p>
+        <p style={{ marginTop: 20, fontWeight: 'bold', color: message.includes('❌') ? 'red' : 'green' }}>
+          {message}
+        </p>
       )}
     </div>
   )
