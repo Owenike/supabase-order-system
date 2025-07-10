@@ -13,6 +13,14 @@ export default function CreateUserPage() {
     setLoading(true)
     setMessage('')
 
+    // ✅ 限制密碼只能包含英文與數字（ASCII 文字）
+    const isValid = /^[a-zA-Z0-9]+$/.test(password)
+    if (!isValid) {
+      setMessage('❌ 密碼僅限輸入英文與數字，請勿包含中文或特殊符號')
+      setLoading(false)
+      return
+    }
+
     try {
       const res = await fetch('/api/create-user', {
         method: 'POST',
@@ -60,6 +68,7 @@ export default function CreateUserPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            placeholder="僅限英文與數字"
             style={{ width: '100%', padding: '8px', fontSize: '16px' }}
           />
         </div>
