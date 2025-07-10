@@ -13,10 +13,18 @@ export default function CreateUserPage() {
     setLoading(true)
     setMessage('')
 
-    // ✅ 限制密碼只能包含英文與數字（ASCII）
-    const isValid = /^[a-zA-Z0-9]+$/.test(password)
-    if (!isValid) {
-      setMessage('❌ 密碼僅限輸入英文與數字，請勿使用中文、符號、emoji、全形字元')
+    // 密碼 ASCII 驗證
+    const isValidPassword = /^[a-zA-Z0-9]+$/.test(password)
+    if (!isValidPassword) {
+      setMessage('❌ 密碼僅限英文與數字，不可包含中文或符號')
+      setLoading(false)
+      return
+    }
+
+    // Email ASCII 驗證
+    const isValidEmail = /^[\x00-\x7F]+$/.test(email)
+    if (!isValidEmail) {
+      setMessage('❌ Email 格式錯誤，請勿包含中文或奇怪符號')
       setLoading(false)
       return
     }
@@ -24,9 +32,7 @@ export default function CreateUserPage() {
     try {
       const res = await fetch('/api/create-user', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       })
 
@@ -56,9 +62,13 @@ export default function CreateUserPage() {
           <input
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              const asciiOnly = e.target.value.replace(/[^\x00-\x7F]/g, '')
+              setEmail(asciiOnly)
+            }}
             required
             autoComplete="off"
+            placeholder="請輸入 Email"
             style={{ width: '100%', padding: '8px', fontSize: '16px' }}
           />
         </div>
@@ -68,7 +78,6 @@ export default function CreateUserPage() {
             type="password"
             value={password}
             onChange={(e) => {
-              // ✅ 自動過濾非 ASCII 字元（只保留英文與數字）
               const asciiOnly = e.target.value.replace(/[^a-zA-Z0-9]/g, '')
               setPassword(asciiOnly)
             }}
