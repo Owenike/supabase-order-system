@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
+import Image from 'next/image'
 
 interface Order {
   id: string
@@ -125,19 +126,12 @@ export default function StoreHomePage() {
         </div>
       )}
 
-      <img
+      <Image
         src="/logo.png"
         alt="系統品牌 Logo"
         width={100}
         height={100}
-        className="animate-float"
-        style={{
-          borderRadius: '9999px',
-          marginBottom: '24px',
-          backgroundColor: 'white',
-          padding: '8px',
-          boxShadow: '0 6px 20px rgba(0, 0, 0, 0.08)',
-        }}
+        className="animate-float rounded-full mb-6 bg-white p-2 shadow-lg"
       />
 
       <h1 className="text-3xl font-bold mb-1 text-center text-black tracking-wide">

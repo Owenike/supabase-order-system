@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -86,6 +86,18 @@ export default function OrderPage() {
   const t = langMap[lang]
   const total = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
+  const fetchOrders = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('store_id', storeId)
+      .eq('table_number', tableParam)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+    if (error) console.error('fetchOrders error:', error)
+    if (data) setOrderHistory(data)
+  }, [storeId, tableParam])
+
   useEffect(() => {
     if (!router.isReady) return
     const id = typeof storeIdFromQuery === 'string' ? storeIdFromQuery : ''
@@ -99,24 +111,7 @@ export default function OrderPage() {
   useEffect(() => {
     if (!storeId || !tableParam) return
     fetchOrders()
-  }, [storeId, tableParam])
-
-  useEffect(() => {
-    console.log('🧾 menus:', menus)
-    console.log('📚 categories:', categories)
-  }, [menus, categories])
-
-  const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('store_id', storeId)
-      .eq('table_number', tableParam)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true })
-    if (error) console.error('fetchOrders error:', error)
-    if (data) setOrderHistory(data)
-  }
+  }, [storeId, tableParam, fetchOrders])
 
   const fetchMenus = async (storeId: string) => {
     if (!storeId) {
@@ -136,7 +131,6 @@ export default function OrderPage() {
       return
     }
 
-    console.log('✅ menus fetched:', data)
     setMenus(data || [])
   }
 

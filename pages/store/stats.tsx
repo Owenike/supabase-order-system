@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import dayjs from 'dayjs'
 import {
@@ -45,14 +45,7 @@ export default function StoreStatsPage() {
   const [dailyData, setDailyData] = useState<DailyStat[]>([])
   const [orderList, setOrderList] = useState<Order[]>([])
 
-  useEffect(() => {
-    const id = localStorage.getItem('store_id')
-    if (!id) return
-    setStoreId(id)
-    fetchStats(id)
-  }, [filterType, startDate, endDate])
-
-  const fetchStats = async (storeId: string) => {
+  const fetchStats = useCallback(async (storeId: string) => {
     let from = ''
     let to = dayjs().endOf('day').toISOString()
 
@@ -118,7 +111,14 @@ export default function StoreStatsPage() {
     setOutRevenue(outRev)
     setDailyData(dailyStatArr)
     setOrderList(data.sort((a, b) => b.created_at.localeCompare(a.created_at)))
-  }
+  }, [filterType, startDate, endDate])
+
+  useEffect(() => {
+    const id = localStorage.getItem('store_id')
+    if (!id) return
+    setStoreId(id)
+    fetchStats(id)
+  }, [filterType, startDate, endDate, fetchStats])
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
