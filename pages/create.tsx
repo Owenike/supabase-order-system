@@ -1,30 +1,29 @@
 // pages/create.tsx
-
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/router'
 
 export default function CreateUserPage() {
+  const router = useRouter()
+  const [storeId, setStoreId] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    const id = router.query.store_id
+    if (typeof id === 'string') {
+      setStoreId(id)
+    }
+  }, [router.query.store_id])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setMessage('')
 
-    // 密碼 ASCII 驗證
-    const isValidPassword = /^[a-zA-Z0-9]+$/.test(password)
-    if (!isValidPassword) {
-      setMessage('❌ 密碼僅限英文與數字，不可包含中文或符號')
-      setLoading(false)
-      return
-    }
-
-    // Email ASCII 驗證
-    const isValidEmail = /^[\x00-\x7F]+$/.test(email)
-    if (!isValidEmail) {
-      setMessage('❌ Email 格式錯誤，請勿包含中文或奇怪符號')
+    if (!storeId) {
+      setMessage('❌ 缺少店家識別碼，請確認網址包含 store_id')
       setLoading(false)
       return
     }
@@ -33,21 +32,19 @@ export default function CreateUserPage() {
       const res = await fetch('/api/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, store_id: storeId }),
       })
 
       const data = await res.json()
-
       if (res.ok) {
         setMessage(`✅ 建立成功：${data.user.email}`)
         setEmail('')
         setPassword('')
       } else {
-        console.error('建立失敗錯誤內容：', data.error)
-        setMessage('❌ 建立失敗，請確認輸入資訊是否正確')
+        setMessage(`❌ 建立失敗：${data.error}`)
       }
     } catch {
-      setMessage('❌ 無法連線到伺服器')
+      setMessage('❌ 系統錯誤，請稍後再試')
     } finally {
       setLoading(false)
     }
@@ -62,10 +59,7 @@ export default function CreateUserPage() {
           <input
             type="email"
             value={email}
-            onChange={(e) => {
-              const asciiOnly = e.target.value.replace(/[^\x00-\x7F]/g, '')
-              setEmail(asciiOnly)
-            }}
+            onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="off"
             placeholder="請輸入 Email"
