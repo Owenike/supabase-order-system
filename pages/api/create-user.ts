@@ -68,10 +68,11 @@ export default async function handler(
     }
 
     return res.status(200).json({ message: 'User created', user: user.user })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('❌ Unhandled error:', err)
-    return res
-      .status(500)
-      .json({ error: 'Unexpected server error', detail: err.message })
+    return res.status(500).json({
+      error: 'Unexpected server error',
+      detail: err instanceof Error ? err.message : 'Unknown error',
+    })
   }
 }
