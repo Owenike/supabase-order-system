@@ -10,20 +10,28 @@ export default function CreateUserPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
+  // 取得網址中的 store_id（含 isReady 等待 Router 準備好）
   useEffect(() => {
+    if (!router.isReady) return
     const id = router.query.store_id
+    console.log('🟡 取得網址參數 store_id:', id)
     if (typeof id === 'string') {
       setStoreId(id)
+    } else {
+      console.warn('❌ 無法從網址取得 store_id')
     }
-  }, [router.query.store_id])
+  }, [router.isReady, router.query.store_id])
 
+  // 建立帳號
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setMessage('')
 
-    if (!storeId) {
-      setMessage('❌ 缺少店家識別碼，請確認網址包含 store_id')
+    console.log('🟡 要送出的資料:', { email, password, storeId })
+
+    if (!email || !password || !storeId) {
+      setMessage('❌ 請確認 Email、密碼與網址中的 store_id 都有填寫')
       setLoading(false)
       return
     }
@@ -36,14 +44,17 @@ export default function CreateUserPage() {
       })
 
       const data = await res.json()
+
       if (res.ok) {
         setMessage(`✅ 建立成功：${data.user.email}`)
         setEmail('')
         setPassword('')
       } else {
+        console.error('❌ API 回傳錯誤:', data)
         setMessage(`❌ 建立失敗：${data.error}`)
       }
-    } catch {
+    } catch (error) {
+      console.error('❌ 呼叫 API 發生錯誤:', error)
       setMessage('❌ 系統錯誤，請稍後再試')
     } finally {
       setLoading(false)
@@ -97,7 +108,13 @@ export default function CreateUserPage() {
         </button>
       </form>
       {message && (
-        <p style={{ marginTop: 20, fontWeight: 'bold', color: message.includes('❌') ? 'red' : 'green' }}>
+        <p
+          style={{
+            marginTop: 20,
+            fontWeight: 'bold',
+            color: message.includes('❌') ? 'red' : 'green',
+          }}
+        >
           {message}
         </p>
       )}
