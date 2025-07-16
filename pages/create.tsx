@@ -28,7 +28,12 @@ export default function CreateUserPage() {
     setLoading(true)
     setMessage('')
 
-    console.log('🟡 要送出的資料:', { email, password, storeId })
+    // 🟡 加上送出前確認資料的 log
+    console.log('🟡 送出前確認資料:', {
+      email,
+      password,
+      store_id: storeId,
+    })
 
     if (!email || !password || !storeId) {
       setMessage('❌ 請確認 Email、密碼與網址中的 store_id 都有填寫')
