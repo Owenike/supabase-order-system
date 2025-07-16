@@ -1,4 +1,3 @@
-// pages/create.tsx
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 
@@ -32,6 +31,8 @@ export default function CreateUserPage() {
       store_id: storeId,
     }
 
+    // 視覺提示 + 主控台 log
+    alert(`🟡 即將送出資料：\n${JSON.stringify(debugData, null, 2)}`)
     console.log('🟡 送出前確認資料:', debugData)
 
     if (!email || !password || !storeId) {
