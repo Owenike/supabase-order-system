@@ -26,12 +26,13 @@ export default function CreateUserPage() {
     setLoading(true)
     setMessage('')
 
-    // 強制印出檢查
-    console.log('🟡 送出前確認資料:', {
+    const debugData = {
       email,
       password,
       store_id: storeId,
-    })
+    }
+
+    console.log('🟡 送出前確認資料:', debugData)
 
     if (!email || !password || !storeId) {
       setMessage('❌ 請確認 Email、密碼與網址中的 store_id 都有填寫')
@@ -43,7 +44,7 @@ export default function CreateUserPage() {
       const res = await fetch('/api/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, store_id: storeId }),
+        body: JSON.stringify(debugData),
       })
 
       const data = await res.json()
@@ -69,8 +70,9 @@ export default function CreateUserPage() {
       <h2>新增使用者帳號</h2>
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: 10 }}>
-          <label>Email：</label>
+          <label htmlFor="email">Email：</label>
           <input
+            id="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -81,8 +83,9 @@ export default function CreateUserPage() {
           />
         </div>
         <div style={{ marginBottom: 10 }}>
-          <label>密碼：</label>
+          <label htmlFor="password">密碼：</label>
           <input
+            id="password"
             type="password"
             value={password}
             onChange={(e) => {
