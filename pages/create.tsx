@@ -10,7 +10,6 @@ export default function CreateUserPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
-  // 取得網址中的 store_id（含 isReady 等待 Router 準備好）
   useEffect(() => {
     if (!router.isReady) return
     const id = router.query.store_id
@@ -22,13 +21,12 @@ export default function CreateUserPage() {
     }
   }, [router.isReady, router.query.store_id])
 
-  // 建立帳號
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setMessage('')
 
-    // 🟡 加上送出前確認資料的 log
+    // 強制印出檢查
     console.log('🟡 送出前確認資料:', {
       email,
       password,
