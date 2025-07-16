@@ -9,14 +9,20 @@ export default function CreateUserPage() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
+  // 驗證 UUID 格式
+  const isValidUuid = (val: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(val)
+
   useEffect(() => {
     if (!router.isReady) return
     const id = router.query.store_id
     console.log('🟡 取得網址參數 store_id:', id)
-    if (typeof id === 'string') {
+
+    if (typeof id === 'string' && isValidUuid(id)) {
       setStoreId(id)
     } else {
-      console.warn('❌ 無法從網址取得 store_id')
+      setMessage('❌ URL 中缺少正確的 store_id')
+      console.warn('❌ 無法從網址取得有效的 UUID store_id')
     }
   }, [router.isReady, router.query.store_id])
 
@@ -31,7 +37,7 @@ export default function CreateUserPage() {
       store_id: storeId,
     }
 
-    // 視覺提示 + 主控台 log
+    // Debug 顯示
     alert(`🟡 即將送出資料：\n${JSON.stringify(debugData, null, 2)}`)
     console.log('🟡 送出前確認資料:', debugData)
 
@@ -56,11 +62,13 @@ export default function CreateUserPage() {
         setPassword('')
       } else {
         console.error('❌ API 回傳錯誤:', data)
-        setMessage(`❌ 建立失敗：${data.error}`)
+        setMessage(`❌ 建立失敗：${data.error || '未知錯誤'}`)
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ 呼叫 API 發生錯誤:', error)
-      setMessage('❌ 系統錯誤，請稍後再試')
+      const errMsg =
+        error instanceof Error ? error.message : '未知錯誤，請稍後再試'
+      setMessage(`❌ 系統錯誤：${errMsg}`)
     } finally {
       setLoading(false)
     }
