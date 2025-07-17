@@ -54,9 +54,9 @@ export default function LoginPage() {
       localStorage.setItem('store_id', storeData.id)
       setError('✅ 登入成功，正在導向後台...')
 
-      // ✅ 等待寫入完成後再導向，避免 store 頁面讀不到
+      // ✅ 等待寫入完成後再導向，避免 /store 頁面讀不到 store_id
       await new Promise((resolve) => setTimeout(resolve, 300))
-      router.replace('/store')
+      window.location.href = '/store' // ✅ 強制導向，避免 router.replace 卡住
     } catch (err) {
       console.error('登入流程發生錯誤：', err)
       setError('發生未知錯誤，請稍後再試')
