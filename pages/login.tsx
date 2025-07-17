@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
@@ -7,13 +9,16 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setLoading(true)
 
-    // ✅ 清除殘留舊帳號的 store_id
+    // ✅ 清除殘留舊帳號資料
     localStorage.removeItem('store_id')
+    localStorage.removeItem('store_account_id')
 
     const cleanedEmail = email.trim().toLowerCase()
 
@@ -24,9 +29,11 @@ export default function LoginPage() {
 
     if (loginError || !data.user) {
       setError('登入失敗，請確認帳號密碼')
+      setLoading(false)
       return
     }
 
+    // ✅ 以 email 查詢對應店家
     const { data: storeData, error: storeError } = await supabase
       .from('stores')
       .select('id')
@@ -37,10 +44,14 @@ export default function LoginPage() {
 
     if (storeError || !storeData?.id) {
       setError('此帳號尚未對應到任何店家')
+      setLoading(false)
       return
     }
 
+    // ✅ 儲存登入後資料
     localStorage.setItem('store_id', storeData.id)
+    console.log('✅ 登入成功，跳轉店家後台')
+
     router.push('/store')
   }
 
@@ -54,6 +65,7 @@ export default function LoginPage() {
           placeholder="Email"
           value={email}
           onChange={e => setEmail(e.target.value)}
+          autoComplete="email"
         />
         <input
           type="password"
@@ -61,10 +73,15 @@ export default function LoginPage() {
           placeholder="密碼"
           value={password}
           onChange={e => setPassword(e.target.value)}
+          autoComplete="current-password"
         />
         {error && <p className="text-red-500 text-sm">{error}</p>}
-        <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded">
-          登入
+        <button
+          type="submit"
+          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition"
+          disabled={loading}
+        >
+          {loading ? '登入中...' : '登入'}
         </button>
       </form>
     </div>
