@@ -49,32 +49,42 @@ export default function StoreHomePage() {
   const t = langMap[lang]
 
   useEffect(() => {
+    if (typeof window === 'undefined') return // ⛔ 避免 SSR localStorage 錯誤
+
     const storeId = localStorage.getItem('store_id')
+    console.log('🧾 store_id from localStorage:', storeId)
+
     if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
+      console.warn('❌ 無效或缺失的 store_id，返回登入頁')
       localStorage.removeItem('store_id')
       router.push('/login')
       return
     }
 
     const fetchStoreInfo = async () => {
-      const { data: storeData } = await supabase
+      const { data: storeData, error: storeErr } = await supabase
         .from('stores')
         .select('name')
         .eq('id', storeId)
         .single()
 
-      if (storeData?.name) {
-        setStoreName(storeData.name)
+      if (storeErr || !storeData?.name) {
+        console.warn('❌ 無法取得店家名稱，返回登入頁')
+        router.push('/login')
+        return
+      }
 
-        const { data: accountData } = await supabase
-          .from('store_accounts')
-          .select('id')
-          .eq('store_name', storeData.name)
-          .single()
+      setStoreName(storeData.name)
+      console.log('🏪 取得店家名稱:', storeData.name)
 
-        if (accountData?.id) {
-          localStorage.setItem('store_account_id', accountData.id)
-        }
+      const { data: accountData } = await supabase
+        .from('store_accounts')
+        .select('id')
+        .eq('store_name', storeData.name)
+        .single()
+
+      if (accountData?.id) {
+        localStorage.setItem('store_account_id', accountData.id)
       }
     }
 

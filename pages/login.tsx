@@ -16,45 +16,52 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    // ✅ 清除殘留舊帳號資料
-    localStorage.removeItem('store_id')
-    localStorage.removeItem('store_account_id')
+    try {
+      // ✅ 清除舊登入資料
+      localStorage.removeItem('store_id')
+      localStorage.removeItem('store_account_id')
 
-    const cleanedEmail = email.trim().toLowerCase()
+      const cleanedEmail = email.trim().toLowerCase()
 
-    const { data, error: loginError } = await supabase.auth.signInWithPassword({
-      email: cleanedEmail,
-      password,
-    })
+      // ✅ 執行 Supabase 登入
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
+        email: cleanedEmail,
+        password,
+      })
 
-    if (loginError || !data.user) {
-      setError('登入失敗，請確認帳號密碼')
+      if (loginError || !data.user) {
+        setError('登入失敗，請確認帳號與密碼')
+        setLoading(false)
+        return
+      }
+
+      // ✅ 查詢店家對應資料
+      const { data: storeData, error: storeError } = await supabase
+        .from('stores')
+        .select('id')
+        .eq('email', cleanedEmail)
+        .single()
+
+      console.log('🧪 查詢店家結果：', storeData)
+
+      if (storeError || !storeData?.id) {
+        setError('此帳號尚未對應到任何店家')
+        setLoading(false)
+        return
+      }
+
+      // ✅ 成功寫入 localStorage
+      localStorage.setItem('store_id', storeData.id)
+      setError('✅ 登入成功，正在導向後台...')
+
+      // ✅ 使用 router.push 等待跳轉
+      await router.push('/store')
+    } catch (err) {
+      console.error('登入流程發生錯誤：', err)
+      setError('發生未知錯誤，請稍後再試')
+    } finally {
       setLoading(false)
-      return
     }
-
-    // ✅ 以 email 查詢對應店家
-    const { data: storeData, error: storeError } = await supabase
-      .from('stores')
-      .select('id')
-      .eq('email', cleanedEmail)
-      .single()
-
-    console.log('🧪 查詢店家結果：', storeData)
-
-    if (storeError || !storeData?.id) {
-      setError('此帳號尚未對應到任何店家')
-      setLoading(false)
-      return
-    }
-
-    // ✅ 儲存登入後資料
-    localStorage.setItem('store_id', storeData.id)
-    console.log('✅ 登入成功，跳轉店家後台')
-    setError('✅ 登入成功，正在導向後台...')
-    setTimeout(() => {
-      window.location.href = '/store' // ✅ 強制跳轉
-    }, 500)
   }
 
   return (
@@ -71,6 +78,7 @@ export default function LoginPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           autoComplete="email"
+          required
         />
         <input
           type="password"
@@ -79,6 +87,7 @@ export default function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
+          required
         />
         {error && <p className="text-sm text-center text-red-600">{error}</p>}
         <button
