@@ -42,9 +42,10 @@ export default function StoreHomePage() {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const [storeName, setStoreName] = useState('')
-  const [, setLatestOrder] = useState<Order | null>(null) // ✅ 移除未使用變數
+  const [, setLatestOrder] = useState<Order | null>(null)
   const [lang, setLang] = useState<'zh' | 'en'>('zh')
   const [showAlert, setShowAlert] = useState(false)
+  const [loading, setLoading] = useState(true)
   const audioRef = useRef<HTMLAudioElement>(null)
 
   const t = langMap[lang]
@@ -62,7 +63,7 @@ export default function StoreHomePage() {
     if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
       console.warn('❌ 無效或缺失的 store_id，返回登入頁')
       localStorage.removeItem('store_id')
-      router.push('/login')
+      router.replace('/login')
       return
     }
 
@@ -75,7 +76,7 @@ export default function StoreHomePage() {
 
       if (storeErr || !storeData?.name) {
         console.warn('❌ 無法取得店家名稱，返回登入頁')
-        router.push('/login')
+        router.replace('/login')
         return
       }
 
@@ -91,6 +92,8 @@ export default function StoreHomePage() {
       if (accountData?.id) {
         localStorage.setItem('store_account_id', accountData.id)
       }
+
+      setLoading(false) // ✅ 所有判斷完成後才結束 loading
     }
 
     fetchStoreInfo()
@@ -103,7 +106,7 @@ export default function StoreHomePage() {
           event: 'INSERT',
           schema: 'public',
           table: 'orders',
-          filter: `store_id=eq.${storeId}`,
+          filter: `store_id=eq.${localStorage.getItem('store_id')}`,
         },
         (payload) => {
           setLatestOrder(payload.new as Order)
@@ -127,10 +130,12 @@ export default function StoreHomePage() {
     router.push('/login')
   }
 
-  if (!mounted) return null
+  // ✅ loading 過程不渲染畫面，避免 router.push 被過早執行
+  if (!mounted || loading) return null
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-white to-gray-100 p-6 px-4 sm:px-6 pb-24">
+      {/* 以下略（保留你原本的 UI 內容） */}
       <button
         onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
         className="absolute top-4 right-4 text-sm text-gray-500 border px-2 py-1 rounded hover:bg-gray-100"
