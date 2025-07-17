@@ -1,4 +1,3 @@
-// pages/reset-password.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -9,9 +8,22 @@ export default function ResetPasswordPage() {
   const router = useRouter()
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data, error } = await supabase.auth.getSession()
+      if (!data.session || error) {
+        setMessage('❌ 無法驗證權限，請重新點擊密碼重設信件')
+      }
+      setLoading(false)
+    }
+
+    void checkSession()
+  }, [])
 
   const handleReset = async () => {
-    const { data, error } = await supabase.auth.updateUser({ password })
+    const { error } = await supabase.auth.updateUser({ password })
 
     if (error) {
       setMessage('❌ 密碼更新失敗：' + error.message)
@@ -24,14 +36,21 @@ export default function ResetPasswordPage() {
   return (
     <div style={{ padding: 40 }}>
       <h1>重設密碼</h1>
-      <input
-        type="password"
-        placeholder="新密碼"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      <button onClick={handleReset}>更新密碼</button>
-      <p>{message}</p>
+
+      {loading ? (
+        <p>正在驗證權限中...</p>
+      ) : (
+        <>
+          <input
+            type="password"
+            placeholder="請輸入新密碼"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <button onClick={handleReset}>更新密碼</button>
+          <p>{message}</p>
+        </>
+      )}
     </div>
   )
 }

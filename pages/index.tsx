@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
@@ -20,6 +22,19 @@ export default function StoreHomePage() {
   const [storeName, setStoreName] = useState('')
   const [latestOrder, setLatestOrder] = useState<Order | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
+
+  // ✅ 檢查 reset token，若存在自動導向重設密碼頁
+  useEffect(() => {
+    const hash = window.location.hash
+    if (hash.includes('access_token') && hash.includes('type=recovery')) {
+      const query = new URLSearchParams(hash.slice(1))
+      const token = query.get('access_token')
+      if (token) {
+        localStorage.setItem('access_token', token)
+        router.push('/reset-password')
+      }
+    }
+  }, [router])
 
   const fetchStoreInfo = useCallback(async () => {
     const storeId = localStorage.getItem('store_id')
