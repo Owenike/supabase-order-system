@@ -40,6 +40,7 @@ const langMap = {
 
 export default function StoreHomePage() {
   const router = useRouter()
+  const [mounted, setMounted] = useState(false)
   const [storeName, setStoreName] = useState('')
   const [latestOrder, setLatestOrder] = useState<Order | null>(null)
   const [lang, setLang] = useState<'zh' | 'en'>('zh')
@@ -49,7 +50,12 @@ export default function StoreHomePage() {
   const t = langMap[lang]
 
   useEffect(() => {
-    if (typeof window === 'undefined') return // ⛔ 避免 SSR localStorage 錯誤
+    // ✅ 確保只在瀏覽器端執行
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!mounted) return
 
     const storeId = localStorage.getItem('store_id')
     console.log('🧾 store_id from localStorage:', storeId)
@@ -112,7 +118,7 @@ export default function StoreHomePage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [router])
+  }, [mounted, router])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -121,6 +127,8 @@ export default function StoreHomePage() {
     alert(t.logoutMessage)
     router.push('/login')
   }
+
+  if (!mounted) return null // ✅ 頁面首次載入時不渲染（防止 SSR 誤判）
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-white to-gray-100 p-6 px-4 sm:px-6 pb-24">
