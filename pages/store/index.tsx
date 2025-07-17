@@ -42,7 +42,7 @@ export default function StoreHomePage() {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const [storeName, setStoreName] = useState('')
-  const [latestOrder, setLatestOrder] = useState<Order | null>(null)
+  const [, setLatestOrder] = useState<Order | null>(null) // ✅ 移除未使用變數
   const [lang, setLang] = useState<'zh' | 'en'>('zh')
   const [showAlert, setShowAlert] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -50,7 +50,6 @@ export default function StoreHomePage() {
   const t = langMap[lang]
 
   useEffect(() => {
-    // ✅ 確保只在瀏覽器端執行
     setMounted(true)
   }, [])
 
@@ -128,7 +127,7 @@ export default function StoreHomePage() {
     router.push('/login')
   }
 
-  if (!mounted) return null // ✅ 頁面首次載入時不渲染（防止 SSR 誤判）
+  if (!mounted) return null
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-white to-gray-100 p-6 px-4 sm:px-6 pb-24">
