@@ -1,6 +1,15 @@
+// lib/supabaseClient.ts
+
 import { createClient } from '@supabase/supabase-js'
 
-export const supabase = createClient(
-  'https://cdzgifdgcaeswcdewwdl.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNkemdpZmRnY2Flc3djZGV3d2RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDgyMDI3MDUsImV4cCI6MjA2Mzc3ODcwNX0.QVioMxAmy9xePpmCpq0y8GX2HJ19RHzWWbhjwIHvv5o'
-)
+// ✅ 從 .env.local 讀取公開金鑰與 URL（建議寫法）
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+// ❗ 安全防呆：如果變數遺失會主動拋錯
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('❌ Supabase 環境變數未設定，請確認 .env.local 是否正確配置。')
+}
+
+// ✅ 建立 supabase client 實例
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
