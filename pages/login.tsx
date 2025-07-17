@@ -24,7 +24,7 @@ export default function LoginPage() {
 
     const { data, error: loginError } = await supabase.auth.signInWithPassword({
       email: cleanedEmail,
-      password
+      password,
     })
 
     if (loginError || !data.user) {
@@ -51,20 +51,25 @@ export default function LoginPage() {
     // ✅ 儲存登入後資料
     localStorage.setItem('store_id', storeData.id)
     console.log('✅ 登入成功，跳轉店家後台')
-
-    router.push('/store')
+    setError('✅ 登入成功，正在導向後台...')
+    setTimeout(() => {
+      window.location.href = '/store' // ✅ 強制跳轉
+    }, 500)
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <form onSubmit={handleLogin} className="bg-white p-8 rounded shadow-md w-80 space-y-4">
+      <form
+        onSubmit={handleLogin}
+        className="bg-white p-8 rounded shadow-md w-80 space-y-4"
+      >
         <h2 className="text-xl font-bold text-center">店家登入</h2>
         <input
           type="email"
           className="w-full border px-3 py-2 rounded"
           placeholder="Email"
           value={email}
-          onChange={e => setEmail(e.target.value)}
+          onChange={(e) => setEmail(e.target.value)}
           autoComplete="email"
         />
         <input
@@ -72,10 +77,10 @@ export default function LoginPage() {
           className="w-full border px-3 py-2 rounded"
           placeholder="密碼"
           value={password}
-          onChange={e => setPassword(e.target.value)}
+          onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
         />
-        {error && <p className="text-red-500 text-sm">{error}</p>}
+        {error && <p className="text-sm text-center text-red-600">{error}</p>}
         <button
           type="submit"
           className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition"
