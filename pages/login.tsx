@@ -23,7 +23,7 @@ export default function LoginPage() {
 
       const cleanedEmail = email.trim().toLowerCase()
 
-      // ✅ 執行 Supabase 登入
+      // ✅ 登入 Supabase
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: cleanedEmail,
         password,
@@ -35,7 +35,7 @@ export default function LoginPage() {
         return
       }
 
-      // ✅ 查詢店家對應資料
+      // ✅ 查詢店家 ID
       const { data: storeData, error: storeError } = await supabase
         .from('stores')
         .select('id')
@@ -50,12 +50,13 @@ export default function LoginPage() {
         return
       }
 
-      // ✅ 成功寫入 localStorage
+      // ✅ 寫入 localStorage 並延遲跳轉
       localStorage.setItem('store_id', storeData.id)
       setError('✅ 登入成功，正在導向後台...')
 
-      // ✅ 使用 router.push 等待跳轉
-      await router.push('/store')
+      // ✅ 等待寫入完成後再導向，避免 store 頁面讀不到
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      router.replace('/store')
     } catch (err) {
       console.error('登入流程發生錯誤：', err)
       setError('發生未知錯誤，請稍後再試')
