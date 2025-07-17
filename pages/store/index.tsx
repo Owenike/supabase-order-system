@@ -49,67 +49,58 @@ export default function StoreHomePage() {
   const t = langMap[lang]
 
   useEffect(() => {
-    const checkStoreIdAndFetch = () => {
-      const storeId = localStorage.getItem('store_id')
-      if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
-        localStorage.removeItem('store_id')
-        router.push('/login')
-        return
-      }
+    const storeId = localStorage.getItem('store_id')
+    if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
+      localStorage.removeItem('store_id')
+      router.push('/login')
+      return
+    }
 
-      const fetchStoreInfo = async () => {
-        const { data: storeData } = await supabase
-          .from('stores')
-          .select('name')
-          .eq('id', storeId)
+    const fetchStoreInfo = async () => {
+      const { data: storeData } = await supabase
+        .from('stores')
+        .select('name')
+        .eq('id', storeId)
+        .single()
+
+      if (storeData?.name) {
+        setStoreName(storeData.name)
+
+        const { data: accountData } = await supabase
+          .from('store_accounts')
+          .select('id')
+          .eq('store_name', storeData.name)
           .single()
 
-        if (storeData?.name) {
-          setStoreName(storeData.name)
-
-          const { data: accountData } = await supabase
-            .from('store_accounts')
-            .select('id')
-            .eq('store_name', storeData.name)
-            .single()
-
-          if (accountData?.id) {
-            localStorage.setItem('store_account_id', accountData.id)
-          }
+        if (accountData?.id) {
+          localStorage.setItem('store_account_id', accountData.id)
         }
-      }
-
-      fetchStoreInfo()
-
-      const channel = supabase
-        .channel('order_notifications')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'orders',
-            filter: `store_id=eq.${storeId}`,
-          },
-          (payload) => {
-            setLatestOrder(payload.new as Order)
-            audioRef.current?.play()
-            setShowAlert(true)
-            setTimeout(() => setShowAlert(false), 3000)
-          }
-        )
-        .subscribe()
-
-      return () => {
-        supabase.removeChannel(channel)
       }
     }
 
-    if (document.readyState === 'complete') {
-      checkStoreIdAndFetch()
-    } else {
-      window.addEventListener('load', checkStoreIdAndFetch)
-      return () => window.removeEventListener('load', checkStoreIdAndFetch)
+    fetchStoreInfo()
+
+    const channel = supabase
+      .channel('order_notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'orders',
+          filter: `store_id=eq.${storeId}`,
+        },
+        (payload) => {
+          setLatestOrder(payload.new as Order)
+          audioRef.current?.play()
+          setShowAlert(true)
+          setTimeout(() => setShowAlert(false), 3000)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
     }
   }, [router])
 
