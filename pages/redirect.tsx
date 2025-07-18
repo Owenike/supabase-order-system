@@ -1,12 +1,8 @@
-// pages/redirect.tsx
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/router'
 
 export default function RedirectPage() {
-  const router = useRouter()
-
   useEffect(() => {
     console.log('⏳ redirect.tsx loaded，準備跳轉到 /store')
     setTimeout(() => {
