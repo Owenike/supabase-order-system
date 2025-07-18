@@ -11,52 +11,57 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log('📥 點擊登入')
+
     setError('')
     setLoading(true)
 
     try {
-      // ✅ 清除舊登入資料
       localStorage.removeItem('store_id')
       localStorage.removeItem('store_account_id')
 
       const cleanedEmail = email.trim().toLowerCase()
+      console.log('🧹 清理並準備登入:', cleanedEmail)
 
-      // ✅ 登入 Supabase
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: cleanedEmail,
         password,
       })
 
       if (loginError || !data.user) {
+        console.warn('❌ 登入失敗:', loginError?.message)
         setError('登入失敗，請確認帳號與密碼')
         setLoading(false)
         return
       }
 
-      // ✅ 查詢店家 ID
+      console.log('✅ Supabase 登入成功:', data.user.id)
+
       const { data: storeData, error: storeError } = await supabase
         .from('stores')
         .select('id')
         .eq('email', cleanedEmail)
         .single()
 
-      console.log('🧪 查詢店家結果：', storeData)
-
       if (storeError || !storeData?.id) {
+        console.warn('❌ 查無對應店家')
         setError('此帳號尚未對應到任何店家')
         setLoading(false)
         return
       }
 
-      // ✅ 寫入 localStorage 並延遲跳轉
+      console.log('🏪 找到對應店家 ID:', storeData.id)
+
       localStorage.setItem('store_id', storeData.id)
       setError('✅ 登入成功，正在導向後台...')
+      console.log('🧭 準備跳轉...')
 
-      // ✅ 等待寫入完成後再導向，避免 /store 頁面讀不到 store_id
       await new Promise((resolve) => setTimeout(resolve, 300))
-      window.location.href = '/store' // ✅ 強制跳轉
+
+      console.log('🚀 跳轉中...')
+      window.location.href = '/store'
     } catch (err) {
-      console.error('登入流程發生錯誤：', err)
+      console.error('💥 登入流程錯誤:', err)
       setError('發生未知錯誤，請稍後再試')
     } finally {
       setLoading(false)
