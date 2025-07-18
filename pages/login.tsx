@@ -64,7 +64,7 @@ export default function LoginPage() {
       if (allowRedirect) {
         console.log('🚀 跳轉中...')
         setTimeout(() => {
-          window.location.href = '/store'
+          window.location.href = '/redirect' // ✅ 改為跳轉到中繼頁
         }, 200)
       }
     }
