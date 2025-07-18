@@ -9,8 +9,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleLogin = async () => {
     console.log('📥 點擊登入')
 
     setError('')
@@ -70,10 +69,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <form
-        onSubmit={handleLogin}
-        className="bg-white p-8 rounded shadow-md w-80 space-y-4"
-      >
+      <div className="bg-white p-8 rounded shadow-md w-80 space-y-4">
         <h2 className="text-xl font-bold text-center">店家登入</h2>
         <input
           type="email"
@@ -95,13 +91,14 @@ export default function LoginPage() {
         />
         {error && <p className="text-sm text-center text-red-600">{error}</p>}
         <button
-          type="submit"
+          type="button"
+          onClick={handleLogin}
           className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition"
           disabled={loading}
         >
           {loading ? '登入中...' : '登入'}
         </button>
-      </form>
+      </div>
     </div>
   )
 }
