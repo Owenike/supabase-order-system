@@ -9,9 +9,10 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  let allowRedirect = false
+
   const handleLogin = async () => {
     console.log('📥 點擊登入')
-
     setError('')
     setLoading(true)
 
@@ -30,7 +31,6 @@ export default function LoginPage() {
       if (loginError || !data.user) {
         console.warn('❌ 登入失敗:', loginError?.message)
         setError('登入失敗，請確認帳號與密碼')
-        setLoading(false)
         return
       }
 
@@ -45,7 +45,6 @@ export default function LoginPage() {
       if (storeError || !storeData?.id) {
         console.warn('❌ 查無對應店家')
         setError('此帳號尚未對應到任何店家')
-        setLoading(false)
         return
       }
 
@@ -55,15 +54,19 @@ export default function LoginPage() {
       setError('✅ 登入成功，正在導向後台...')
       console.log('🧭 準備跳轉...')
 
-      await new Promise((resolve) => setTimeout(resolve, 300))
-
-      console.log('🚀 跳轉中...')
-      window.location.href = '/store'
+      allowRedirect = true
     } catch (err) {
       console.error('💥 登入流程錯誤:', err)
       setError('發生未知錯誤，請稍後再試')
     } finally {
       setLoading(false)
+
+      if (allowRedirect) {
+        console.log('🚀 跳轉中...')
+        setTimeout(() => {
+          window.location.href = '/store'
+        }, 200)
+      }
     }
   }
 
