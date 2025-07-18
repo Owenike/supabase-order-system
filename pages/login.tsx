@@ -1,11 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -56,7 +54,7 @@ export default function LoginPage() {
 
       // ✅ 等待寫入完成後再導向，避免 /store 頁面讀不到 store_id
       await new Promise((resolve) => setTimeout(resolve, 300))
-      window.location.href = '/store' // ✅ 強制導向，避免 router.replace 卡住
+      window.location.href = '/store' // ✅ 強制跳轉
     } catch (err) {
       console.error('登入流程發生錯誤：', err)
       setError('發生未知錯誤，請稍後再試')
