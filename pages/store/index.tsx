@@ -92,7 +92,8 @@ export default function StoreHomePage() {
         .from('store_accounts')
         .select('id')
         .eq('store_id', storeId)
-        .single()
+        .limit(1)
+        .maybeSingle()
 
       if (accountErr) {
         console.warn('❌ 查詢 store_account 發生錯誤:', accountErr.message)
