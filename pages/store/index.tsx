@@ -40,32 +40,34 @@ const langMap = {
 
 export default function StoreHomePage() {
   const router = useRouter()
-  const [mounted, setMounted] = useState(false)
   const [storeName, setStoreName] = useState('')
   const [, setLatestOrder] = useState<Order | null>(null)
   const [lang, setLang] = useState<'zh' | 'en'>('zh')
   const [showAlert, setShowAlert] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [storeIdReady, setStoreIdReady] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
 
   const t = langMap[lang]
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (!mounted) return
-
+    if (typeof window === 'undefined') return
     const storeId = localStorage.getItem('store_id')
-    console.log('🧾 store_id from localStorage:', storeId)
+    console.log('🧾 嘗試讀取 store_id:', storeId)
 
     if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
-      console.warn('❌ 無效或缺失的 store_id，返回登入頁')
-      localStorage.removeItem('store_id')
+      console.warn('❌ store_id 無效，導回登入')
       router.replace('/login')
-      return
+    } else {
+      console.log('✅ store_id 格式正確')
+      setStoreIdReady(true)
     }
+  }, [router])
+
+  useEffect(() => {
+    if (!storeIdReady) return
+
+    const storeId = localStorage.getItem('store_id')
 
     const fetchStoreInfo = async () => {
       const { data: storeData, error: storeErr } = await supabase
@@ -75,7 +77,7 @@ export default function StoreHomePage() {
         .single()
 
       if (storeErr || !storeData?.name) {
-        console.warn('❌ 無法取得店家名稱，返回登入頁')
+        console.warn('❌ 找不到店家，導回登入')
         router.replace('/login')
         return
       }
@@ -93,7 +95,7 @@ export default function StoreHomePage() {
         localStorage.setItem('store_account_id', accountData.id)
       }
 
-      setLoading(false) // ✅ 所有判斷完成後才結束 loading
+      setLoading(false)
     }
 
     fetchStoreInfo()
@@ -106,7 +108,7 @@ export default function StoreHomePage() {
           event: 'INSERT',
           schema: 'public',
           table: 'orders',
-          filter: `store_id=eq.${localStorage.getItem('store_id')}`,
+          filter: `store_id=eq.${storeId}`,
         },
         (payload) => {
           setLatestOrder(payload.new as Order)
@@ -120,7 +122,7 @@ export default function StoreHomePage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [mounted, router])
+  }, [storeIdReady, router])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -130,12 +132,10 @@ export default function StoreHomePage() {
     router.push('/login')
   }
 
-  // ✅ loading 過程不渲染畫面，避免 router.push 被過早執行
-  if (!mounted || loading) return null
+  if (!storeIdReady || loading) return null
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-white to-gray-100 p-6 px-4 sm:px-6 pb-24">
-      {/* 以下略（保留你原本的 UI 內容） */}
       <button
         onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
         className="absolute top-4 right-4 text-sm text-gray-500 border px-2 py-1 rounded hover:bg-gray-100"
