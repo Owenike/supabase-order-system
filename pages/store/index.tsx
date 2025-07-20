@@ -88,11 +88,13 @@ export default function StoreHomePage() {
       const { data: accountData } = await supabase
         .from('store_accounts')
         .select('id')
-        .eq('store_name', storeData.name)
+        .eq('store_id', storeId) // ✅ 改為用 store_id 查詢帳號
         .single()
 
       if (accountData?.id) {
         localStorage.setItem('store_account_id', accountData.id)
+      } else {
+        console.warn('⚠️ 查無 store_account_id，略過寫入')
       }
 
       setLoading(false)
