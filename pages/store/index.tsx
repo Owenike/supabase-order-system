@@ -57,6 +57,7 @@ export default function StoreHomePage() {
 
     if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
       console.warn('❌ store_id 無效，導回登入')
+      localStorage.removeItem('store_id')
       router.replace('/login')
     } else {
       console.log('✅ store_id 格式正確')
@@ -68,8 +69,10 @@ export default function StoreHomePage() {
     if (!storeIdReady) return
 
     const storeId = localStorage.getItem('store_id')
+    if (!storeId) return
 
     const fetchStoreInfo = async () => {
+      console.log('🔍 開始查詢 store 資料...')
       const { data: storeData, error: storeErr } = await supabase
         .from('stores')
         .select('name')
@@ -77,7 +80,7 @@ export default function StoreHomePage() {
         .single()
 
       if (storeErr || !storeData?.name) {
-        console.warn('❌ 找不到店家，導回登入')
+        console.warn('❌ 找不到對應店家，導回登入', storeErr)
         router.replace('/login')
         return
       }
@@ -85,13 +88,18 @@ export default function StoreHomePage() {
       setStoreName(storeData.name)
       console.log('🏪 取得店家名稱:', storeData.name)
 
-      const { data: accountData } = await supabase
+      const { data: accountData, error: accountErr } = await supabase
         .from('store_accounts')
         .select('id')
-        .eq('store_id', storeId) // ✅ 改為用 store_id 查詢帳號
+        .eq('store_id', storeId)
         .single()
 
+      if (accountErr) {
+        console.warn('❌ 查詢 store_account 發生錯誤:', accountErr.message)
+      }
+
       if (accountData?.id) {
+        console.log('✅ 查到 store_account_id:', accountData.id)
         localStorage.setItem('store_account_id', accountData.id)
       } else {
         console.warn('⚠️ 查無 store_account_id，略過寫入')
