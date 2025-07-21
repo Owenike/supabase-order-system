@@ -12,10 +12,10 @@ export default function StoreLoginPage() {
   const handleLogin = async () => {
     setError('')
 
-    // 查帳號
+    // 查帳號（這裡加入 store_id 一起查出來）
     const { data: account, error: accountError } = await supabase
       .from('store_accounts')
-      .select('id, password_hash, is_active, store_name')
+      .select('id, password_hash, is_active, store_id') // ✅ 加入 store_id
       .eq('email', email)
       .single()
 
@@ -35,23 +35,16 @@ export default function StoreLoginPage() {
       return
     }
 
-    // ✅ 根據 store_name 去 stores 表找出 store_id
-    const { data: store, error: storeError } = await supabase
-      .from('stores')
-      .select('id')
-      .eq('name', account.store_name)
-      .single()
-
-    if (storeError || !store) {
-      setError('找不到對應店家資料')
+    if (!account.store_id) {
+      setError('此帳號尚未綁定店家')
       return
     }
 
-    // ✅ 寫入 store_id 與 store_account_id 到 localStorage
-    localStorage.setItem('store_id', store.id)
+    // ✅ 直接使用 store_accounts 中的 store_id 與 id 寫入 localStorage
+    localStorage.setItem('store_id', account.store_id)
     localStorage.setItem('store_account_id', account.id)
 
-    router.push('/store/index')
+    router.push('/store')
   }
 
   return (
