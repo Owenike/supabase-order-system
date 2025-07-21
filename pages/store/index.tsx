@@ -58,7 +58,7 @@ export default function StoreHomePage() {
     if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
       console.warn('❌ store_id 無效，導回登入')
       localStorage.removeItem('store_id')
-      router.replace('/login')
+      // router.replace('/login') // 暫時停用，避免抓不到就跳走
     } else {
       console.log('✅ store_id 格式正確')
       setStoreIdReady(true)
@@ -69,25 +69,30 @@ export default function StoreHomePage() {
     if (!storeIdReady) return
 
     const storeId = localStorage.getItem('store_id')
-    if (!storeId) return
+    if (!storeId) {
+      console.error('❌ 無 store_id，無法查詢')
+      return
+    }
 
     const fetchStoreInfo = async () => {
-      console.log('🔍 開始查詢 store 資料...')
+      console.log('🔍 查詢 stores...')
       const { data: storeData, error: storeErr } = await supabase
         .from('stores')
         .select('name')
         .eq('id', storeId)
         .single()
 
+      console.log('🏪 storeData:', storeData)
+      console.log('⚠️ storeErr:', storeErr)
+
       if (storeErr || !storeData?.name) {
-        console.warn('❌ 找不到對應店家，導回登入', storeErr)
-        router.replace('/login')
+        console.warn('❌ 找不到對應店家，暫不跳轉')
         return
       }
 
       setStoreName(storeData.name)
-      console.log('🏪 取得店家名稱:', storeData.name)
 
+      console.log('🔍 查詢 store_accounts...')
       const { data: accountData, error: accountErr } = await supabase
         .from('store_accounts')
         .select('uuid')
@@ -95,15 +100,14 @@ export default function StoreHomePage() {
         .limit(1)
         .maybeSingle()
 
-      if (accountErr) {
-        console.warn('❌ 查詢 store_account 發生錯誤:', accountErr.message)
-      }
+      console.log('👤 accountData:', accountData)
+      console.log('⚠️ accountErr:', accountErr)
 
       if (accountData?.uuid) {
-        console.log('✅ 查到 store_account_id:', accountData.uuid)
         localStorage.setItem('store_account_id', accountData.uuid)
+        console.log('✅ 成功寫入 store_account_id:', accountData.uuid)
       } else {
-        console.warn('⚠️ 查無 store_account_id，略過寫入')
+        console.warn('⚠️ 查無 store_account_id，未寫入')
       }
 
       setLoading(false)
