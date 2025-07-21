@@ -58,7 +58,7 @@ export default function StoreHomePage() {
     if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
       console.warn('❌ store_id 無效，導回登入')
       localStorage.removeItem('store_id')
-      // router.replace('/login') // 暫時停用，避免抓不到就跳走
+      // router.replace('/login') // 暫時不跳轉，避免遮蔽 debug
     } else {
       console.log('✅ store_id 格式正確')
       setStoreIdReady(true)
@@ -95,19 +95,18 @@ export default function StoreHomePage() {
       console.log('🔍 查詢 store_accounts...')
       const { data: accountData, error: accountErr } = await supabase
         .from('store_accounts')
-        .select('uuid')
+        .select('*')
         .eq('store_id', storeId)
-        .limit(1)
-        .maybeSingle()
 
-      console.log('👤 accountData:', accountData)
+      console.log('📦 accountData array:', accountData)
       console.log('⚠️ accountErr:', accountErr)
 
-      if (accountData?.uuid) {
-        localStorage.setItem('store_account_id', accountData.uuid)
-        console.log('✅ 成功寫入 store_account_id:', accountData.uuid)
+      if (Array.isArray(accountData) && accountData.length > 0) {
+        const first = accountData[0]
+        console.log('✅ 第一筆帳號 uuid:', first.uuid)
+        localStorage.setItem('store_account_id', first.uuid)
       } else {
-        console.warn('⚠️ 查無 store_account_id，未寫入')
+        console.warn('❌ 查無 store_accounts 符合 store_id:', storeId)
       }
 
       setLoading(false)
