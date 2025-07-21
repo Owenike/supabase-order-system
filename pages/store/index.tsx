@@ -90,7 +90,7 @@ export default function StoreHomePage() {
 
       const { data: accountData, error: accountErr } = await supabase
         .from('store_accounts')
-        .select('id')
+        .select('uuid')
         .eq('store_id', storeId)
         .limit(1)
         .maybeSingle()
@@ -99,9 +99,9 @@ export default function StoreHomePage() {
         console.warn('❌ 查詢 store_account 發生錯誤:', accountErr.message)
       }
 
-      if (accountData?.id) {
-        console.log('✅ 查到 store_account_id:', accountData.id)
-        localStorage.setItem('store_account_id', accountData.id)
+      if (accountData?.uuid) {
+        console.log('✅ 查到 store_account_id:', accountData.uuid)
+        localStorage.setItem('store_account_id', accountData.uuid)
       } else {
         console.warn('⚠️ 查無 store_account_id，略過寫入')
       }
