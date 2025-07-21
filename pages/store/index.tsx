@@ -103,8 +103,8 @@ export default function StoreHomePage() {
 
       if (Array.isArray(accountData) && accountData.length > 0) {
         const first = accountData[0]
-        console.log('✅ 第一筆帳號 uuid:', first.uuid)
-        localStorage.setItem('store_account_id', first.uuid)
+        console.log('✅ 第一筆帳號 id:', first.id)
+        localStorage.setItem('store_account_id', first.id)
       } else {
         console.warn('❌ 查無 store_accounts 符合 store_id:', storeId)
       }
