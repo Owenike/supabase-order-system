@@ -49,11 +49,24 @@ export default function LoginPage() {
       }
 
       console.log('🏪 找到對應店家 ID:', storeData.id)
-
       localStorage.setItem('store_id', storeData.id)
-      setError('✅ 登入成功，正在導向後台...')
-      console.log('🧭 準備跳轉...')
 
+      const { data: accountData, error: accountError } = await supabase
+        .from('store_accounts')
+        .select('id')
+        .eq('store_id', storeData.id)
+        .single()
+
+      if (accountError || !accountData?.id) {
+        console.warn('❌ 查無對應 store_account')
+        setError('此店家尚未啟用登入帳號')
+        return
+      }
+
+      console.log('🧾 找到 store_account_id:', accountData.id)
+      localStorage.setItem('store_account_id', accountData.id)
+
+      setError('✅ 登入成功，正在導向後台...')
       allowRedirect = true
     } catch (err) {
       console.error('💥 登入流程錯誤:', err)
@@ -64,7 +77,7 @@ export default function LoginPage() {
       if (allowRedirect) {
         console.log('🚀 跳轉中...')
         setTimeout(() => {
-          window.location.href = '/redirect' // ✅ 改為跳轉到中繼頁
+          window.location.href = '/redirect' // ✅ 中繼頁或首頁
         }, 200)
       }
     }
