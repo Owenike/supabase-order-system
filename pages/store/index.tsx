@@ -45,50 +45,37 @@ export default function StoreHomePage() {
   const [lang, setLang] = useState<'zh' | 'en'>('zh')
   const [showAlert, setShowAlert] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [storeIdReady, setStoreIdReady] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
 
   const t = langMap[lang]
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const storeId = localStorage.getItem('store_id')
-    console.log('🧾 嘗試讀取 store_id:', storeId)
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session || !session.user) {
+        console.warn('❌ 無有效登入 session，導回登入頁')
+        router.replace('/login')
+        return
+      }
 
-    if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
-      console.warn('❌ store_id 無效，導回登入')
-      localStorage.removeItem('store_id')
-      localStorage.removeItem('store_account_id')
-      router.replace('/login')
-    } else {
-      console.log('✅ store_id 格式正確')
-      setStoreIdReady(true)
-    }
-  }, [router])
+      const storeId = localStorage.getItem('store_id')
+      if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
+        console.warn('❌ store_id 無效，清除並導回登入')
+        localStorage.removeItem('store_id')
+        localStorage.removeItem('store_account_id')
+        router.replace('/login')
+        return
+      }
 
-  useEffect(() => {
-    if (!storeIdReady) return
-
-    const storeId = localStorage.getItem('store_id')
-    if (!storeId) {
-      console.error('❌ 無 store_id，導回登入')
-      router.replace('/login')
-      return
-    }
-
-    const fetchStoreInfo = async () => {
-      console.log('🔍 查詢 stores...')
+      console.log('🔍 查詢 stores 資料中...')
       const { data: storeData, error: storeErr } = await supabase
         .from('stores')
         .select('name')
         .eq('id', storeId)
-        .single()
-
-      console.log('🏪 storeData:', storeData)
-      console.log('⚠️ storeErr:', storeErr)
+        .maybeSingle()
 
       if (storeErr || !storeData?.name) {
-        console.warn('❌ 找不到對應店家，導回登入')
+        console.warn('❌ 找不到店家資料，導回登入')
         localStorage.removeItem('store_id')
         localStorage.removeItem('store_account_id')
         router.replace('/login')
@@ -97,55 +84,51 @@ export default function StoreHomePage() {
 
       setStoreName(storeData.name)
 
-      console.log('🔍 查詢 store_accounts...')
       const { data: accountData, error: accountErr } = await supabase
         .from('store_accounts')
-        .select('*')
+        .select('id')
         .eq('store_id', storeId)
+        .limit(1)
+        .maybeSingle()
 
-      console.log('📦 accountData array:', accountData)
-      console.log('⚠️ accountErr:', accountErr)
-
-      if (Array.isArray(accountData) && accountData.length > 0) {
-        const first = accountData[0]
-        console.log('✅ 第一筆帳號 id:', first.id)
-        localStorage.setItem('store_account_id', first.id)
-      } else {
-        console.warn('❌ 查無 store_accounts 符合 store_id:', storeId)
+      if (accountErr || !accountData?.id) {
+        console.warn('❌ 查無對應 store_account')
         localStorage.removeItem('store_id')
         localStorage.removeItem('store_account_id')
         router.replace('/login')
         return
       }
 
+      localStorage.setItem('store_account_id', accountData.id)
+      console.log('✅ store_id & store_account_id 驗證完成')
       setLoading(false)
+
+      const channel = supabase
+        .channel('order_notifications')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'orders',
+            filter: `store_id=eq.${storeId}`,
+          },
+          (payload) => {
+            setLatestOrder(payload.new as Order)
+            audioRef.current?.play()
+            setShowAlert(true)
+            setTimeout(() => setShowAlert(false), 3000)
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
+      }
     }
 
-    fetchStoreInfo()
-
-    const channel = supabase
-      .channel('order_notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'orders',
-          filter: `store_id=eq.${storeId}`,
-        },
-        (payload) => {
-          setLatestOrder(payload.new as Order)
-          audioRef.current?.play()
-          setShowAlert(true)
-          setTimeout(() => setShowAlert(false), 3000)
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [storeIdReady, router])
+    init()
+  }, [router])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -155,7 +138,7 @@ export default function StoreHomePage() {
     router.push('/login')
   }
 
-  if (!storeIdReady || loading) return null
+  if (loading) return null
 
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-white to-gray-100 p-6 px-4 sm:px-6 pb-24">
