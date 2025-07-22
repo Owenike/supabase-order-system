@@ -58,7 +58,8 @@ export default function StoreHomePage() {
     if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
       console.warn('❌ store_id 無效，導回登入')
       localStorage.removeItem('store_id')
-      // router.replace('/login') // 暫時不跳轉，避免遮蔽 debug
+      localStorage.removeItem('store_account_id')
+      router.replace('/login')
     } else {
       console.log('✅ store_id 格式正確')
       setStoreIdReady(true)
@@ -70,7 +71,8 @@ export default function StoreHomePage() {
 
     const storeId = localStorage.getItem('store_id')
     if (!storeId) {
-      console.error('❌ 無 store_id，無法查詢')
+      console.error('❌ 無 store_id，導回登入')
+      router.replace('/login')
       return
     }
 
@@ -86,7 +88,10 @@ export default function StoreHomePage() {
       console.log('⚠️ storeErr:', storeErr)
 
       if (storeErr || !storeData?.name) {
-        console.warn('❌ 找不到對應店家，暫不跳轉')
+        console.warn('❌ 找不到對應店家，導回登入')
+        localStorage.removeItem('store_id')
+        localStorage.removeItem('store_account_id')
+        router.replace('/login')
         return
       }
 
@@ -107,6 +112,10 @@ export default function StoreHomePage() {
         localStorage.setItem('store_account_id', first.id)
       } else {
         console.warn('❌ 查無 store_accounts 符合 store_id:', storeId)
+        localStorage.removeItem('store_id')
+        localStorage.removeItem('store_account_id')
+        router.replace('/login')
+        return
       }
 
       setLoading(false)
