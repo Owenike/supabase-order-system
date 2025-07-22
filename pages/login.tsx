@@ -40,7 +40,10 @@ export default function LoginPage() {
         .from('stores')
         .select('id')
         .eq('email', cleanedEmail)
-        .single()
+        .maybeSingle()
+
+      console.log('🏪 查詢 stores 結果:', storeData)
+      console.log('⚠️ store 查詢錯誤:', storeError)
 
       if (storeError || !storeData?.id) {
         console.warn('❌ 查無對應店家')
@@ -48,14 +51,17 @@ export default function LoginPage() {
         return
       }
 
-      console.log('🏪 找到對應店家 ID:', storeData.id)
       localStorage.setItem('store_id', storeData.id)
+      console.log('📦 寫入 store_id:', storeData.id)
 
       const { data: accountData, error: accountError } = await supabase
         .from('store_accounts')
         .select('id')
         .eq('store_id', storeData.id)
-        .single()
+        .maybeSingle()
+
+      console.log('🧾 查詢 store_accounts 結果:', accountData)
+      console.log('⚠️ account 查詢錯誤:', accountError)
 
       if (accountError || !accountData?.id) {
         console.warn('❌ 查無對應 store_account')
@@ -63,8 +69,8 @@ export default function LoginPage() {
         return
       }
 
-      console.log('🧾 找到 store_account_id:', accountData.id)
       localStorage.setItem('store_account_id', accountData.id)
+      console.log('📥 寫入 store_account_id:', accountData.id)
 
       setError('✅ 登入成功，正在導向後台...')
       allowRedirect = true
@@ -77,7 +83,7 @@ export default function LoginPage() {
       if (allowRedirect) {
         console.log('🚀 跳轉中...')
         setTimeout(() => {
-          window.location.href = '/redirect' // ✅ 中繼頁或首頁
+          window.location.href = '/redirect'
         }, 200)
       }
     }
