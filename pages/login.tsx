@@ -59,6 +59,7 @@ export default function LoginPage() {
         .from('store_accounts')
         .select('id')
         .eq('store_id', storeData.id)
+        .limit(1)
         .maybeSingle()
 
       console.log('🧾 查詢 store_accounts 結果:', accountData)
