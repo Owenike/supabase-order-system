@@ -12,6 +12,7 @@ export default function LoginPage() {
   let allowRedirect = false
 
   const handleLogin = async () => {
+    alert('已觸發 handleLogin')
     console.log('📥 點擊登入')
     setError('')
     setLoading(true)
