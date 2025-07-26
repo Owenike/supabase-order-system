@@ -21,9 +21,11 @@ export default function StoreHomePage() {
   const router = useRouter()
   const [storeName, setStoreName] = useState('')
   const [latestOrder, setLatestOrder] = useState<Order | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
 
-  // ✅ 檢查 reset token，若存在自動導向重設密碼頁
+  // 檢查 reset token，若存在自動導向重設密碼頁
   useEffect(() => {
     const hash = window.location.hash
     if (hash.includes('access_token') && hash.includes('type=recovery')) {
@@ -37,32 +39,54 @@ export default function StoreHomePage() {
   }, [router])
 
   const fetchStoreInfo = useCallback(async () => {
-    const storeId = localStorage.getItem('store_id')
-    if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
-      localStorage.removeItem('store_id')
-      router.push('/login')
+    const { data: { session }, error: sessionErr } = await supabase.auth.getSession()
+    if (!session || !session.user) {
+      setError('尚未登入')
+      router.replace('/login')
       return
     }
 
-    const { data: storeData } = await supabase
+    const storeId = localStorage.getItem('store_id')
+    if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
+      setError('store_id 格式錯誤')
+      localStorage.removeItem('store_id')
+      localStorage.removeItem('store_account_id')
+      router.replace('/login')
+      return
+    }
+
+    const { data: storeData, error: storeErr } = await supabase
       .from('stores')
       .select('name')
       .eq('id', storeId)
       .single()
 
-    if (storeData?.name) {
-      setStoreName(storeData.name)
-
-      const { data: accountData } = await supabase
-        .from('store_accounts')
-        .select('id')
-        .eq('store_name', storeData.name)
-        .single()
-
-      if (accountData?.id) {
-        localStorage.setItem('store_account_id', accountData.id)
-      }
+    if (!storeData?.name || storeErr) {
+      setError('找不到對應的店家資料')
+      localStorage.removeItem('store_id')
+      localStorage.removeItem('store_account_id')
+      router.replace('/login')
+      return
     }
+
+    setStoreName(storeData.name)
+
+    const { data: accountData, error: accountErr } = await supabase
+      .from('store_accounts')
+      .select('id')
+      .eq('store_name', storeData.name)
+      .single()
+
+    if (!accountData?.id || accountErr) {
+      setError('找不到帳號')
+      localStorage.removeItem('store_id')
+      localStorage.removeItem('store_account_id')
+      router.replace('/login')
+      return
+    }
+
+    localStorage.setItem('store_account_id', accountData.id)
+    setLoading(false)
   }, [router])
 
   useEffect(() => {
@@ -98,6 +122,14 @@ export default function StoreHomePage() {
     localStorage.removeItem('store_id')
     localStorage.removeItem('store_account_id')
     router.push('/login')
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <p className="text-gray-500">{error ? `⚠️ ${error}` : '載入中...'}</p>
+      </div>
+    )
   }
 
   return (
