@@ -39,7 +39,7 @@ export default function StoreHomePage() {
   }, [router])
 
   const fetchStoreInfo = useCallback(async () => {
-    const { data: { session }, error: sessionErr } = await supabase.auth.getSession()
+    const { data: { session } } = await supabase.auth.getSession()
     if (!session || !session.user) {
       setError('尚未登入')
       router.replace('/login')
