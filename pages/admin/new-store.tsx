@@ -47,7 +47,7 @@ export default function NewStorePage() {
       if (storeErr) throw storeErr
 
       // Step 2: 註冊 Supabase Auth 帳號
-      const { data: authUser, error: authErr } = await supabase.auth.admin.createUser({
+      const { error: authErr } = await supabase.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
@@ -82,8 +82,12 @@ export default function NewStorePage() {
       setEmail('')
       setPhone('')
       setPassword('')
-    } catch (err: any) {
-      setError(err.message || '建立失敗')
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message)
+      } else {
+        setError('建立失敗')
+      }
     } finally {
       setLoading(false)
     }
