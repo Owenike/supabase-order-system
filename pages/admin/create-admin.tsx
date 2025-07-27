@@ -48,7 +48,7 @@ export default function CreateAdminPage() {
         setEmail('')
         setPassword('')
       }
-    } catch (err: unknown) {
+    } catch {
       setError('發生錯誤，請稍後再試')
     } finally {
       setLoading(false)
