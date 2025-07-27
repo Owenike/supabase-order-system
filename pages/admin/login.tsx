@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
-import bcrypt from 'bcryptjs'
 
 export default function AdminLoginPage() {
   const router = useRouter()
@@ -12,24 +11,22 @@ export default function AdminLoginPage() {
   const handleLogin = async () => {
     setError('')
 
-    const { data, error } = await supabase
-      .from('store_accounts')
-      .select('id, email, password_hash')
-      .eq('email', email)
-      .single()
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
 
-    if (error || !data) {
-      setError('帳號錯誤')
+    if (signInError || !data.session) {
+      setError('帳號或密碼錯誤')
       return
     }
 
-    const match = await bcrypt.compare(password, data.password_hash)
-    if (!match) {
-      setError('密碼錯誤')
+    const role = data.user.user_metadata?.role
+    if (role !== 'admin') {
+      setError('非管理員帳號')
       return
     }
 
-    localStorage.setItem('admin_id', data.id)
     router.push('/admin/dashboard')
   }
 
