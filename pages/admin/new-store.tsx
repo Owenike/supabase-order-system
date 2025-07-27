@@ -35,7 +35,7 @@ export default function NewStorePage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name: storeName,
+          storeName, // ✅ 正確名稱
           email,
           phone,
           password,
