@@ -3,8 +3,6 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
-import bcrypt from 'bcryptjs'
-import { v4 as uuidv4 } from 'uuid'
 
 export default function NewStorePage() {
   const router = useRouter()
@@ -31,51 +29,22 @@ export default function NewStorePage() {
     setLoading(true)
 
     try {
-      // Step 1: 建立 stores 資料
-      const storeId = uuidv4()
-      const { error: storeErr } = await supabase
-        .from('stores')
-        .insert({
-          id: storeId,
+      const res = await fetch('/api/create-store', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           name: storeName,
           email,
           phone,
-          is_enabled: true,
-          manage_password: password,
-        })
-
-      if (storeErr) throw storeErr
-
-      // Step 2: 註冊 Supabase Auth 帳號
-      const { error: authErr } = await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { role: 'store' }
+          password,
+        }),
       })
 
-      if (authErr) throw authErr
+      const result = await res.json()
 
-      // Step 3: 寫入 store_user_links
-      const { error: linkErr } = await supabase
-        .from('store_user_links')
-        .insert({ email, store_id: storeId })
-
-      if (linkErr) throw linkErr
-
-      // Step 4: 寫入 store_accounts
-      const hash = await bcrypt.hash(password, 10)
-      const { error: accErr } = await supabase
-        .from('store_accounts')
-        .insert({
-          email,
-          password_hash: hash,
-          is_active: true,
-          store_id: storeId,
-          store_name: storeName,
-        })
-
-      if (accErr) throw accErr
+      if (!res.ok) throw new Error(result.error || '建立失敗')
 
       setMessage('✅ 店家帳號建立成功！')
       setStoreName('')
