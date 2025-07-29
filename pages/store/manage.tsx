@@ -24,11 +24,20 @@ export default function StoreManagePage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [menus, setMenus] = useState<MenuItem[]>([])
   const [newCategory, setNewCategory] = useState('')
-  const [newMenu, setNewMenu] = useState<{ name: string; price: string; categoryId: string; description: string }>({ name: '', price: '', categoryId: '', description: '' })
+  const [newMenu, setNewMenu] = useState<{ name: string; price: string; categoryId: string; description: string }>({
+    name: '',
+    price: '',
+    categoryId: '',
+    description: ''
+  })
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [editingMenuId, setEditingMenuId] = useState<string | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
-  const [editingMenu, setEditingMenu] = useState<{ name: string; price: string; description: string }>({ name: '', price: '', description: '' })
+  const [editingMenu, setEditingMenu] = useState<{ name: string; price: string; description: string }>({
+    name: '',
+    price: '',
+    description: ''
+  })
 
   useEffect(() => {
     const storedId = localStorage.getItem('store_id')
@@ -60,7 +69,6 @@ export default function StoreManagePage() {
 
   const handleAddCategory = async () => {
     if (!newCategory.trim() || !storeId) return
-
     const { data: existing } = await supabase
       .from('categories')
       .select('id')
@@ -79,7 +87,6 @@ export default function StoreManagePage() {
 
   const handleAddMenu = async () => {
     if (!newMenu.name || !newMenu.price || !newMenu.categoryId || !storeId) return
-
     const { data: existing } = await supabase
       .from('menu_items')
       .select('id')
@@ -110,12 +117,24 @@ export default function StoreManagePage() {
   }
 
   const handleDeleteMenu = async (id: string) => {
-    await supabase.from('menu_items').delete().eq('id', id)
+    console.log('[刪除觸發] menu.id:', id)
+    const { error } = await supabase.from('menu_items').delete().eq('id', id)
+    if (error) {
+      console.error('handleDeleteMenu error:', error)
+      alert(error.message)
+      return
+    }
+    alert('刪除成功')
     if (storeId) fetchMenus(storeId)
   }
 
   const handleDeleteCategory = async (id: string) => {
-    await supabase.from('categories').delete().eq('id', id)
+    const { error } = await supabase.from('categories').delete().eq('id', id)
+    if (error) {
+      console.error('handleDeleteCategory error:', error)
+      alert(error.message)
+      return
+    }
     if (storeId) {
       fetchCategories(storeId)
       fetchMenus(storeId)
@@ -262,7 +281,7 @@ export default function StoreManagePage() {
             </div>
             <ul className="pl-4 list-disc text-sm space-y-1">
               {menus.filter(menu => menu.category_id === cat.id).map(menu => (
-                <li key={menu.id} className="flex justify-between items-center">
+                <li key={menu.id}>
                   {editingMenuId === menu.id ? (
                     <div className="flex flex-col w-full gap-1">
                       <input
@@ -288,7 +307,7 @@ export default function StoreManagePage() {
                       </button>
                     </div>
                   ) : (
-                    <>
+                    <div className="flex justify-between items-center">
                       <div>
                         🍴 {menu.name} (${menu.price}) {menu.description && `- ${menu.description}`}
                         <span className={`ml-2 text-xs ${menu.is_available ? 'text-green-600' : 'text-red-600'}`}>
@@ -315,7 +334,7 @@ export default function StoreManagePage() {
                           刪除
                         </button>
                       </div>
-                    </>
+                    </div>
                   )}
                 </li>
               ))}

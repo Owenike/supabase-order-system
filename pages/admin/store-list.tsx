@@ -19,30 +19,90 @@ export default function StoreListPage() {
   const [error, setError] = useState('')
   const router = useRouter()
 
-  const fetchStores = async () => {
-    const session = await supabase.auth.getSession()
-    if (!session.data.session || session.data.session.user.user_metadata?.role !== 'admin') {
-      router.replace('/admin/login')
-      return
+  useEffect(() => {
+    const checkSessionAndFetch = async () => {
+      await new Promise((r) => setTimeout(r, 300))
+      const session = await supabase.auth.getSession()
+
+      if (
+        !session.data.session ||
+        session.data.session.user.user_metadata?.role !== 'admin'
+      ) {
+        router.replace('/admin/login')
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('stores')
+        .select('id, name, email, phone, is_active, created_at')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        setError(error.message)
+      } else {
+        setStores(data as Store[])
+      }
+      setLoading(false)
     }
 
-    const { data, error } = await supabase
-      .from('stores')
-      .select('id, name, email, phone, is_active, created_at')
-      .order('created_at', { ascending: false })
-
-    if (error) setError(error.message)
-    else setStores(data as Store[])
-    setLoading(false)
-  }
-
-  useEffect(() => {
-    fetchStores()
+    checkSessionAndFetch()
   }, [router])
+
+  const handleEditName = async (storeId: string, currentName: string) => {
+    const newName = prompt('請輸入新的店名：', currentName)
+    if (!newName || newName.trim() === '' || newName === currentName) return
+
+    const { error } = await supabase
+      .from('stores')
+      .update({ name: newName.trim() })
+      .eq('id', storeId)
+
+    if (error) {
+      alert('❌ 修改失敗：' + error.message)
+    } else {
+      alert('✅ 店名已更新')
+      setStores((prev) =>
+        prev.map((s) => (s.id === storeId ? { ...s, name: newName.trim() } : s))
+      )
+    }
+  }
 
   const handleDelete = async (email: string, store_id: string) => {
     const confirm = window.confirm(`你確定要刪除 ${email} 的帳號嗎？此操作無法還原`)
     if (!confirm) return
+
+    const password = prompt('請輸入管理員密碼確認刪除：')
+    if (!password) return
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession()
+
+    if (sessionError || !session?.user) {
+      alert('登入狀態失效，請重新登入')
+      return
+    }
+
+    const adminEmail = session.user.email
+    const { data: adminAccount, error: fetchErr } = await supabase
+      .from('store_accounts')
+      .select('password_hash')
+      .eq('email', adminEmail)
+      .single()
+
+    if (fetchErr || !adminAccount?.password_hash) {
+      alert('驗證管理員密碼失敗')
+      return
+    }
+
+    const bcrypt = await import('bcryptjs')
+    const match = await bcrypt.compare(password, adminAccount.password_hash)
+
+    if (!match) {
+      alert('❌ 密碼錯誤，無法刪除')
+      return
+    }
 
     const res = await fetch('/api/delete-store', {
       method: 'DELETE',
@@ -59,19 +119,21 @@ export default function StoreListPage() {
     }
   }
 
-  const handleToggleActive = async (email: string, store_id: string, newStatus: boolean) => {
+  const handleToggleActive = async (
+    email: string,
+    store_id: string,
+    isActive: boolean
+  ) => {
     const res = await fetch('/api/toggle-store-active', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, store_id, is_active: newStatus }),
+      body: JSON.stringify({ email, store_id, is_active: isActive }),
     })
 
     const result = await res.json()
     if (res.ok) {
       setStores((prev) =>
-        prev.map((store) =>
-          store.id === store_id ? { ...store, is_active: newStatus } : store
-        )
+        prev.map((s) => (s.id === store_id ? { ...s, is_active: isActive } : s))
       )
     } else {
       alert('❌ 操作失敗：' + result.error)
@@ -101,7 +163,15 @@ export default function StoreListPage() {
               <td className="p-2">{store.phone}</td>
               <td className="p-2 space-x-2 text-center">
                 <button
-                  onClick={() => handleToggleActive(store.email, store.id, !store.is_active)}
+                  onClick={() => handleEditName(store.id, store.name)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded"
+                >
+                  編輯
+                </button>
+                <button
+                  onClick={() =>
+                    handleToggleActive(store.email, store.id, !store.is_active)
+                  }
                   className={`px-3 py-1 rounded font-medium ${
                     store.is_active
                       ? 'bg-yellow-500 hover:bg-yellow-600 text-white'

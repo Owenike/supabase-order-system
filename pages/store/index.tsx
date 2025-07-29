@@ -24,6 +24,7 @@ const langMap = {
     logout: '登出',
     logoutMessage: '✅ 已成功登出',
     newOrder: '🛎️ 新訂單來囉！',
+    inactive: '此帳號已被停用，請聯繫管理員',
   },
   en: {
     title: 'Welcome to the Store Backend',
@@ -35,6 +36,7 @@ const langMap = {
     logout: 'Logout',
     logoutMessage: '✅ Logged out successfully',
     newOrder: '🛎️ New Order Received!',
+    inactive: 'This account has been deactivated. Please contact admin.',
   },
 }
 
@@ -53,21 +55,17 @@ export default function StoreHomePage() {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session || !session.user) {
-        console.warn('❌ 無有效登入 session，導回登入頁')
         router.replace('/login')
         return
       }
 
       const storeId = localStorage.getItem('store_id')
       if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
-        console.warn('❌ store_id 無效，清除並導回登入')
-        localStorage.removeItem('store_id')
-        localStorage.removeItem('store_account_id')
+        localStorage.clear()
         router.replace('/login')
         return
       }
 
-      console.log('🔍 查詢 stores 資料中...')
       const { data: storeData, error: storeErr } = await supabase
         .from('stores')
         .select('name')
@@ -75,9 +73,7 @@ export default function StoreHomePage() {
         .maybeSingle()
 
       if (storeErr || !storeData?.name) {
-        console.warn('❌ 找不到店家資料，導回登入')
-        localStorage.removeItem('store_id')
-        localStorage.removeItem('store_account_id')
+        localStorage.clear()
         router.replace('/login')
         return
       }
@@ -86,21 +82,25 @@ export default function StoreHomePage() {
 
       const { data: accountData, error: accountErr } = await supabase
         .from('store_accounts')
-        .select('id')
+        .select('id, is_active')
         .eq('store_id', storeId)
-        .limit(1)
         .maybeSingle()
 
       if (accountErr || !accountData?.id) {
-        console.warn('❌ 查無對應 store_account')
-        localStorage.removeItem('store_id')
-        localStorage.removeItem('store_account_id')
+        localStorage.clear()
+        router.replace('/login')
+        return
+      }
+
+      if (!accountData.is_active) {
+        alert(t.inactive)
+        await supabase.auth.signOut()
+        localStorage.clear()
         router.replace('/login')
         return
       }
 
       localStorage.setItem('store_account_id', accountData.id)
-      console.log('✅ store_id & store_account_id 驗證完成')
       setLoading(false)
 
       const channel = supabase
@@ -132,8 +132,7 @@ export default function StoreHomePage() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    localStorage.removeItem('store_id')
-    localStorage.removeItem('store_account_id')
+    localStorage.clear()
     alert(t.logoutMessage)
     router.push('/login')
   }
