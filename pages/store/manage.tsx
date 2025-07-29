@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import ConfirmPasswordModal from '@/components/ui/ConfirmPasswordModal'
 
 interface Category {
   id: string
@@ -38,6 +39,9 @@ export default function StoreManagePage() {
     price: '',
     description: ''
   })
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState<string>('')
 
   useEffect(() => {
     const storedId = localStorage.getItem('store_id')
@@ -45,8 +49,10 @@ export default function StoreManagePage() {
     setStoreId(storedId)
     fetchCategories(storedId)
     fetchMenus(storedId)
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user?.email) setUserEmail(data.user.email)
+    })
   }, [])
-
   const fetchCategories = async (storeId: string) => {
     const { data, error } = await supabase
       .from('categories')
@@ -116,18 +122,33 @@ export default function StoreManagePage() {
     if (storeId) fetchMenus(storeId)
   }
 
-  const handleDeleteMenu = async (id: string) => {
-    console.log('[刪除觸發] menu.id:', id)
-    const { error } = await supabase.from('menu_items').delete().eq('id', id)
-    if (error) {
-      console.error('handleDeleteMenu error:', error)
-      alert(error.message)
-      return
-    }
-    alert('刪除成功')
-    if (storeId) fetchMenus(storeId)
+  const handleDeleteMenu = (id: string) => {
+    setPendingDeleteId(id)
+    setShowConfirmModal(true)
   }
 
+  const handleConfirmedDelete = async (password: string) => {
+    if (!userEmail || !pendingDeleteId) return
+    const { error: loginError } = await supabase.auth.signInWithPassword({
+      email: userEmail,
+      password
+    })
+    if (loginError) {
+      alert('密碼錯誤，請再試一次')
+      return
+    }
+
+    const { error } = await supabase.from('menu_items').delete().eq('id', pendingDeleteId)
+    if (error) {
+      alert('刪除失敗：' + error.message)
+      return
+    }
+
+    alert('✅ 刪除成功')
+    if (storeId) fetchMenus(storeId)
+    setPendingDeleteId(null)
+    setShowConfirmModal(false)
+  }
   const handleDeleteCategory = async (id: string) => {
     const { error } = await supabase.from('categories').delete().eq('id', id)
     if (error) {
@@ -239,7 +260,6 @@ export default function StoreManagePage() {
           新增菜單
         </button>
       </div>
-
       <div>
         <h2 className="font-semibold mb-2">現有分類與菜單</h2>
         {categories.map(cat => (
@@ -279,6 +299,7 @@ export default function StoreManagePage() {
                 </>
               )}
             </div>
+
             <ul className="pl-4 list-disc text-sm space-y-1">
               {menus.filter(menu => menu.category_id === cat.id).map(menu => (
                 <li key={menu.id}>
@@ -342,6 +363,17 @@ export default function StoreManagePage() {
           </div>
         ))}
       </div>
+
+      {showConfirmModal && (
+        <ConfirmPasswordModal
+          email={userEmail}
+          onCancel={() => {
+            setShowConfirmModal(false)
+            setPendingDeleteId(null)
+          }}
+          onConfirm={handleConfirmedDelete}
+        />
+      )}
     </div>
   )
 }
