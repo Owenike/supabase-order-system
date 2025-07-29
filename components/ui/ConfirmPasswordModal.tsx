@@ -3,11 +3,9 @@ import { useState } from 'react'
 export default function ConfirmPasswordModal({
   onConfirm,
   onCancel,
-  email,
 }: {
   onConfirm: (password: string) => void
   onCancel: () => void
-  email: string
 }) {
   const [password, setPassword] = useState('')
 
@@ -21,15 +19,10 @@ export default function ConfirmPasswordModal({
           className="border px-3 py-2 w-full mb-4 rounded"
           placeholder="密碼"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={e => setPassword(e.target.value)}
         />
         <div className="flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="text-sm px-4 py-1 border rounded"
-          >
-            取消
-          </button>
+          <button onClick={onCancel} className="text-sm px-4 py-1 border rounded">取消</button>
           <button
             onClick={() => onConfirm(password)}
             className="bg-red-600 text-white text-sm px-4 py-1 rounded"

@@ -366,7 +366,6 @@ export default function StoreManagePage() {
 
       {showConfirmModal && (
         <ConfirmPasswordModal
-          email={userEmail}
           onCancel={() => {
             setShowConfirmModal(false)
             setPendingDeleteId(null)
