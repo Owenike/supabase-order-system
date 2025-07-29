@@ -39,6 +39,7 @@ export default function StoreManagePage() {
     price: '',
     description: ''
   })
+
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState<string>('')
@@ -116,13 +117,17 @@ export default function StoreManagePage() {
     setNewMenu({ name: '', price: '', categoryId: '', description: '' })
     fetchMenus(storeId)
   }
-
   const handleToggleAvailable = async (id: string, current: boolean) => {
     await supabase.from('menu_items').update({ is_available: !current }).eq('id', id)
     if (storeId) fetchMenus(storeId)
   }
 
   const handleDeleteMenu = (id: string) => {
+    setPendingDeleteId(id)
+    setShowConfirmModal(true)
+  }
+
+  const handleDeleteCategory = (id: string) => {
     setPendingDeleteId(id)
     setShowConfirmModal(true)
   }
@@ -138,30 +143,30 @@ export default function StoreManagePage() {
       return
     }
 
-    const { error } = await supabase.from('menu_items').delete().eq('id', pendingDeleteId)
-    if (error) {
-      alert('刪除失敗：' + error.message)
+    const { error: delMenuError } = await supabase
+      .from('menu_items')
+      .delete()
+      .eq('id', pendingDeleteId)
+
+    const { error: delCategoryError } = await supabase
+      .from('categories')
+      .delete()
+      .eq('id', pendingDeleteId)
+
+    if (delMenuError && delCategoryError) {
+      alert('刪除失敗')
       return
     }
 
     alert('✅ 刪除成功')
-    if (storeId) fetchMenus(storeId)
+    if (storeId) {
+      fetchMenus(storeId)
+      fetchCategories(storeId)
+    }
+
     setPendingDeleteId(null)
     setShowConfirmModal(false)
   }
-  const handleDeleteCategory = async (id: string) => {
-    const { error } = await supabase.from('categories').delete().eq('id', id)
-    if (error) {
-      console.error('handleDeleteCategory error:', error)
-      alert(error.message)
-      return
-    }
-    if (storeId) {
-      fetchCategories(storeId)
-      fetchMenus(storeId)
-    }
-  }
-
   const handleEditCategory = (id: string, name: string) => {
     setEditingCategoryId(id)
     setEditingCategoryName(name)
@@ -194,7 +199,6 @@ export default function StoreManagePage() {
     setEditingMenuId(null)
     if (storeId) fetchMenus(storeId)
   }
-
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">🍽 店家後台管理</h1>
@@ -260,6 +264,7 @@ export default function StoreManagePage() {
           新增菜單
         </button>
       </div>
+
       <div>
         <h2 className="font-semibold mb-2">現有分類與菜單</h2>
         {categories.map(cat => (
