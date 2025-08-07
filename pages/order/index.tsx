@@ -18,18 +18,15 @@ interface MenuItem {
   description?: string
   is_available?: boolean | null
 }
-
-interface Category {
-  id: string
-  name: string
-}
+interface Category { id: string; name: string }
 
 interface OrderRecord {
   items: { id?: string; name: string; quantity: number; price: number }[]
   note: string
   total: number
   status?: string
-  spicy_level?: string // ✅ 新增：辣度
+  spicy_level?: string
+  created_at?: string
 }
 
 const langMap = {
@@ -51,7 +48,7 @@ const langMap = {
     confirmTitle: '📋 訂單確認',
     noteLabel: '備註（選填）',
     viewLast: '已點餐點',
-    spicyLabel: '辣度（選填）',            // ✅ 新增文案
+    spicyLabel: '辣度（選填）',
     spicyNone: '（不選）',
     spicyNo: '不辣',
     spicyLight: '小辣',
@@ -77,7 +74,7 @@ const langMap = {
     confirmTitle: '📋 Order Confirmation',
     noteLabel: 'Notes (optional)',
     viewLast: 'View Last Order',
-    spicyLabel: 'Spicy Level (optional)',  // ✅ 新增文案
+    spicyLabel: 'Spicy Level (optional)',
     spicyNone: '(None)',
     spicyNo: 'Mild / None',
     spicyLight: 'Light',
@@ -97,7 +94,7 @@ export default function OrderPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedItems, setSelectedItems] = useState<{ id: string; name: string; price: number; quantity: number }[]>([])
   const [note, setNote] = useState('')
-  const [spicyLevel, setSpicyLevel] = useState<string>('') // ✅ 新增：辣度狀態
+  const [spicyLevel, setSpicyLevel] = useState<string>('') // ✅ 辣度
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [success, setSuccess] = useState(false)
@@ -110,20 +107,25 @@ export default function OrderPage() {
   const t = langMap[lang]
   const total = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
-  // ✅ 初始化 LIFF 並設定 line_user_id cookie
+  // ✅ 初始化 LIFF 並設定 line_user_id cookie（最關鍵修正）
   useEffect(() => {
     const initLiff = async () => {
       try {
-        await liff.init({ liffId: '2007831464' })
+        await liff.init({
+          liffId: '2007831464-br6xV7o6', // ⚠️ 用真正的 LIFF ID
+          withLoginOnExternalBrowser: true
+        })
+
         if (!liff.isLoggedIn()) {
-          liff.login()
+          liff.login({ redirectUri: window.location.href })
           return
         }
 
+        await liff.ready
         const profile = await liff.getProfile()
-        document.cookie = `line_user_id=${profile.userId}; path=/`
+        // 跨子網域可讀；避免 SameSite 擋掉
+        document.cookie = `line_user_id=${encodeURIComponent(profile.userId)}; path=/; domain=.olinex.app; SameSite=Lax; secure`
         setCustomerName(profile.displayName || '')
-        console.log('✅ LIFF 初始化完成:', profile)
         setIsLiffReady(true)
       } catch (err) {
         console.error('❌ LIFF 初始化錯誤:', err)
@@ -151,26 +153,26 @@ export default function OrderPage() {
         store_id: storeParam
       })
     }
-  }, [router.query, isLiffReady])
+  }, [router.query, isLiffReady, isTakeout])
 
+  // ✅ 歷史訂單查詢：外帶改為顯示自己最近 10 筆（不限狀態）
   const fetchOrders = useCallback(async () => {
     const lineUserId = getCookie('line_user_id')
     let query = supabase
       .from('orders')
       .select('*')
       .eq('store_id', storeId)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
 
     if (isTakeout) {
       if (lineUserId) {
-        query = query.eq('line_user_id', lineUserId)
+        query = query.eq('line_user_id', lineUserId).limit(10)
       } else {
         setOrderHistory([])
         return
       }
     } else {
-      query = query.eq('table_number', tableParam)
+      query = query.eq('table_number', tableParam).limit(10)
     }
 
     const { data, error } = await query
@@ -267,27 +269,19 @@ export default function OrderPage() {
       total: totalAmount,
       line_user_id: lineUserId || null
     }
-
-    // ✅ 新增：帶入辣度，有選擇才送
-    if (spicyLevel && spicyLevel.trim()) {
-      payload.spicy_level = spicyLevel.trim()
-    }
+    if (spicyLevel && spicyLevel.trim()) payload.spicy_level = spicyLevel.trim()
 
     const { error } = await supabase.from('orders').insert(payload)
 
     if (error) {
       setErrorMsg(`${t.fail}（${error.message}）`)
       console.error('submitOrder error:', error)
-
-      // ✅ 上報錯誤 log 到 login_logs 表
-      const userAgent = navigator.userAgent
       await supabase.from('login_logs').insert({
         line_user_id: lineUserId || 'unknown',
         error_message: error.message || 'Unknown error',
-        user_agent: userAgent,
+        user_agent: navigator.userAgent,
         store_id: storeParam
       })
-
       return
     }
 
@@ -295,7 +289,7 @@ export default function OrderPage() {
     fetchOrders()
     setSelectedItems([])
     setNote('')
-    setSpicyLevel('') // ✅ 送出後清空辣度
+    setSpicyLevel('')
     setCustomerName('')
     setCustomerPhone('')
     setConfirming(false)
@@ -352,12 +346,12 @@ export default function OrderPage() {
               {orderHistory.map((order, idx) => (
                 <div key={idx} className="bg-gray-50 border border-gray-300 p-4 rounded">
                   <h2 className="font-semibold mb-2">
-                    {t.confirmTitle}（第 {idx + 1} 筆）
+                    {t.confirmTitle}（第 {idx + 1} 筆）{order.created_at ? ` · ${new Date(order.created_at).toLocaleString()}` : ''}
                   </h2>
                   <ul className="list-disc pl-5 text-sm mb-2">
                     {order.items.map((item, i) => (
                       <li key={i}>
-                        {item.name} × {item.quantity}（NT$ {item.price}）
+                        {item.name} × {item.quantity}（NT$ {item.price * item.quantity}）
                       </li>
                     ))}
                   </ul>
@@ -431,7 +425,7 @@ export default function OrderPage() {
             </div>
           )}
 
-          {/* ✅ 辣度選擇（內用/外帶皆顯示，選填） */}
+          {/* ✅ 辣度選擇（選填） */}
           <div className="mb-4">
             <label className="block text-sm text-gray-700 mb-1">{t.spicyLabel}</label>
             <select
