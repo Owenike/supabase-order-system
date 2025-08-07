@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient'
 interface OrderItem {
   name: string
   quantity: number
+  price: number
 }
 
 interface Order {
@@ -71,6 +72,7 @@ export default function StoreOrdersPage() {
       addItem: '新增品項',
       itemName: '品名',
       itemQty: '數量',
+      itemPrice: '單價',
       confirmDeleteTitle: '確認刪除',
       confirmDeleteText: '此操作將刪除此筆訂單，且無法復原。確定要刪除嗎？',
       confirm: '確認',
@@ -108,6 +110,7 @@ export default function StoreOrdersPage() {
       addItem: 'Add Item',
       itemName: 'Name',
       itemQty: 'Qty',
+      itemPrice: 'Price',
       confirmDeleteTitle: 'Confirm Delete',
       confirmDeleteText: 'This will permanently delete the order. Continue?',
       confirm: 'Confirm',
@@ -180,7 +183,7 @@ export default function StoreOrdersPage() {
       audioRef.current?.play()
     }
     lastOrderCount.current = data.length
-    setOrders((data as unknown) as Order[])
+    setOrders(data as Order[])
   }
 
   const refreshByCurrentRange = async () => {
@@ -221,11 +224,18 @@ export default function StoreOrdersPage() {
   // 進入編輯
   const openEdit = (order: Order) => {
     setEditingOrder({ ...order })
-    setEditItems(order.items ? order.items.map(i => ({ ...i })) : [])
+    // 帶入 price，缺少則預設 0
+    setEditItems(
+      (order.items ?? []).map((i: any) => ({
+        name: String(i?.name ?? ''),
+        quantity: Number.isFinite(Number(i?.quantity)) ? Math.floor(Number(i.quantity)) : 0,
+        price: Number.isFinite(Number(i?.price)) ? Number(i.price) : 0
+      }))
+    )
   }
 
   // 變更單一品項
-  const updateItem = (idx: number, key: 'name' | 'quantity', value: string | number) => {
+  const updateItem = (idx: number, key: 'name' | 'quantity' | 'price', value: string | number) => {
     setEditItems(prev => {
       const next = [...prev]
       const target = { ...next[idx] }
@@ -234,61 +244,62 @@ export default function StoreOrdersPage() {
         const n = Number(value)
         target.quantity = Number.isNaN(n) || n < 0 ? 0 : Math.floor(n)
       }
+      if (key === 'price') {
+        const p = Number(value)
+        target.price = Number.isNaN(p) || p < 0 ? 0 : p
+      }
       next[idx] = target
       return next
     })
   }
 
   // 新增/刪除品項
-  const addItem = () => setEditItems(prev => [...prev, { name: '', quantity: 1 }])
+  const addItem = () => setEditItems(prev => [...prev, { name: '', quantity: 1, price: 0 }])
   const removeItem = (idx: number) =>
     setEditItems(prev => prev.filter((_, i) => i !== idx))
 
   // 儲存編輯內容
-const saveEdit = async () => {
-  if (!editingOrder) return;
-  if (!editingOrder.table_number) {
-    alert('請輸入桌號（或外帶）');
-    return;
+  const saveEdit = async () => {
+    if (!editingOrder) return
+    if (!editingOrder.table_number) {
+      alert('請輸入桌號（或外帶）')
+      return
+    }
+
+    // 整理品項：去除空白品名/數量<=0；價格預設 0
+    const cleanedItems = editItems
+      .map(i => ({
+        name: String(i.name || '').trim(),
+        quantity: Number.isFinite(Number(i.quantity)) ? Math.max(0, Math.floor(Number(i.quantity))) : 0,
+        price: Number.isFinite(Number(i.price)) ? Math.max(0, Number(i.price)) : 0
+      }))
+      .filter(i => i.name && i.quantity > 0)
+
+    // 動態 payload
+    const payload: Record<string, any> = {
+      table_number: editingOrder.table_number,
+      status: ['pending', 'completed'].includes(editingOrder.status || '') ? editingOrder.status : 'pending',
+      note: editingOrder.note?.trim() ? editingOrder.note.trim() : null,
+      items: cleanedItems
+    }
+    if (editingOrder.spicy_level && editingOrder.spicy_level.trim()) {
+      payload.spicy_level = editingOrder.spicy_level.trim()
+    }
+
+    setIsSaving(true)
+    const { error } = await supabase.from('orders').update(payload).eq('id', editingOrder.id)
+    setIsSaving(false)
+
+    if (error) {
+      console.error('更新失敗', error)
+      alert(`儲存失敗：${error.message}`)
+      return
+    }
+
+    setEditingOrder(null)
+    setEditItems([])
+    refreshByCurrentRange()
   }
-
-  // 1) 整理品項：去除空白品名與數量<=0；數量取整數
-  const cleanedItems = editItems
-    .map(i => ({
-      name: String(i.name || '').trim(),
-      quantity: Number.isFinite(Number(i.quantity)) ? Math.max(0, Math.floor(Number(i.quantity))) : 0
-    }))
-    .filter(i => i.name && i.quantity > 0);
-
-  // 2) 動態 payload：只在有值時才帶入欄位，避免空值/不存在欄位造成 400
-  const payload: Record<string, any> = {
-    table_number: editingOrder.table_number,
-    status: ['pending', 'completed'].includes(editingOrder.status || '') ? editingOrder.status : 'pending',
-    note: editingOrder.note?.trim() ? editingOrder.note.trim() : null,
-    items: cleanedItems
-  };
-  if (editingOrder.spicy_level && editingOrder.spicy_level.trim()) {
-    payload.spicy_level = editingOrder.spicy_level.trim();
-  }
-
-  setIsSaving(true);
-  const { error } = await supabase
-    .from('orders')
-    .update(payload)
-    .eq('id', editingOrder.id);
-  setIsSaving(false);
-
-  if (error) {
-    console.error('更新失敗', error);
-    alert(`儲存失敗：${error.message}`);
-    return;
-  }
-
-  setEditingOrder(null);
-  setEditItems([]);
-  refreshByCurrentRange();
-};
-
 
   // 刪除訂單
   const deleteOrder = async (id: string) => {
@@ -395,7 +406,10 @@ const saveEdit = async () => {
               <div className="text-sm text-gray-700 mb-1">
                 <strong>{dict.items}：</strong>
                 {order.items?.map((item, idx) => (
-                  <span key={idx}>{item.name} ×{item.quantity}{idx < (order.items?.length ?? 0) - 1 ? '、' : ''}</span>
+                  <span key={idx}>
+                    {item.name} ×{item.quantity}
+                    {idx < (order.items?.length ?? 0) - 1 ? '、' : ''}
+                  </span>
                 ))}
               </div>
 
@@ -495,20 +509,31 @@ const saveEdit = async () => {
               <div className="grid gap-2">
                 {editItems.map((it, idx) => (
                   <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                    {/* 品名 */}
                     <input
                       type="text"
                       value={it.name}
                       onChange={e => updateItem(idx, 'name', e.target.value)}
-                      className="col-span-7 border rounded px-3 py-2"
+                      className="col-span-6 border rounded px-3 py-2"
                       placeholder={dict.itemName}
                     />
+                    {/* 數量 */}
                     <input
                       type="number"
                       min={0}
                       value={it.quantity}
                       onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
-                      className="col-span-3 border rounded px-3 py-2"
+                      className="col-span-2 border rounded px-3 py-2"
                       placeholder={dict.itemQty}
+                    />
+                    {/* 單價 */}
+                    <input
+                      type="number"
+                      min={0}
+                      value={it.price}
+                      onChange={e => updateItem(idx, 'price', Number(e.target.value))}
+                      className="col-span-2 border rounded px-3 py-2"
+                      placeholder={dict.itemPrice}
                     />
                     <button
                       onClick={() => removeItem(idx)}
