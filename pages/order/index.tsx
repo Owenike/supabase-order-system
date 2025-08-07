@@ -112,7 +112,7 @@ export default function OrderPage() {
     const initLiff = async () => {
       try {
         await liff.init({
-          liffId: '2007831464-br6xV7o6', // ⚠️ 用真正的 LIFF ID
+          liffId: '2007831464-7LDjNnmD', // ⚠️ 用真正的 LIFF ID
           withLoginOnExternalBrowser: true
         })
 
