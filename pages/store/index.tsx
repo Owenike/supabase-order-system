@@ -69,7 +69,7 @@ export default function StoreHomePage() {
       const { data: storeData, error: storeErr } = await supabase
         .from('stores')
         .select('name')
-        .eq('id', storeId)
+        .eq('id', storeId) // ✅ 改這裡
         .maybeSingle()
 
       if (storeErr || !storeData?.name) {
@@ -159,7 +159,7 @@ export default function StoreHomePage() {
         alt="系統品牌 Logo"
         width={100}
         height={100}
-        className="animate-float rounded-full mb-6 bg-white p-2 shadow-lg"
+        className="animate-float rounded-full mb-6 shadow-lg"
       />
 
       <h1 className="text-3xl font-bold mb-1 text-center text-black tracking-wide">

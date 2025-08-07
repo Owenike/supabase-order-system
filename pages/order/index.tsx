@@ -1,6 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
+import liff from '@line/liff'
+
+// ✅ Cookie 讀取函式
+function getCookie(name: string): string | null {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
+  return match ? decodeURIComponent(match[2]) : null
+}
 
 interface MenuItem {
   id: string
@@ -22,6 +29,7 @@ interface OrderRecord {
   note: string
   total: number
   status?: string
+  spicy_level?: string // ✅ 新增：辣度
 }
 
 const langMap = {
@@ -42,7 +50,14 @@ const langMap = {
     errorPhone: '請輸入有效的手機號碼（例如：0912345678）',
     confirmTitle: '📋 訂單確認',
     noteLabel: '備註（選填）',
-    viewLast: '已點餐點'
+    viewLast: '已點餐點',
+    spicyLabel: '辣度（選填）',            // ✅ 新增文案
+    spicyNone: '（不選）',
+    spicyNo: '不辣',
+    spicyLight: '小辣',
+    spicyMedium: '中辣',
+    spicyHot: '大辣',
+    spicyPreview: '🌶️ 辣度'
   },
   en: {
     title: 'Dine-in Order',
@@ -61,19 +76,28 @@ const langMap = {
     errorPhone: 'Please enter a valid mobile number',
     confirmTitle: '📋 Order Confirmation',
     noteLabel: 'Notes (optional)',
-    viewLast: 'View Last Order'
+    viewLast: 'View Last Order',
+    spicyLabel: 'Spicy Level (optional)',  // ✅ 新增文案
+    spicyNone: '(None)',
+    spicyNo: 'Mild / None',
+    spicyLight: 'Light',
+    spicyMedium: 'Medium',
+    spicyHot: 'Hot',
+    spicyPreview: '🌶️ Spicy'
   }
 }
 
 export default function OrderPage() {
   const router = useRouter()
   const { store: storeIdFromQuery, table: tableParam } = router.query
+  const isTakeout = ['外帶', '0', 'takeout'].includes(String(tableParam))
 
   const [storeId, setStoreId] = useState('')
   const [menus, setMenus] = useState<MenuItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedItems, setSelectedItems] = useState<{ id: string; name: string; price: number; quantity: number }[]>([])
   const [note, setNote] = useState('')
+  const [spicyLevel, setSpicyLevel] = useState<string>('') // ✅ 新增：辣度狀態
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [success, setSuccess] = useState(false)
@@ -82,56 +106,103 @@ export default function OrderPage() {
   const [lang, setLang] = useState<'zh' | 'en'>('zh')
   const [showPrevious, setShowPrevious] = useState(false)
   const [orderHistory, setOrderHistory] = useState<OrderRecord[]>([])
-
+  const [isLiffReady, setIsLiffReady] = useState(false)
   const t = langMap[lang]
   const total = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
+  // ✅ 初始化 LIFF 並設定 line_user_id cookie
+  useEffect(() => {
+    const initLiff = async () => {
+      try {
+        await liff.init({ liffId: '2007831464' })
+        if (!liff.isLoggedIn()) {
+          liff.login()
+          return
+        }
+
+        const profile = await liff.getProfile()
+        document.cookie = `line_user_id=${profile.userId}; path=/`
+        setCustomerName(profile.displayName || '')
+        console.log('✅ LIFF 初始化完成:', profile)
+        setIsLiffReady(true)
+      } catch (err) {
+        console.error('❌ LIFF 初始化錯誤:', err)
+        setIsLiffReady(true) // 即使失敗也避免卡畫面
+      }
+    }
+
+    if (isTakeout) {
+      initLiff()
+    } else {
+      setIsLiffReady(true)
+    }
+  }, [isTakeout])
+
+  // ✅ 若缺少 cookie 就記錄 log（需等 LIFF 初始化完成）
+  useEffect(() => {
+    if (!isLiffReady) return
+    const lineUserId = getCookie('line_user_id')
+    const storeParam = typeof router.query.store === 'string' ? router.query.store : 'unknown'
+    if (isTakeout && !lineUserId) {
+      supabase.from('login_logs').insert({
+        line_user_id: 'MISSING',
+        error_message: 'line_user_id not found in cookie',
+        user_agent: navigator.userAgent,
+        store_id: storeParam
+      })
+    }
+  }, [router.query, isLiffReady])
+
   const fetchOrders = useCallback(async () => {
-    const { data, error } = await supabase
+    const lineUserId = getCookie('line_user_id')
+    let query = supabase
       .from('orders')
       .select('*')
       .eq('store_id', storeId)
-      .eq('table_number', tableParam)
       .eq('status', 'pending')
       .order('created_at', { ascending: true })
-    if (error) console.error('fetchOrders error:', error)
-    if (data) setOrderHistory(data)
-  }, [storeId, tableParam])
 
-  useEffect(() => {
-    if (!router.isReady) return
-    const id = typeof storeIdFromQuery === 'string' ? storeIdFromQuery : ''
-    if (!id) return
-    setStoreId(id)
-    localStorage.setItem('store_id', id)
-    fetchMenus(id)
-    fetchCategories(id)
-  }, [router.isReady, storeIdFromQuery, router])
-
-  useEffect(() => {
-    if (!storeId || !tableParam) return
-    fetchOrders()
-  }, [storeId, tableParam, fetchOrders])
-
-  const fetchMenus = async (storeId: string) => {
-    if (!storeId) {
-      console.warn('⚠️ storeId 為空，略過 fetchMenus')
-      return
+    if (isTakeout) {
+      if (lineUserId) {
+        query = query.eq('line_user_id', lineUserId)
+      } else {
+        setOrderHistory([])
+        return
+      }
+    } else {
+      query = query.eq('table_number', tableParam)
     }
 
+    const { data, error } = await query
+    if (error) console.error('fetchOrders error:', error)
+    if (data) setOrderHistory(data as OrderRecord[])
+  }, [storeId, tableParam, isTakeout])
+
+  useEffect(() => {
+    if (typeof storeIdFromQuery === 'string') {
+      setStoreId(storeIdFromQuery)
+    }
+  }, [storeIdFromQuery])
+
+  useEffect(() => {
+    if (!isLiffReady) return
+    if (storeId) {
+      fetchMenus(storeId)
+      fetchCategories(storeId)
+      fetchOrders()
+    }
+  }, [storeId, fetchOrders, isLiffReady])
+
+  const fetchMenus = async (storeId: string) => {
+    if (!storeId) return
     const { data, error } = await supabase
       .from('menu_items')
       .select('*')
       .eq('store_id', storeId)
       .or('is_available.eq.true,is_available.is.null')
       .order('created_at', { ascending: true })
-
-    if (error) {
-      console.error('❌ fetchMenus error:', error.message)
-      return
-    }
-
-    setMenus(data || [])
+    if (error) console.error('❌ fetchMenus error:', error.message)
+    if (data) setMenus(data)
   }
 
   const fetchCategories = async (storeId: string) => {
@@ -169,7 +240,7 @@ export default function OrderPage() {
 
   const handleConfirm = () => {
     if (selectedItems.length === 0) return setErrorMsg(t.errorNoItem)
-    if (tableParam === '外帶') {
+    if (isTakeout) {
       if (!customerName.trim()) return setErrorMsg(t.errorName)
       if (!/^09\d{8}$/.test(customerPhone.trim())) return setErrorMsg(t.errorPhone)
     }
@@ -179,36 +250,60 @@ export default function OrderPage() {
 
   const submitOrder = async () => {
     if (!storeId || typeof tableParam !== 'string') return
-    const noteText = tableParam === '外帶'
+    const noteText = isTakeout
       ? `姓名：${customerName} | 電話：${customerPhone}${note ? ` | 備註：${note}` : ''}`
       : note
 
     const totalAmount = selectedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    const lineUserId = getCookie('line_user_id')
+    const storeParam = typeof router.query.store === 'string' ? router.query.store : 'unknown'
 
-    const { error } = await supabase.from('orders').insert({
+    const payload: Record<string, any> = {
       store_id: storeId,
       table_number: tableParam,
       items: selectedItems,
       note: noteText,
       status: 'pending',
-      total: totalAmount
-    })
+      total: totalAmount,
+      line_user_id: lineUserId || null
+    }
+
+    // ✅ 新增：帶入辣度，有選擇才送
+    if (spicyLevel && spicyLevel.trim()) {
+      payload.spicy_level = spicyLevel.trim()
+    }
+
+    const { error } = await supabase.from('orders').insert(payload)
 
     if (error) {
-      setErrorMsg(t.fail + '（' + error.message + '）')
+      setErrorMsg(`${t.fail}（${error.message}）`)
       console.error('submitOrder error:', error)
-    } else {
-      setSuccess(true)
-      fetchOrders()
-      setSelectedItems([])
-      setNote('')
-      setCustomerName('')
-      setCustomerPhone('')
-      setConfirming(false)
+
+      // ✅ 上報錯誤 log 到 login_logs 表
+      const userAgent = navigator.userAgent
+      await supabase.from('login_logs').insert({
+        line_user_id: lineUserId || 'unknown',
+        error_message: error.message || 'Unknown error',
+        user_agent: userAgent,
+        store_id: storeParam
+      })
+
+      return
     }
+
+    setSuccess(true)
+    fetchOrders()
+    setSelectedItems([])
+    setNote('')
+    setSpicyLevel('') // ✅ 送出後清空辣度
+    setCustomerName('')
+    setCustomerPhone('')
+    setConfirming(false)
   }
 
-  if (!storeId) return <p className="text-red-500 p-4">❗請從正確的點餐連結進入</p>
+  if (!storeId || !isLiffReady) {
+    return <p className="text-red-500 p-4">❗請稍候，頁面初始化中…</p>
+  }
 
   return (
     <div className="p-4 max-w-2xl mx-auto">
@@ -220,8 +315,14 @@ export default function OrderPage() {
       </button>
 
       <h1 className="text-2xl font-bold mb-4">
-        {tableParam === '外帶' ? `🛍 ${t.takeaway}` : `📝 ${t.title}`}
+        {isTakeout ? `🛍 ${t.takeaway}` : `📝 ${t.title}`}
       </h1>
+
+      {isTakeout && !getCookie('line_user_id') && (
+        <div className="mb-6 text-red-600 text-sm">
+          尚未成功登入 LINE，請重新整理頁面或稍候再試
+        </div>
+      )}
 
       {success && (
         <div className="bg-green-100 text-green-700 p-3 rounded mb-4 shadow">
@@ -237,7 +338,7 @@ export default function OrderPage() {
 
       {!confirming ? (
         <>
-          {orderHistory.length > 0 && tableParam !== '外帶' && (
+          {orderHistory.length > 0 && (
             <button
               onClick={() => setShowPrevious(!showPrevious)}
               className="mb-4 px-4 py-2 rounded bg-gray-200 text-gray-800 hover:bg-gray-300"
@@ -260,9 +361,12 @@ export default function OrderPage() {
                       </li>
                     ))}
                   </ul>
-                  {order.note && (
-                    <p className="text-sm text-gray-700 mb-2">📝 {order.note}</p>
+                  {order.spicy_level && (
+                    <p className="text-sm text-red-600 mb-1">
+                      {t.spicyPreview}：{order.spicy_level}
+                    </p>
                   )}
+                  {order.note && <p className="text-sm text-gray-700 mb-2">📝 {order.note}</p>}
                   <p className="font-bold">總計：NT$ {order.total}</p>
                 </div>
               ))}
@@ -307,7 +411,7 @@ export default function OrderPage() {
             </div>
           ))}
 
-          {tableParam === '外帶' && (
+          {isTakeout && (
             <div className="mb-6 space-y-2">
               <input
                 className="w-full border p-2 rounded"
@@ -316,6 +420,9 @@ export default function OrderPage() {
                 onChange={e => setCustomerName(e.target.value)}
               />
               <input
+                type="tel"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 className="w-full border p-2 rounded"
                 placeholder={t.phone}
                 value={customerPhone}
@@ -323,6 +430,22 @@ export default function OrderPage() {
               />
             </div>
           )}
+
+          {/* ✅ 辣度選擇（內用/外帶皆顯示，選填） */}
+          <div className="mb-4">
+            <label className="block text-sm text-gray-700 mb-1">{t.spicyLabel}</label>
+            <select
+              className="w-full border p-2 rounded"
+              value={spicyLevel}
+              onChange={(e) => setSpicyLevel(e.target.value)}
+            >
+              <option value="">{t.spicyNone}</option>
+              <option value={lang === 'zh' ? '不辣' : 'Mild / None'}>{t.spicyNo}</option>
+              <option value={lang === 'zh' ? '小辣' : 'Light'}>{t.spicyLight}</option>
+              <option value={lang === 'zh' ? '中辣' : 'Medium'}>{t.spicyMedium}</option>
+              <option value={lang === 'zh' ? '大辣' : 'Hot'}>{t.spicyHot}</option>
+            </select>
+          </div>
 
           <div className="mb-6">
             <h2 className="font-semibold mb-2">{t.noteLabel}</h2>
@@ -346,9 +469,7 @@ export default function OrderPage() {
 
           <div className="sticky bottom-4 bg-white pt-4 pb-2">
             <div className="flex justify-between items-center">
-              <span className="text-xl font-bold">
-                {t.total}：NT$ {total}
-              </span>
+              <span className="text-xl font-bold">{t.total}：NT$ {total}</span>
               <button onClick={handleConfirm} className="bg-yellow-500 text-white px-6 py-2 rounded">
                 {t.confirm}
               </button>
@@ -365,7 +486,12 @@ export default function OrderPage() {
               </li>
             ))}
           </ul>
-          {tableParam === '外帶' && (
+          {spicyLevel && (
+            <p className="text-sm text-red-600 mb-1">
+              {t.spicyPreview}：{spicyLevel}
+            </p>
+          )}
+          {isTakeout && (
             <>
               <p className="text-sm text-gray-700 mb-1">👤 姓名：{customerName}</p>
               <p className="text-sm text-gray-700 mb-1">📞 電話：{customerPhone}</p>

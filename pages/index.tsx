@@ -91,7 +91,9 @@ export default function StoreHomePage() {
 
   useEffect(() => {
     void fetchStoreInfo()
+  }, [fetchStoreInfo])
 
+  useEffect(() => {
     const storeId = localStorage.getItem('store_id')
     if (!storeId) return
 
@@ -115,7 +117,7 @@ export default function StoreHomePage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [fetchStoreInfo, router])
+  }, [])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

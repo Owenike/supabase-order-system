@@ -22,7 +22,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await supabase.from('store_accounts').delete().eq('email', email)
     await supabase.from('stores').delete().eq('id', store_id)
 
-    // 刪除 Supabase Auth 使用者
+    // ⛳ 改回支援最廣的方法：listUsers + find
     const { data: list, error: listErr } = await supabase.auth.admin.listUsers()
     if (listErr) throw listErr
 
