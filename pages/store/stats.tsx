@@ -21,7 +21,7 @@ interface DailyStat {
 interface OrderItem {
   name: string
   quantity: number
-  price: number
+  price?: number // 可能有舊資料沒有 price
 }
 
 interface Order {
@@ -32,8 +32,15 @@ interface Order {
   note?: string
 }
 
+/** --------- 安全數值工具，避免 NaN ---------- */
+const n = (v: any) => {
+  const num = Number(v)
+  return Number.isFinite(num) ? num : 0
+}
+const lineTotal = (item: OrderItem) => n(item.price) * n(item.quantity)
+const fmt = (v: number) => `NT$ ${n(v).toLocaleString('zh-TW')}`
+
 export default function StoreStatsPage() {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [storeId, setStoreId] = useState<string | null>(null)
   const [inStats, setInStats] = useState<MenuItemStat[]>([])
   const [outStats, setOutStats] = useState<MenuItemStat[]>([])
@@ -46,34 +53,34 @@ export default function StoreStatsPage() {
   const [orderList, setOrderList] = useState<Order[]>([])
 
   const fetchStats = useCallback(async (storeId: string) => {
-    let from = ''
-    let to = dayjs().endOf('day').toISOString()
+    let fromISO = ''
+    let toISO = dayjs().endOf('day').toISOString()
 
     if (filterType === 'today') {
-      from = dayjs().startOf('day').toISOString()
+      fromISO = dayjs().startOf('day').toISOString()
     } else if (filterType === 'week') {
-      from = dayjs().startOf('week').toISOString()
+      fromISO = dayjs().startOf('week').toISOString()
     } else if (filterType === 'custom' && startDate && endDate) {
-      from = dayjs(startDate).startOf('day').toISOString()
-      to = dayjs(endDate).endOf('day').toISOString()
+      fromISO = dayjs(startDate).startOf('day').toISOString()
+      toISO = dayjs(endDate).endOf('day').toISOString()
     }
 
     const { data, error } = await supabase
       .from('orders')
       .select('*')
       .eq('store_id', storeId)
-      .gte('created_at', from)
-      .lte('created_at', to)
+      .gte('created_at', fromISO)
+      .lte('created_at', toISO)
 
     if (error || !data) return
 
-    const inMap: Record<string, { quantity: number, amount: number }> = {}
-    const outMap: Record<string, { quantity: number, amount: number }> = {}
+    const inMap: Record<string, { quantity: number; amount: number }> = {}
+    const outMap: Record<string, { quantity: number; amount: number }> = {}
     let inRev = 0
     let outRev = 0
-    const dailyMap: Record<string, { orders: number, revenue: number }> = {}
+    const dailyMap: Record<string, { orders: number; revenue: number }> = {}
 
-    data.forEach((order: Order) => {
+    ;(data as Order[]).forEach((order) => {
       const isTakeout = order.table_number === '外帶'
       const date = dayjs(order.created_at).format('YYYY-MM-DD')
       if (!dailyMap[date]) dailyMap[date] = { orders: 0, revenue: 0 }
@@ -82,35 +89,42 @@ export default function StoreStatsPage() {
       order.items?.forEach((item) => {
         const target = isTakeout ? outMap : inMap
         if (!target[item.name]) target[item.name] = { quantity: 0, amount: 0 }
-        target[item.name].quantity += item.quantity
-        target[item.name].amount += item.quantity * item.price
 
-        const price = item.quantity * item.price
-        if (isTakeout) outRev += price
-        else inRev += price
-        dailyMap[date].revenue += price
+        const qty = n(item.quantity)
+        const amount = lineTotal(item)
+
+        target[item.name].quantity += qty
+        target[item.name].amount += amount
+
+        if (isTakeout) outRev += amount
+        else inRev += amount
+        dailyMap[date].revenue += amount
       })
     })
 
     const format = (map: typeof inMap) =>
-      Object.entries(map).map(([name, stat]) => ({
-        name,
-        total: stat.quantity,
-        amount: stat.amount
-      })).sort((a, b) => b.amount - a.amount)
+      Object.entries(map)
+        .map(([name, stat]) => ({
+          name,
+          total: n(stat.quantity),
+          amount: n(stat.amount)
+        }))
+        .sort((a, b) => b.amount - a.amount)
 
-    const dailyStatArr: DailyStat[] = Object.entries(dailyMap).map(([date, stat]) => ({
-      date,
-      orders: stat.orders,
-      revenue: stat.revenue
-    })).sort((a, b) => a.date.localeCompare(b.date))
+    const dailyStatArr: DailyStat[] = Object.entries(dailyMap)
+      .map(([date, stat]) => ({
+        date,
+        orders: n(stat.orders),
+        revenue: n(stat.revenue)
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date))
 
     setInStats(format(inMap))
     setOutStats(format(outMap))
-    setInRevenue(inRev)
-    setOutRevenue(outRev)
+    setInRevenue(n(inRev))
+    setOutRevenue(n(outRev))
     setDailyData(dailyStatArr)
-    setOrderList(data.sort((a, b) => b.created_at.localeCompare(a.created_at)))
+    setOrderList((data as Order[]).sort((a, b) => b.created_at.localeCompare(a.created_at)))
   }, [filterType, startDate, endDate])
 
   useEffect(() => {
@@ -145,7 +159,7 @@ export default function StoreStatsPage() {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="date" />
             <YAxis />
-            <Tooltip />
+            <Tooltip formatter={(value: any, name: any) => name === '營收' ? fmt(value as number) : value} />
             <Line type="monotone" dataKey="orders" stroke="#8884d8" name="訂單數" />
             <Line type="monotone" dataKey="revenue" stroke="#82ca9d" name="營收" />
           </LineChart>
@@ -156,7 +170,7 @@ export default function StoreStatsPage() {
         { title: '外帶訂單', stats: outStats, revenue: outRevenue }].map(section => (
         <div key={section.title} className="mb-10">
           <h2 className="text-xl font-semibold mb-2">{section.title}</h2>
-          <p className="mb-2">💰 總營收：NT$ {section.revenue}</p>
+          <p className="mb-2">💰 總營收：{fmt(section.revenue)}</p>
           <table className="w-full border mt-2">
             <thead>
               <tr className="bg-gray-100">
@@ -169,8 +183,8 @@ export default function StoreStatsPage() {
               {section.stats.map(item => (
                 <tr key={item.name} className="border-t">
                   <td className="px-4 py-2">{item.name}</td>
-                  <td className="px-4 py-2 text-right">{item.total}</td>
-                  <td className="px-4 py-2 text-right">NT$ {item.amount}</td>
+                  <td className="px-4 py-2 text-right">{n(item.total)}</td>
+                  <td className="px-4 py-2 text-right">{fmt(item.amount)}</td>
                 </tr>
               ))}
               {section.stats.length === 0 && (
@@ -190,7 +204,9 @@ export default function StoreStatsPage() {
               <div className="mb-1">桌號：{order.table_number}</div>
               <ul className="list-disc pl-5">
                 {order.items?.map((item, idx) => (
-                  <li key={idx}>{item.name} × {item.quantity}（NT$ {item.price * item.quantity}）</li>
+                  <li key={idx}>
+                    {item.name} × {n(item.quantity)}（{fmt(lineTotal(item))}）
+                  </li>
                 ))}
               </ul>
               {order.note && <div className="mt-1">備註：{order.note}</div>}
