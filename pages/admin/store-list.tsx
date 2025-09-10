@@ -31,7 +31,7 @@ export default function StoreListPage() {
       setLoading(true);
       setError('');
 
-      // 略等 300ms，避免你專案既有的 auth 初始化 race condition
+      // 略等 300ms，避免既有的 auth 初始化 race condition
       await new Promise((r) => setTimeout(r, 300));
 
       const sessionRes = await supabase.auth.getSession();
@@ -59,7 +59,7 @@ export default function StoreListPage() {
           ...s,
           email: s.email ?? null,
           phone: s.phone ?? null,
-          dine_in_enabled: true, // 預設先當作啟用，等會用旗標覆蓋
+          dine_in_enabled: true, // 預設啟用，等會用旗標覆蓋
         })) ?? [];
 
       // 2) 一次抓回所有店家的 dine_in 旗標
@@ -72,11 +72,10 @@ export default function StoreListPage() {
           .eq('feature_key', 'dine_in');
 
         if (flagsErr) {
-          // 旗標抓失敗不致命，先顯示 stores；也可 setError 提示
           console.warn('fetch dine_in flags failed:', flagsErr.message);
         } else if (flags && flags.length > 0) {
           const map = new Map<string, boolean>();
-          flags.forEach((f: any) => map.set(f.store_id as string, !!f.enabled));
+          (flags as any[]).forEach((f) => map.set(f.store_id as string, !!f.enabled));
           baseRows.forEach((row) => {
             if (map.has(row.id)) row.dine_in_enabled = !!map.get(row.id);
           });
@@ -152,6 +151,7 @@ export default function StoreListPage() {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, store_id }),
+      credentials: 'include', // 🔴 帶上 Supabase Cookie
     });
 
     const result = await res.json();
@@ -172,6 +172,7 @@ export default function StoreListPage() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, store_id, is_active: isActive }),
+      credentials: 'include', // 🔴 帶上 Supabase Cookie
     });
 
     const result = await res.json();
@@ -200,6 +201,7 @@ export default function StoreListPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store_id }),
+        credentials: 'include', // 🔴 關鍵：帶上 Supabase Auth Cookie，避免 401
       });
 
       const json = await res.json();
