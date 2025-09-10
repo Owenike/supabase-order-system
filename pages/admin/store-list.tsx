@@ -19,6 +19,15 @@ type StoreRow = Store & {
   dine_in_enabled: boolean;
 };
 
+/** 取得帶 Authorization 的 headers；沒有 token 時就不帶 Authorization */
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
 export default function StoreListPage() {
   const [stores, setStores] = useState<StoreRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,11 +156,12 @@ export default function StoreListPage() {
       return;
     }
 
+    const headers = await getAuthHeaders();
     const res = await fetch('/api/delete-store', {
       method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ email, store_id }),
-      credentials: 'include', // 🔴 帶上 Supabase Cookie
+      credentials: 'include', // 帶 Supabase Cookie
     });
 
     const result = await res.json();
@@ -168,11 +178,12 @@ export default function StoreListPage() {
     store_id: string,
     isActive: boolean
   ) => {
+    const headers = await getAuthHeaders();
     const res = await fetch('/api/toggle-store-active', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ email, store_id, is_active: isActive }),
-      credentials: 'include', // 🔴 帶上 Supabase Cookie
+      credentials: 'include',
     });
 
     const result = await res.json();
@@ -197,11 +208,12 @@ export default function StoreListPage() {
         )
       );
 
+      const headers = await getAuthHeaders();
       const res = await fetch('/api/admin/toggle-dinein', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ store_id }),
-        credentials: 'include', // 🔴 關鍵：帶上 Supabase Auth Cookie，避免 401
+        credentials: 'include', // 帶 Supabase Cookie
       });
 
       const json = await res.json();
