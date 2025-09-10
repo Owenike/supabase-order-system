@@ -101,7 +101,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
-      <div className="bg-white p-8 rounded shadow-md w-full max-w-sm space-y-4">
+      <div className="p-8 w-80 space-y-4">
         {/* 登入框上方的 Logo 圖
             1) 請先把圖片放在 /public 例如：/public/login-logo.png
             2) 若你的檔名不同，改下面 src 即可（例如 src="/晨芯login.png"）
@@ -110,8 +110,8 @@ export default function LoginPage() {
           <Image
             src="/login-logo.png"
             alt="晨芯 Logo"
-            width={140}       // ⬅️ 調整大小（px）
-            height={140}
+            width={240}       // ⬅️ 調整大小（px）
+            height={240}
             priority
             className="rounded"
           />
