@@ -17,9 +17,6 @@ const COOKIE_QS_KEY = 'order_qs_backup'
 const FLAG_RETURNED = 'liff_returned_once'
 const COOKIE_DOMAIN = '.olinex.app'
 
-// 只顯示外帶最近 N 天的訂單（舊邏輯用於你原先版本，保留）
-const RECENT_DAYS = 14
-
 // 可從 .env 帶入（避免沒有 query 時無處可還原）
 const FALLBACK_STORE_ID =
   process.env.NEXT_PUBLIC_FALLBACK_STORE_ID || '11b687d8-f529-4da0-b901-74d5e783e6f2'
@@ -736,7 +733,7 @@ function OrderPage() {
     }
   }
 
-  // === 已改為呼叫 /api/orders/create ===
+  // === 已改為呼叫 /api/orders/create（移除 display_name） ===
   const submitOrder = async () => {
     if (submitting) return
     setSubmitting(true)
@@ -788,12 +785,12 @@ function OrderPage() {
           status: 'pending',
           total: totalAmount,
           line_user_id: isTakeout ? lineUserId : null,
-          spicy_level: spicyLevel || null,
-          display_name: customerName || null
+          spicy_level: spicyLevel || null
+          // display_name: 已移除，避免 500（schema 無此欄位）
         })
       })
 
-      const json = await resp.json().catch(() => ({}))
+      const json = await resp.json().catch(() => ({} as any))
       if (!resp.ok) {
         console.error('submitOrder API error:', json?.error || json)
         setErrorMsg(`${t.fail}（${json?.error || 'API error'}）`)
