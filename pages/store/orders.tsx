@@ -1,4 +1,4 @@
-// /pages/store-orders.tsx
+// /pages/store/orders.tsx
 'use client'
 
 import { useEffect, useRef, useState, useMemo } from 'react'
@@ -9,7 +9,6 @@ interface OrderItem {
   quantity: number
   price: number
 }
-
 interface Order {
   id: string
   store_id: string
@@ -43,7 +42,7 @@ export default function StoreOrdersPage() {
   const [loading, setLoading] = useState<boolean>(false)
   const [errorMsg, setErrorMsg] = useState<string>('')
 
-  // 編輯用 state
+  // 編輯/刪除
   const [editingOrder, setEditingOrder] = useState<Order | null>(null)
   const [editItems, setEditItems] = useState<OrderItem[]>([])
   const [isSaving, setIsSaving] = useState<boolean>(false)
@@ -93,7 +92,8 @@ export default function StoreOrdersPage() {
           refresh: '重新整理',
           autoRefresh: '自動刷新',
           loading: '讀取中…',
-          error: '讀取失敗，請稍後再試'
+          error: '讀取失敗，請稍後再試',
+          noStore: '尚未取得 store_id，請確認已登入且 localStorage 有 store_id'
         },
         en: {
           title: 'Order Management',
@@ -136,13 +136,14 @@ export default function StoreOrdersPage() {
           refresh: 'Refresh',
           autoRefresh: 'Auto Refresh',
           loading: 'Loading…',
-          error: 'Failed to load, please try again'
+          error: 'Failed to load, please try again',
+          noStore: 'store_id not found. Please ensure you are logged in and localStorage has store_id.'
         }
       }[lang]),
     [lang]
   )
 
-  // 🔓 解鎖音效播放限制（使用者互動一次後才允許播放）
+  // 允許播放提示音
   useEffect(() => {
     const enableAudio = () => {
       audioRef.current?.play().catch(() => {})
@@ -151,16 +152,14 @@ export default function StoreOrdersPage() {
     document.addEventListener('click', enableAudio, { once: true })
   }, [])
 
-  // 讀取 store_id
+  // 讀 store_id
   useEffect(() => {
     const stored = localStorage.getItem('store_id')
     if (stored) setStoreId(stored)
   }, [])
 
-  // 計算目前範圍的起訖時間（以台灣時區直觀計算）
+  // 計算時間窗
   const calcRange = (): { fromIso: string; toIso: string } | null => {
-    const toTz = (d: Date) =>
-      new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds()))
     const now = new Date()
     let start = new Date()
     let end = new Date()
@@ -168,19 +167,19 @@ export default function StoreOrdersPage() {
       start.setHours(0, 0, 0, 0)
       end.setHours(23, 59, 59, 999)
     } else if (range === 'week') {
-      const day = now.getDay() || 7 // 週一為第一天
+      const day = now.getDay() || 7
       start.setDate(now.getDate() - day + 1)
       start.setHours(0, 0, 0, 0)
       end.setHours(23, 59, 59, 999)
-    } else if (range === 'custom') {
+    } else {
       if (!startDate || !endDate) return null
       start = new Date(startDate + 'T00:00:00')
       end = new Date(endDate + 'T23:59:59')
     }
-    return { fromIso: toTz(start).toISOString(), toIso: toTz(end).toISOString() }
+    return { fromIso: start.toISOString(), toIso: end.toISOString() }
   }
 
-  // 啟動/停止輪詢
+  // 啟動輪詢
   useEffect(() => {
     if (!storeId) return
     const doFetch = async () => {
@@ -188,11 +187,8 @@ export default function StoreOrdersPage() {
       if (!win) return
       await fetchOrders(storeId, win.fromIso, win.toIso)
     }
-
-    // 先拉一次
     void doFetch()
 
-    // 控制輪詢
     if (autoRefresh) {
       if (pollRef.current) clearInterval(pollRef.current)
       pollRef.current = setInterval(doFetch, 3000)
@@ -208,7 +204,7 @@ export default function StoreOrdersPage() {
     }
   }, [storeId, range, startDate, endDate, autoRefresh])
 
-  // 主要查詢（管理頁：顯示全部狀態，僅用 store_id + 時間窗）
+  // 查詢（顯示所有狀態）
   const fetchOrders = async (sid: string, fromIso: string, toIso: string) => {
     setLoading(true)
     setErrorMsg('')
@@ -228,13 +224,10 @@ export default function StoreOrdersPage() {
     }
 
     const list = (data || []) as Order[]
-
-    // 播放新單音效（數量增加才播）
     if (lastOrderCount.current !== null && list.length > (lastOrderCount.current ?? 0)) {
       audioRef.current?.play().catch(() => {})
     }
     lastOrderCount.current = list.length
-
     setOrders(list)
   }
 
@@ -255,7 +248,7 @@ export default function StoreOrdersPage() {
     manualRefresh()
   }
 
-  // 進入編輯
+  // 編輯
   const openEdit = (order: Order) => {
     setEditingOrder({ ...order })
     setEditItems(
@@ -267,7 +260,6 @@ export default function StoreOrdersPage() {
     )
   }
 
-  // 變更單一品項
   const updateItem = (idx: number, key: 'name' | 'quantity' | 'price', value: string | number) => {
     setEditItems(prev => {
       const next = [...prev]
@@ -286,11 +278,9 @@ export default function StoreOrdersPage() {
     })
   }
 
-  // 新增/刪除品項
   const addItem = () => setEditItems(prev => [...prev, { name: '', quantity: 1, price: 0 }])
   const removeItem = (idx: number) => setEditItems(prev => prev.filter((_, i) => i !== idx))
 
-  // 儲存編輯內容
   const saveEdit = async () => {
     if (!editingOrder) return
     if (!editingOrder.table_number || !String(editingOrder.table_number).trim()) {
@@ -331,7 +321,7 @@ export default function StoreOrdersPage() {
     manualRefresh()
   }
 
-  // 刪除訂單（帶保護確認框）
+  // 刪除
   const deleteOrder = (id: string) => setDeletingId(id)
   const confirmDelete = async () => {
     if (!deletingId) return
@@ -345,7 +335,7 @@ export default function StoreOrdersPage() {
   }
   const cancelDelete = () => setDeletingId(null)
 
-  // 狀態篩選
+  // 篩選
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
       if (filter === 'pending') return order.status !== 'completed'
@@ -354,13 +344,11 @@ export default function StoreOrdersPage() {
     })
   }, [orders, filter])
 
-  // 數學：總金額（若 DB 沒 total，就用 items 計算）
   const calcTotal = (o: Order) =>
     typeof o.total === 'number' && !Number.isNaN(o.total)
-      ? o.total
+      ? o.total!
       : (o.items || []).reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0)
 
-  // 顯示的桌號（兼容 'takeout' / '外帶' / 0）
   const displayTable = (t: string | null) => {
     if (!t) return '-'
     const s = String(t).trim().toLowerCase()
@@ -390,6 +378,12 @@ export default function StoreOrdersPage() {
           </button>
         </div>
       </div>
+
+      {!storeId && (
+        <div className="mb-3 rounded border bg-amber-50 text-amber-800 p-2">
+          {dict.noStore}
+        </div>
+      )}
 
       {/* 區間選擇 */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -507,7 +501,7 @@ export default function StoreOrdersPage() {
         </div>
       )}
 
-      {/* 編輯面板（簡易 Modal） */}
+      {/* 編輯面板 */}
       {editingOrder && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white w-full max-w-2xl rounded-lg shadow-lg p-6">
@@ -578,7 +572,6 @@ export default function StoreOrdersPage() {
               <div className="grid gap-2">
                 {editItems.map((it, idx) => (
                   <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                    {/* 品名 */}
                     <input
                       type="text"
                       value={it.name}
@@ -586,7 +579,6 @@ export default function StoreOrdersPage() {
                       className="col-span-6 border rounded px-3 py-2"
                       placeholder={dict.itemName}
                     />
-                    {/* 數量 */}
                     <input
                       type="number"
                       min={0}
@@ -595,7 +587,6 @@ export default function StoreOrdersPage() {
                       className="col-span-2 border rounded px-3 py-2"
                       placeholder={dict.itemQty}
                     />
-                    {/* 單價 */}
                     <input
                       type="number"
                       min={0}
