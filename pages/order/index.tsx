@@ -736,6 +736,7 @@ function OrderPage() {
     }
   }
 
+  // === 已改為呼叫 /api/orders/create ===
   const submitOrder = async () => {
     if (submitting) return
     setSubmitting(true)
@@ -749,9 +750,8 @@ function OrderPage() {
         return
       }
 
-      // 後端送出前再次檢查：若內用被封鎖，禁止送單
+      // 內用封鎖保護（維持你的原邏輯；送單前再次確認）
       if (!isTakeout) {
-        // 重新讀一次旗標，避免使用者在頁面停太久期間狀態改變
         const { data: flag, error: flagErr } = await supabase
           .from('store_feature_flags')
           .select('enabled')
@@ -765,56 +765,51 @@ function OrderPage() {
         }
       }
 
-      const noteText = isTakeout
-        ? `姓名：${customerName} | 電話：${customerPhone}${note ? ` | 備註：${note}` : ''}`
-        : note
-
-      const totalAmount = selectedItems.reduce((s, i) => s + i.price * i.quantity, 0)
-
-      // 外帶沒有 line_user_id 就禁止送單；內用我們已在頁面 gating
       const lineUserId = getCookie('line_user_id')
       if (isTakeout && !lineUserId) {
         setErrorMsg('❌ 尚未綁定 LINE，請先登入再送單')
         return
       }
 
-      // 送單用 RPC（transaction：upsert line_users 再 insert orders）
-      const p_items = selectedItems.map((i) => ({
-        id: i.id && UUID_RE.test(i.id) ? i.id : null,
-        name: i.name,
-        price: i.price,
-        quantity: i.quantity
-      }))
+      const totalAmount = selectedItems.reduce((s, i) => s + i.price * i.quantity, 0)
+      const noteText = isTakeout
+        ? `姓名：${customerName} | 電話：${customerPhone}${note ? ` | 備註：${note}` : ''}`
+        : note
 
-      const { data, error } = await supabase.rpc('create_order_with_line_user', {
-        p_store_id: storeId,
-        p_table_number: effectiveTable || (isTakeout ? 'takeout' : ''),
-        p_items,
-        p_note: noteText,
-        p_status: 'pending',
-        p_total: totalAmount,
-        p_line_user_id: isTakeout ? lineUserId : null,
-        p_spicy_level: spicyLevel || null,
-        p_display_name: customerName || null
+      const resp = await fetch('/api/orders/create', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_id: storeId,
+          table_number: effectiveTable || (isTakeout ? 'takeout' : ''),
+          items: selectedItems,
+          note: noteText,
+          status: 'pending',
+          total: totalAmount,
+          line_user_id: isTakeout ? lineUserId : null,
+          spicy_level: spicyLevel || null,
+          display_name: customerName || null
+        })
       })
 
-      if (error) {
-        setErrorMsg(`${t.fail}（${error.message}）`)
-        console.error('submitOrder RPC error:', error)
+      const json = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        console.error('submitOrder API error:', json?.error || json)
+        setErrorMsg(`${t.fail}（${json?.error || 'API error'}）`)
         return
       }
 
-      if (data) {
-        setSuccess(true)
-        void fetchOrders()
-        setSelectedItems([])
-        setNote('')
-        setSpicyLevel('')
-        setCustomerName('')
-        setCustomerPhone('')
-        setConfirming(false)
-        setErrorMsg('')
-      }
+      // 成功：清空，刷新
+      setSuccess(true)
+      void fetchOrders()
+      setSelectedItems([])
+      setNote('')
+      setSpicyLevel('')
+      setCustomerName('')
+      setCustomerPhone('')
+      setConfirming(false)
+      setErrorMsg('')
     } catch (e: any) {
       console.error('submitOrder exception:', e?.message || e)
       setErrorMsg(`${t.fail}（${e?.message || 'Unexpected error'}）`)
