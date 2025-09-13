@@ -5,13 +5,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import ConfirmPasswordModal from '@/components/ui/ConfirmPasswordModal';
 
-type OptionValue = { label: string; value: string; price_delta?: number };
-type OptionGroup = {
-  id: string;
-  name: string;
-  input_type: 'single' | 'multi';
-  values: OptionValue[];
-};
+type AddonValue = { label: string; value: string; price_delta?: number };
 
 interface Category {
   id: string;
@@ -32,7 +26,7 @@ interface MenuItem {
 }
 
 export default function StoreManagePage() {
-  // ---- 你原有的狀態 ----
+  // ---- 基本狀態 ----
   const [storeId, setStoreId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [menus, setMenus] = useState<MenuItem[]>([]);
@@ -56,51 +50,40 @@ export default function StoreManagePage() {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string>('');
 
-  // ---- 新增：選項 與 綁定 狀態 ----
-  const [options, setOptions] = useState<OptionGroup[]>([]);
-  // 分類綁定：cat_id -> option_id -> enabled/required
-  const [catBound, setCatBound] = useState<Record<string, Record<string, boolean>>>({});
-  const [catRequired, setCatRequired] = useState<Record<string, Record<string, boolean>>>({});
-  // 單品覆蓋：item_id -> option_id -> enabled/required
-  const [itemBound, setItemBound] = useState<Record<string, Record<string, boolean>>>({});
-  const [itemRequired, setItemRequired] = useState<Record<string, Record<string, boolean>>>({});
-
-  const [filterCat, setFilterCat] = useState<string>('ALL');
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string>('');
 
-  // ---- 選項管理（新增/編輯用）----
-  const emptyValueRow: OptionValue = { label: '', value: '', price_delta: 0 };
-  const [newOption, setNewOption] = useState<{ name: string; input_type: 'single' | 'multi'; values: OptionValue[] }>({
-    name: '',
-    input_type: 'single',
-    values: [{ ...emptyValueRow }],
-  });
+  // ---- 精簡核心：僅管理「加料」 ----
+  const [addonsOptionId, setAddonsOptionId] = useState<string | null>(null);
+  const [addons, setAddons] = useState<AddonValue[]>([{ label: '', value: '', price_delta: 0 }]);
 
-  const [editingOptionId, setEditingOptionId] = useState<string | null>(null);
-  const [editingOption, setEditingOption] = useState<{ name: string; input_type: 'single' | 'multi'; values: OptionValue[] }>({
-    name: '',
-    input_type: 'single',
-    values: [{ ...emptyValueRow }],
-  });
+  // 綁定狀態（只針對「加料」這個 option）
+  // 分類：cat_id -> enabled
+  const [catAddonEnabled, setCatAddonEnabled] = useState<Record<string, boolean>>({});
+  // 單品：item_id -> enabled（單品覆蓋）
+  const [itemAddonEnabled, setItemAddonEnabled] = useState<Record<string, boolean>>({});
 
-  // ---- 初始化：取 store_id、載資料 ----
+  const [filterCat, setFilterCat] = useState<string>('ALL');
+
+  // ---- 初始化 ----
   useEffect(() => {
     const storedId = localStorage.getItem('store_id');
     if (!storedId) return;
     setStoreId(storedId);
-    void loadAll(storedId);
     void supabase.auth.getUser().then(({ data }) => {
       if (data?.user?.email) setUserEmail(data.user.email);
     });
+    void loadAll(storedId);
   }, []);
 
   const loadAll = useCallback(async (sid: string) => {
     setLoading(true);
     setErr('');
     try {
-      await Promise.all([fetchCategories(sid), fetchMenus(sid), fetchOptions(sid)]);
-      await Promise.all([fetchCategoryBindings(), fetchItemBindings()]);
+      await Promise.all([fetchCategories(sid), fetchMenus(sid)]);
+      const id = await ensureAddonsOption(sid); // 確保有「加料」這個 option（多選）
+      setAddonsOptionId(id);
+      await Promise.all([fetchAddonsValues(id), fetchCategoryAddonBindings(id), fetchItemAddonBindings(id)]);
     } catch (e: any) {
       setErr(e?.message || '載入失敗');
     } finally {
@@ -108,7 +91,7 @@ export default function StoreManagePage() {
     }
   }, []);
 
-  // ---- 你原本的資料載入函式（保留） ----
+  // ---- 既有資料載入（分類/菜單） ----
   const fetchCategories = async (sid: string) => {
     const { data, error } = await supabase
       .from('categories')
@@ -135,61 +118,161 @@ export default function StoreManagePage() {
     if (data) setMenus(data as MenuItem[]);
   };
 
-  // ---- 新增：載入 options 與 綁定 ----
-  const fetchOptions = async (sid: string) => {
-    const { data, error } = await supabase
+  // ---- 精簡：僅用一個「加料」選項（multi） ----
+  const ensureAddonsOption = async (sid: string): Promise<string> => {
+    // 1) 找是否已存在 name='加料' 的 option
+    const { data: found, error: findErr } = await supabase
       .from('options')
       .select('id, name, input_type, values')
       .eq('store_id', sid)
-      .order('name', { ascending: true });
-    if (error) {
-      console.error('fetchOptions error:', error);
-      return;
+      .eq('name', '加料')
+      .limit(1)
+      .maybeSingle();
+
+    if (findErr) {
+      console.error('ensureAddonsOption find error:', findErr.message);
     }
-    setOptions((data || []) as unknown as OptionGroup[]);
+    if (found?.id) {
+      return found.id as string;
+    }
+
+    // 2) 沒有就建立
+    const payload = {
+      store_id: sid,
+      name: '加料',
+      input_type: 'multi',
+      values: [] as AddonValue[],
+    };
+    const { data: ins, error: insErr } = await supabase
+      .from('options')
+      .insert(payload)
+      .select('id')
+      .single();
+    if (insErr || !ins?.id) {
+      throw new Error(insErr?.message || '建立「加料」選項失敗');
+    }
+    return ins.id as string;
   };
 
-  const fetchCategoryBindings = async () => {
+  const fetchAddonsValues = async (optionId: string) => {
+    const { data, error } = await supabase
+      .from('options')
+      .select('values')
+      .eq('id', optionId)
+      .maybeSingle();
+    if (error) {
+      console.error('fetchAddonsValues error:', error.message);
+      return;
+    }
+    const vals = (data?.values || []) as AddonValue[];
+    if (vals.length === 0) {
+      setAddons([{ label: '', value: '', price_delta: 0 }]);
+    } else {
+      setAddons(vals.map(v => ({ label: v.label || '', value: v.value || '', price_delta: Number(v.price_delta || 0) })));
+    }
+  };
+
+  const upsertAddonsValues = async () => {
+    if (!addonsOptionId) return;
+    // 過濾空白列
+    const cleaned = addons
+      .map(v => ({ label: (v.label || '').trim(), value: (v.value || '').trim(), price_delta: Number(v.price_delta || 0) }))
+      .filter(v => v.label && v.value);
+
+    const { error } = await supabase
+      .from('options')
+      .update({ values: cleaned })
+      .eq('id', addonsOptionId);
+    if (error) {
+      alert('儲存失敗：' + error.message);
+      return;
+    }
+    alert('✅ 已儲存加料項目');
+    await fetchAddonsValues(addonsOptionId);
+  };
+
+  // ---- 綁定（只處理「加料」這一個 option） ----
+  const fetchCategoryAddonBindings = async (optionId: string) => {
     const { data, error } = await supabase
       .from('category_options')
-      .select('category_id, option_id, required');
+      .select('category_id, option_id, required')
+      .eq('option_id', optionId);
     if (error) {
-      console.error('fetchCategoryBindings error:', error);
+      console.error('fetchCategoryAddonBindings error:', error.message);
       return;
     }
-    const bound: Record<string, Record<string, boolean>> = {};
-    const req: Record<string, Record<string, boolean>> = {};
+    const map: Record<string, boolean> = {};
     (data || []).forEach((row: any) => {
-      if (!bound[row.category_id]) bound[row.category_id] = {};
-      if (!req[row.category_id]) req[row.category_id] = {};
-      bound[row.category_id][row.option_id] = true;
-      req[row.category_id][row.option_id] = !!row.required;
+      map[row.category_id] = true; // 有記錄就視為啟用；加料不需要必填概念
     });
-    setCatBound(bound);
-    setCatRequired(req);
+    setCatAddonEnabled(map);
   };
 
-  const fetchItemBindings = async () => {
+  const fetchItemAddonBindings = async (optionId: string) => {
     const { data, error } = await supabase
       .from('item_options')
-      .select('item_id, option_id, required');
+      .select('item_id, option_id, required')
+      .eq('option_id', optionId);
     if (error) {
-      console.error('fetchItemBindings error:', error);
+      console.error('fetchItemAddonBindings error:', error.message);
       return;
     }
-    const bound: Record<string, Record<string, boolean>> = {};
-    const req: Record<string, Record<string, boolean>> = {};
+    const map: Record<string, boolean> = {};
     (data || []).forEach((row: any) => {
-      if (!bound[row.item_id]) bound[row.item_id] = {};
-      if (!req[row.item_id]) req[row.item_id] = {};
-      bound[row.item_id][row.option_id] = true;
-      req[row.item_id][row.option_id] = !!row.required;
+      map[row.item_id] = true;
     });
-    setItemBound(bound);
-    setItemRequired(req);
+    setItemAddonEnabled(map);
   };
 
-  // ---- 你原本的操作（保留） ----
+  const toggleCategoryAddon = async (categoryId: string, enabled: boolean) => {
+    if (!addonsOptionId) return;
+    try {
+      // 樂觀更新
+      setCatAddonEnabled(prev => ({ ...prev, [categoryId]: enabled }));
+      const res = await fetch('/api/store/toggle-category-option', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category_id: categoryId,
+          option_id: addonsOptionId,
+          enabled,
+          required: false, // 加料不需要必填
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || '更新失敗');
+    } catch (e: any) {
+      alert('分類加料設定失敗：' + (e?.message || 'Unknown error'));
+      // 還原
+      setCatAddonEnabled(prev => ({ ...prev, [categoryId]: !enabled }));
+    }
+  };
+
+  const toggleItemAddon = async (itemId: string, enabled: boolean) => {
+    if (!addonsOptionId) return;
+    try {
+      setItemAddonEnabled(prev => ({ ...prev, [itemId]: enabled }));
+      const res = await fetch('/api/store/toggle-item-option', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          item_id: itemId,
+          option_id: addonsOptionId,
+          enabled,
+          required: false,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || '更新失敗');
+    } catch (e: any) {
+      alert('單品加料設定失敗：' + (e?.message || 'Unknown error'));
+      setItemAddonEnabled(prev => ({ ...prev, [itemId]: !enabled }));
+    }
+  };
+
+  // ---- 你原本的操作（分類/菜單 新增編輯刪除） ----
   const handleAddCategory = async () => {
     if (!newCategory.trim() || !storeId) return;
     const { data: existing } = await supabase
@@ -317,440 +400,90 @@ export default function StoreManagePage() {
     if (storeId) await fetchMenus(storeId);
   };
 
-  // ---- 新增：分類/單品 綁定操作（透過 API，用 service_role） ----
-  const toggleCategoryOption = async (categoryId: string, optionId: string, nextEnabled: boolean, required: boolean) => {
-    try {
-      // 樂觀更新
-      setCatBound(prev => ({
-        ...prev,
-        [categoryId]: { ...(prev[categoryId] || {}), [optionId]: nextEnabled },
-      }));
-      setCatRequired(prev => ({
-        ...prev,
-        [categoryId]: { ...(prev[categoryId] || {}), [optionId]: required },
-      }));
-
-      const res = await fetch('/api/store/toggle-category-option', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category_id: categoryId, option_id: optionId, enabled: nextEnabled, required }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || '更新失敗');
-    } catch (e: any) {
-      alert('分類選項更新失敗：' + (e?.message || 'Unknown error'));
-      // 還原
-      setCatBound(prev => ({
-        ...prev,
-        [categoryId]: { ...(prev[categoryId] || {}), [optionId]: !nextEnabled },
-      }));
-    }
-  };
-
-  const toggleItemOption = async (itemId: string, optionId: string, nextEnabled: boolean, required: boolean) => {
-    try {
-      setItemBound(prev => ({
-        ...prev,
-        [itemId]: { ...(prev[itemId] || {}), [optionId]: nextEnabled },
-      }));
-      setItemRequired(prev => ({
-        ...prev,
-        [itemId]: { ...(prev[itemId] || {}), [optionId]: required },
-      }));
-
-      const res = await fetch('/api/store/toggle-item-option', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_id: itemId, option_id: optionId, enabled: nextEnabled, required }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || '更新失敗');
-    } catch (e: any) {
-      alert('單品選項更新失敗：' + (e?.message || 'Unknown error'));
-      // 還原
-      setItemBound(prev => ({
-        ...prev,
-        [itemId]: { ...(prev[itemId] || {}), [optionId]: !nextEnabled },
-      }));
-    }
-  };
-
-  // ---- UI 繪製：分類選項綁定 ----
-  const renderCategoryRow = (cat: Category) => {
-    return (
-      <tr key={cat.id} className="border-t">
-        <td className="p-2 font-medium">{cat.name}</td>
-        <td className="p-2">
-          <div className="flex flex-wrap gap-2">
-            {options.map(opt => {
-              const enabled = !!catBound[cat.id]?.[opt.id];
-              const required = !!catRequired[cat.id]?.[opt.id];
-              return (
-                <div key={opt.id} className="flex items-center gap-1 border rounded px-2 py-1">
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={enabled}
-                      onChange={e => toggleCategoryOption(cat.id, opt.id, e.target.checked, required)}
-                    />
-                    <span>{opt.name}</span>
-                  </label>
-                  {enabled && (
-                    <label className="flex items-center gap-1 text-xs ml-2">
-                      <input
-                        type="checkbox"
-                        checked={required}
-                        onChange={e => toggleCategoryOption(cat.id, opt.id, true, e.target.checked)}
-                      />
-                      <span>必填</span>
-                    </label>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </td>
-      </tr>
+  // ---- UI：加料管理（唯一要編輯的東西） ----
+  const addAddonRow = () => setAddons(prev => [...prev, { label: '', value: '', price_delta: 0 }]);
+  const removeAddonRow = (idx: number) => setAddons(prev => prev.filter((_, i) => i !== idx));
+  const updateAddonRow = (idx: number, key: keyof AddonValue, value: string) => {
+    setAddons(prev =>
+      prev.map((row, i) =>
+        i === idx
+          ? {
+              ...row,
+              [key]: key === 'price_delta' ? Number(value || 0) : value,
+            }
+          : row
+      )
     );
   };
 
-  // ---- UI 繪製：單品覆蓋 ----
+  // ---- UI：渲染 ----
   const filteredItems = useMemo(() => {
     if (filterCat === 'ALL') return menus;
     return menus.filter(i => i.category_id === filterCat);
   }, [menus, filterCat]);
 
-  const renderItemRow = (item: MenuItem) => {
-    return (
-      <tr key={item.id} className="border-t">
-        <td className="p-2">
-          <div className="font-medium">{item.name}</div>
-          <div className="text-xs text-gray-500">NT$ {item.price}</div>
-        </td>
-        <td className="p-2">
-          <div className="flex flex-wrap gap-2">
-            {options.map(opt => {
-              const enabled = !!itemBound[item.id]?.[opt.id];
-              const required = !!itemRequired[item.id]?.[opt.id];
-              return (
-                <div key={opt.id} className="flex items-center gap-1 border rounded px-2 py-1">
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={enabled}
-                      onChange={e => toggleItemOption(item.id, opt.id, e.target.checked, required)}
-                    />
-                    <span>{opt.name}</span>
-                  </label>
-                  {enabled && (
-                    <label className="flex items-center gap-1 text-xs ml-2">
-                      <input
-                        type="checkbox"
-                        checked={required}
-                        onChange={e => toggleItemOption(item.id, opt.id, true, e.target.checked)}
-                      />
-                      <span>必填</span>
-                    </label>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div className="text-xs text-gray-500 mt-1">
-            ※ 單品設定會覆蓋分類預設（若未設定，將套用分類綁定）
-          </div>
-        </td>
-      </tr>
-    );
-  };
-
-  // ---- UI：選項管理（新增/編輯/刪除）----
-  const addValueRow = (target: 'new' | 'edit') => {
-    if (target === 'new') {
-      setNewOption(prev => ({ ...prev, values: [...prev.values, { ...emptyValueRow }] }));
-    } else {
-      setEditingOption(prev => ({ ...prev, values: [...prev.values, { ...emptyValueRow }] }));
-    }
-  };
-  const removeValueRow = (target: 'new' | 'edit', idx: number) => {
-    if (target === 'new') {
-      setNewOption(prev => ({ ...prev, values: prev.values.filter((_, i) => i !== idx) }));
-    } else {
-      setEditingOption(prev => ({ ...prev, values: prev.values.filter((_, i) => i !== idx) }));
-    }
-  };
-  const updateValueRow = (target: 'new' | 'edit', idx: number, key: keyof OptionValue, value: string) => {
-    if (target === 'new') {
-      setNewOption(prev => ({
-        ...prev,
-        values: prev.values.map((row, i) => (i === idx ? { ...row, [key]: key === 'price_delta' ? Number(value || 0) : value } : row)),
-      }));
-    } else {
-      setEditingOption(prev => ({
-        ...prev,
-        values: prev.values.map((row, i) => (i === idx ? { ...row, [key]: key === 'price_delta' ? Number(value || 0) : value } : row)),
-      }));
-    }
-  };
-
-  const submitNewOption = async () => {
-    if (!storeId || !newOption.name.trim() || newOption.values.length === 0) {
-      alert('請填寫完整選項名稱與至少一筆值'); return;
-    }
-    const payload = {
-      id: null,
-      store_id: storeId,
-      name: newOption.name.trim(),
-      input_type: newOption.input_type,
-      values: newOption.values.map(v => ({ label: v.label.trim(), value: v.value.trim(), price_delta: Number(v.price_delta || 0) })),
-    };
-    const res = await fetch('/api/store/upsert-option', {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const json = await res.json();
-    if (!res.ok) { alert('新增失敗：' + (json?.error || 'Unknown')); return; }
-    // 重載
-    setNewOption({ name: '', input_type: 'single', values: [{ ...emptyValueRow }] });
-    if (storeId) await fetchOptions(storeId);
-  };
-
-  const startEditOption = (opt: OptionGroup) => {
-    setEditingOptionId(opt.id);
-    setEditingOption({ name: opt.name, input_type: opt.input_type, values: opt.values.map(v => ({ ...v, price_delta: Number(v.price_delta || 0) })) });
-  };
-
-  const submitEditOption = async () => {
-    if (!editingOptionId || !storeId || !editingOption.name.trim()) { alert('請填寫完整資料'); return; }
-    const payload = {
-      id: editingOptionId,
-      store_id: storeId,
-      name: editingOption.name.trim(),
-      input_type: editingOption.input_type,
-      values: editingOption.values.map(v => ({ label: v.label.trim(), value: v.value.trim(), price_delta: Number(v.price_delta || 0) })),
-    };
-    const res = await fetch('/api/store/upsert-option', {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const json = await res.json();
-    if (!res.ok) { alert('更新失敗：' + (json?.error || 'Unknown')); return; }
-    setEditingOptionId(null);
-    if (storeId) await fetchOptions(storeId);
-  };
-
-  const deleteOption = async (id: string) => {
-    if (!confirm('確定刪除此選項？（會影響綁定關係）')) return;
-    const res = await fetch('/api/store/delete-option', {
-      method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    });
-    const json = await res.json();
-    if (!res.ok) { alert('刪除失敗：' + (json?.error || 'Unknown')); return; }
-    if (storeId) {
-      await fetchOptions(storeId);
-      await Promise.all([fetchCategoryBindings(), fetchItemBindings()]);
-    }
-  };
-
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">🍽 店家後台管理</h1>
+      <h1 className="text-2xl font-bold mb-4">🍽 店家後台管理（精簡版：只管理加料）</h1>
 
       {err && <div className="mb-3 rounded border bg-red-50 text-red-700 p-2">{err}</div>}
       {loading && <div className="mb-3">讀取中…</div>}
 
-      {/* ---- 選項管理 ---- */}
+      {/* ---- 加料管理 ---- */}
       <section className="mb-8">
-        <h2 className="font-semibold text-lg mb-2">選項管理（甜度 / 冰塊 / 容量 等）</h2>
+        <h2 className="font-semibold text-lg mb-2">加料管理（多選 / 含價差）</h2>
+        <div className="rounded border p-3 mb-3">
+          <p className="text-sm text-gray-600 mb-3">
+            只要在這裡設定加料項目即可；<span className="font-medium">甜度 / 冰塊 / 容量</span> 由系統固定顯示，且不影響價格。
+          </p>
 
-        {/* 新增選項 */}
-        <div className="rounded border p-3 mb-6">
-          <h3 className="font-medium mb-2">新增選項</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
-            <input
-              className="border px-3 py-2 rounded"
-              placeholder="選項名稱（例：甜度）"
-              value={newOption.name}
-              onChange={(e) => setNewOption(prev => ({ ...prev, name: e.target.value }))}
-            />
-            <select
-              className="border px-3 py-2 rounded"
-              value={newOption.input_type}
-              onChange={(e) => setNewOption(prev => ({ ...prev, input_type: e.target.value as 'single' | 'multi' }))}
-            >
-              <option value="single">單選</option>
-              <option value="multi">多選</option>
-            </select>
-          </div>
-          <div>
-            <div className="text-sm font-medium mb-1">可選值</div>
-            {newOption.values.map((row, idx) => (
-              <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
-                <input
-                  className="border px-2 py-1 rounded"
-                  placeholder="顯示名稱（例：半糖）"
-                  value={row.label}
-                  onChange={(e) => updateValueRow('new', idx, 'label', e.target.value)}
-                />
-                <input
-                  className="border px-2 py-1 rounded"
-                  placeholder="值（例：50）"
-                  value={row.value}
-                  onChange={(e) => updateValueRow('new', idx, 'value', e.target.value)}
-                />
-                <input
-                  type="number"
-                  className="border px-2 py-1 rounded"
-                  placeholder="價差（例：10）"
-                  value={String(row.price_delta ?? 0)}
-                  onChange={(e) => updateValueRow('new', idx, 'price_delta', e.target.value)}
-                />
-                <div className="flex items-center">
-                  <button className="text-sm text-red-600" onClick={() => removeValueRow('new', idx)}>
-                    刪除此列
-                  </button>
-                </div>
+          <div className="text-sm font-medium mb-1">加料項目</div>
+          {addons.map((row, idx) => (
+            <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
+              <input
+                className="border px-2 py-1 rounded"
+                placeholder="顯示名稱（例：珍珠）"
+                value={row.label}
+                onChange={(e) => updateAddonRow(idx, 'label', e.target.value)}
+              />
+              <input
+                className="border px-2 py-1 rounded"
+                placeholder="值（例：pearl）"
+                value={row.value}
+                onChange={(e) => updateAddonRow(idx, 'value', e.target.value)}
+              />
+              <input
+                type="number"
+                className="border px-2 py-1 rounded"
+                placeholder="價差（例：10）"
+                value={String(row.price_delta ?? 0)}
+                onChange={(e) => updateAddonRow(idx, 'price_delta', e.target.value)}
+              />
+              <div className="flex items-center">
+                <button className="text-sm text-red-600" onClick={() => removeAddonRow(idx)}>
+                  刪除此列
+                </button>
               </div>
-            ))}
-            <button className="text-sm bg-gray-100 px-2 py-1 rounded" onClick={() => addValueRow('new')}>
-              + 新增一列
-            </button>
-          </div>
-          <div className="mt-3">
-            <button className="bg-green-600 text-white px-4 py-2 rounded" onClick={submitNewOption}>
-              儲存選項
-            </button>
-          </div>
-        </div>
-
-        {/* 已有選項列表（可編輯/刪除） */}
-        <div className="rounded border overflow-hidden">
-          <table className="w-full border-collapse">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="p-2 text-left w-48">選項名稱</th>
-                <th className="p-2 text-left w-24">型態</th>
-                <th className="p-2 text-left">可選值</th>
-                <th className="p-2 text-left w-36">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {options.map((opt) => (
-                <tr key={opt.id} className="border-t align-top">
-                  <td className="p-2">
-                    {editingOptionId === opt.id ? (
-                      <input
-                        className="border px-2 py-1 rounded w-full"
-                        value={editingOption.name}
-                        onChange={(e) => setEditingOption(prev => ({ ...prev, name: e.target.value }))}
-                      />
-                    ) : (
-                      <div className="font-medium">{opt.name}</div>
-                    )}
-                  </td>
-                  <td className="p-2">
-                    {editingOptionId === opt.id ? (
-                      <select
-                        className="border px-2 py-1 rounded"
-                        value={editingOption.input_type}
-                        onChange={(e) => setEditingOption(prev => ({ ...prev, input_type: e.target.value as 'single' | 'multi' }))}
-                      >
-                        <option value="single">單選</option>
-                        <option value="multi">多選</option>
-                      </select>
-                    ) : (
-                      <span>{opt.input_type === 'single' ? '單選' : '多選'}</span>
-                    )}
-                  </td>
-                  <td className="p-2">
-                    {editingOptionId === opt.id ? (
-                      <div>
-                        {editingOption.values.map((row, idx) => (
-                          <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
-                            <input
-                              className="border px-2 py-1 rounded"
-                              placeholder="顯示名稱"
-                              value={row.label}
-                              onChange={(e) => updateValueRow('edit', idx, 'label', e.target.value)}
-                            />
-                            <input
-                              className="border px-2 py-1 rounded"
-                              placeholder="值"
-                              value={row.value}
-                              onChange={(e) => updateValueRow('edit', idx, 'value', e.target.value)}
-                            />
-                            <input
-                              type="number"
-                              className="border px-2 py-1 rounded"
-                              placeholder="價差"
-                              value={String(row.price_delta ?? 0)}
-                              onChange={(e) => updateValueRow('edit', idx, 'price_delta', e.target.value)}
-                            />
-                            <div className="flex items-center">
-                              <button className="text-sm text-red-600" onClick={() => removeValueRow('edit', idx)}>
-                                刪除此列
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                        <button className="text-sm bg-gray-100 px-2 py-1 rounded" onClick={() => addValueRow('edit')}>
-                          + 新增一列
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-gray-700">
-                        {opt.values.length === 0 ? '—' : opt.values.map((v, i) => (
-                          <span key={i} className="inline-block mr-2 mb-1">
-                            {v.label}
-                            {typeof v.price_delta === 'number' && v.price_delta !== 0 ? ` (+$${v.price_delta})` : ''}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="p-2">
-                    {editingOptionId === opt.id ? (
-                      <div className="flex gap-2">
-                        <button className="text-sm bg-green-600 text-white px-2 py-1 rounded" onClick={submitEditOption}>
-                          儲存
-                        </button>
-                        <button className="text-sm px-2 py-1 rounded border" onClick={() => setEditingOptionId(null)}>
-                          取消
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        <button className="text-sm text-blue-600" onClick={() => startEditOption(opt)}>
-                          編輯
-                        </button>
-                        <button className="text-sm text-red-600" onClick={() => deleteOption(opt.id)}>
-                          刪除
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {options.length === 0 && (
-                <tr><td className="p-2" colSpan={4}>尚無選項，請先於上方新增（例：甜度 / 冰塊 / 容量）。</td></tr>
-              )}
-            </tbody>
-          </table>
+            </div>
+          ))}
+          <button className="text-sm bg-gray-100 px-2 py-1 rounded mr-2" onClick={addAddonRow}>
+            + 新增一列
+          </button>
+          <button className="text-sm bg-green-600 text-white px-3 py-1 rounded" onClick={upsertAddonsValues} disabled={!addonsOptionId}>
+            儲存加料
+          </button>
         </div>
       </section>
 
-      {/* ---- 分類 ⇄ 選項 綁定 ---- */}
+      {/* ---- 分類層級：啟用/停用「加料」 ---- */}
       <section className="mb-8">
-        <h2 className="font-semibold text-lg mb-2">分類選項綁定</h2>
+        <h2 className="font-semibold text-lg mb-2">分類：加料開關</h2>
         <div className="rounded border overflow-hidden">
           <table className="w-full border-collapse">
             <thead className="bg-gray-100">
               <tr>
                 <th className="p-2 text-left w-48">分類</th>
-                <th className="p-2 text-left">可用選項（勾選啟用，可指定「必填」）</th>
+                <th className="p-2 text-left">是否啟用「加料」</th>
               </tr>
             </thead>
             <tbody>
@@ -758,38 +491,15 @@ export default function StoreManagePage() {
                 <tr key={cat.id} className="border-t">
                   <td className="p-2 font-medium">{cat.name}</td>
                   <td className="p-2">
-                    <div className="flex flex-wrap gap-2">
-                      {options.map((opt) => {
-                        const enabled = !!catBound[cat.id]?.[opt.id];
-                        const required = !!catRequired[cat.id]?.[opt.id];
-                        return (
-                          <div key={opt.id} className="flex items-center gap-1 border rounded px-2 py-1">
-                            <label className="flex items-center gap-1">
-                              <input
-                                type="checkbox"
-                                checked={enabled}
-                                onChange={(e) =>
-                                  toggleCategoryOption(cat.id, opt.id, e.target.checked, required)
-                                }
-                              />
-                              <span>{opt.name}</span>
-                            </label>
-                            {enabled && (
-                              <label className="flex items-center gap-1 text-xs ml-2">
-                                <input
-                                  type="checkbox"
-                                  checked={required}
-                                  onChange={(e) =>
-                                    toggleCategoryOption(cat.id, opt.id, true, e.target.checked)
-                                  }
-                                />
-                                <span>必填</span>
-                              </label>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <label className="inline-flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={!!catAddonEnabled[cat.id]}
+                        onChange={(e) => toggleCategoryAddon(cat.id, e.target.checked)}
+                        disabled={!addonsOptionId}
+                      />
+                      <span>啟用加料</span>
+                    </label>
                   </td>
                 </tr>
               ))}
@@ -801,10 +511,10 @@ export default function StoreManagePage() {
         </div>
       </section>
 
-      {/* ---- 單品覆蓋 ---- */}
+      {/* ---- 單品覆蓋（特例） ---- */}
       <section className="mb-8">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold text-lg">單品覆蓋（特例設定）</h2>
+          <h2 className="font-semibold text-lg">單品覆蓋（特例：個別開關加料）</h2>
           <div className="flex items-center gap-2">
             <label className="text-sm">分類篩選</label>
             <select
@@ -827,7 +537,7 @@ export default function StoreManagePage() {
             <thead className="bg-gray-100">
               <tr>
                 <th className="p-2 text-left w-64">品名</th>
-                <th className="p-2 text-left">可用選項（勾選啟用，可指定「必填」）</th>
+                <th className="p-2 text-left">是否啟用「加料」</th>
               </tr>
             </thead>
             <tbody>
@@ -838,40 +548,17 @@ export default function StoreManagePage() {
                     <div className="text-xs text-gray-500">NT$ {item.price}</div>
                   </td>
                   <td className="p-2">
-                    <div className="flex flex-wrap gap-2">
-                      {options.map((opt) => {
-                        const enabled = !!itemBound[item.id]?.[opt.id];
-                        const required = !!itemRequired[item.id]?.[opt.id];
-                        return (
-                          <div key={opt.id} className="flex items-center gap-1 border rounded px-2 py-1">
-                            <label className="flex items-center gap-1">
-                              <input
-                                type="checkbox"
-                                checked={enabled}
-                                onChange={(e) =>
-                                  toggleItemOption(item.id, opt.id, e.target.checked, required)
-                                }
-                              />
-                              <span>{opt.name}</span>
-                            </label>
-                            {enabled && (
-                              <label className="flex items-center gap-1 text-xs ml-2">
-                                <input
-                                  type="checkbox"
-                                  checked={required}
-                                  onChange={(e) =>
-                                    toggleItemOption(item.id, opt.id, true, e.target.checked)
-                                  }
-                                />
-                                <span>必填</span>
-                              </label>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <label className="inline-flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={!!itemAddonEnabled[item.id]}
+                        onChange={(e) => toggleItemAddon(item.id, e.target.checked)}
+                        disabled={!addonsOptionId}
+                      />
+                      <span>啟用加料（覆蓋分類設定）</span>
+                    </label>
                     <div className="text-xs text-gray-500 mt-1">
-                      ※ 單品設定會覆蓋分類預設（若未設定，將套用分類綁定）
+                      ※ 單品設定會覆蓋分類預設；未勾時，依分類設定為準。
                     </div>
                   </td>
                 </tr>
