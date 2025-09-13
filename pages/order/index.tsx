@@ -17,7 +17,7 @@ const COOKIE_QS_KEY = 'order_qs_backup'
 const FLAG_RETURNED = 'liff_returned_once'
 const COOKIE_DOMAIN = '.olinex.app'
 
-// 只顯示外帶最近 N 天的訂單
+// 只顯示外帶最近 N 天的訂單（舊邏輯用於你原先版本，保留）
 const RECENT_DAYS = 14
 
 // 可從 .env 帶入（避免沒有 query 時無處可還原）
@@ -480,56 +480,69 @@ function OrderPage() {
   )
 
   // ---------- 資料載入 ----------
+  // ✅ 新版：同時查「未完成」與「歷史」，並合併顯示（未完成在前）
   const fetchOrders = useCallback(async () => {
     if (!storeId || !UUID_RE.test(storeId)) return
     const lineUserId = getCookie('line_user_id')
 
-    // 若內用被封鎖且當前不是外帶，直接清空
-    if (!isTakeout && flagLoaded && !dineInEnabled) {
-      setOrderHistory([])
-      return
-    }
+    // dine-in 封鎖時，仍允許顯示歷史（避免整個區塊空白），只是在送單時再擋
+    // if (!isTakeout && flagLoaded && !dineInEnabled) {
+    //   setOrderHistory([])
+    //   return
+    // }
 
-    let query = supabase
+    // 查詢時間窗（歷史就放寬到 60 天，你也可以改成 90/180）
+    const SINCE_DAYS = 60
+    const sinceIso = new Date(Date.now() - SINCE_DAYS * 24 * 60 * 60 * 1000).toISOString()
+
+    // === 未完成訂單（顧客當前應該看到的）
+    let activeQ = supabase
       .from('orders')
       .select('*')
       .eq('store_id', storeId)
+      .gte('created_at', sinceIso)
       .order('created_at', { ascending: false })
 
-    const sinceIso = new Date(Date.now() - RECENT_DAYS * 24 * 60 * 60 * 1000).toISOString()
+    // === 歷史訂單（完成 / 取消）
+    let historyQ = supabase
+      .from('orders')
+      .select('*')
+      .eq('store_id', storeId)
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: false })
 
     if (isTakeout) {
+      // 外帶：依 line_user_id
       if (!lineUserId) {
         setOrderHistory([])
         return
       }
-      // 外帶：只看此使用者 + 未完成 + 最近 N 天
-      query = query
-        .eq('line_user_id', lineUserId)
-        .neq('status', 'completed')
-        .gte('created_at', sinceIso)
-        .limit(20)
+      activeQ = activeQ.eq('line_user_id', lineUserId).not('status', 'in', '("completed","canceled")').limit(20)
+      historyQ = historyQ.eq('line_user_id', lineUserId).in('status', ['completed', 'canceled']).limit(50)
     } else {
-      // 內用：只看該桌 + 未完成 + 最近 N 天
-      if (typeof tableParam === 'string' && tableParam) {
-        query = query
-          .eq('table_number', tableParam)
-          .neq('status', 'completed')
-          .gte('created_at', sinceIso)
-          .limit(10)
-      } else {
+      // 內用：依桌號
+      if (typeof tableParam !== 'string' || !tableParam) {
         setOrderHistory([])
         return
       }
+      activeQ = activeQ.eq('table_number', tableParam).not('status', 'in', '("completed","canceled")').limit(10)
+      historyQ = historyQ.eq('table_number', tableParam).in('status', ['completed', 'canceled']).limit(50)
     }
 
-    const { data, error } = await query
-    if (error) {
-      console.error('fetchOrders error:', error)
-      return
+    const [activeRes, historyRes] = await Promise.all([activeQ, historyQ])
+
+    if (activeRes.error) {
+      console.error('fetchOrders active error:', activeRes.error)
     }
-    if (data) setOrderHistory(data as unknown as OrderRecord[])
-  }, [storeId, tableParam, isTakeout, flagLoaded, dineInEnabled])
+    if (historyRes.error) {
+      console.error('fetchOrders history error:', historyRes.error)
+    }
+
+    const activeList = (activeRes.data || []) as unknown as OrderRecord[]
+    const historyList = (historyRes.data || []) as unknown as OrderRecord[]
+    // 未完成放前面
+    setOrderHistory([...activeList, ...historyList])
+  }, [storeId, tableParam, isTakeout])
 
   const fetchMenus = async (sid: string) => {
     if (!UUID_RE.test(sid)) return

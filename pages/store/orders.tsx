@@ -1,6 +1,7 @@
+// /pages/store-orders.tsx
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
 interface OrderItem {
@@ -12,12 +13,14 @@ interface OrderItem {
 interface Order {
   id: string
   store_id: string
-  table_number: string
+  table_number: string | null
   items: OrderItem[]
-  note?: string
-  spicy_level?: string
-  status?: string
+  note?: string | null
+  spicy_level?: string | null
+  status?: 'pending' | 'completed' | string | null
   created_at: string
+  line_user_id?: string | null
+  total?: number | null
 }
 
 type FilterKey = 'all' | 'pending' | 'completed'
@@ -31,9 +34,14 @@ export default function StoreOrdersPage() {
   const [range, setRange] = useState<RangeKey>('today')
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
+
   const [storeId, setStoreId] = useState<string | null>(null)
   const lastOrderCount = useRef<number | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
+  const [autoRefresh, setAutoRefresh] = useState<boolean>(true)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [loading, setLoading] = useState<boolean>(false)
+  const [errorMsg, setErrorMsg] = useState<string>('')
 
   // 編輯用 state
   const [editingOrder, setEditingOrder] = useState<Order | null>(null)
@@ -41,84 +49,98 @@ export default function StoreOrdersPage() {
   const [isSaving, setIsSaving] = useState<boolean>(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  const dict = {
-    zh: {
-      title: '訂單管理',
-      all: '全部',
-      pending: '未處理',
-      completed: '已完成',
-      complete: '完成訂單',
-      table: '桌號',
-      takeout: '外帶',
-      items: '品項',
-      spicy: '辣度',
-      note: '備註',
-      done: '✅ 已完成',
-      noOrders: '目前沒有訂單',
-      noPending: '🔔 無未處理訂單',
-      today: '今日',
-      week: '本週',
-      custom: '自訂',
-      from: '起始日',
-      to: '結束日',
-      edit: '修改',
-      delete: '刪除',
-      saving: '儲存中…',
-      save: '儲存變更',
-      cancel: '取消',
-      status: '狀態',
-      status_pending: '未處理',
-      status_completed: '已完成',
-      addItem: '新增品項',
-      itemName: '品名',
-      itemQty: '數量',
-      itemPrice: '單價',
-      confirmDeleteTitle: '確認刪除',
-      confirmDeleteText: '此操作將刪除此筆訂單，且無法復原。確定要刪除嗎？',
-      confirm: '確認',
-      back: '返回',
-      editOrder: '修改訂單',
-      actions: '操作'
-    },
-    en: {
-      title: 'Order Management',
-      all: 'All',
-      pending: 'Pending',
-      completed: 'Completed',
-      complete: 'Mark Done',
-      table: 'Table',
-      takeout: 'Takeout',
-      items: 'Items',
-      spicy: 'Spicy',
-      note: 'Note',
-      done: '✅ Done',
-      noOrders: 'No orders currently',
-      noPending: '🔔 No pending orders',
-      today: 'Today',
-      week: 'This Week',
-      custom: 'Custom',
-      from: 'From',
-      to: 'To',
-      edit: 'Edit',
-      delete: 'Delete',
-      saving: 'Saving…',
-      save: 'Save Changes',
-      cancel: 'Cancel',
-      status: 'Status',
-      status_pending: 'Pending',
-      status_completed: 'Completed',
-      addItem: 'Add Item',
-      itemName: 'Name',
-      itemQty: 'Qty',
-      itemPrice: 'Price',
-      confirmDeleteTitle: 'Confirm Delete',
-      confirmDeleteText: 'This will permanently delete the order. Continue?',
-      confirm: 'Confirm',
-      back: 'Back',
-      editOrder: 'Edit Order',
-      actions: 'Actions'
-    }
-  }[lang]
+  const dict = useMemo(
+    () =>
+      ({
+        zh: {
+          title: '訂單管理',
+          all: '全部',
+          pending: '未處理',
+          completed: '已完成',
+          complete: '完成訂單',
+          table: '桌號',
+          takeout: '外帶',
+          items: '品項',
+          spicy: '辣度',
+          note: '備註',
+          done: '✅ 已完成',
+          noOrders: '目前沒有訂單',
+          noPending: '🔔 無未處理訂單',
+          today: '今日',
+          week: '本週',
+          custom: '自訂',
+          from: '起始日',
+          to: '結束日',
+          edit: '修改',
+          delete: '刪除',
+          saving: '儲存中…',
+          save: '儲存變更',
+          cancel: '取消',
+          status: '狀態',
+          status_pending: '未處理',
+          status_completed: '已完成',
+          addItem: '新增品項',
+          itemName: '品名',
+          itemQty: '數量',
+          itemPrice: '單價',
+          confirmDeleteTitle: '確認刪除',
+          confirmDeleteText: '此操作將刪除此筆訂單，且無法復原。確定要刪除嗎？',
+          confirm: '確認',
+          back: '返回',
+          editOrder: '修改訂單',
+          actions: '操作',
+          total: '總金額',
+          refresh: '重新整理',
+          autoRefresh: '自動刷新',
+          loading: '讀取中…',
+          error: '讀取失敗，請稍後再試'
+        },
+        en: {
+          title: 'Order Management',
+          all: 'All',
+          pending: 'Pending',
+          completed: 'Completed',
+          complete: 'Mark Done',
+          table: 'Table',
+          takeout: 'Takeout',
+          items: 'Items',
+          spicy: 'Spicy',
+          note: 'Note',
+          done: '✅ Done',
+          noOrders: 'No orders currently',
+          noPending: '🔔 No pending orders',
+          today: 'Today',
+          week: 'This Week',
+          custom: 'Custom',
+          from: 'From',
+          to: 'To',
+          edit: 'Edit',
+          delete: 'Delete',
+          saving: 'Saving…',
+          save: 'Save Changes',
+          cancel: 'Cancel',
+          status: 'Status',
+          status_pending: 'Pending',
+          status_completed: 'Completed',
+          addItem: 'Add Item',
+          itemName: 'Name',
+          itemQty: 'Qty',
+          itemPrice: 'Price',
+          confirmDeleteTitle: 'Confirm Delete',
+          confirmDeleteText: 'This will permanently delete the order. Continue?',
+          confirm: 'Confirm',
+          back: 'Back',
+          editOrder: 'Edit Order',
+          actions: 'Actions',
+          total: 'Total',
+          refresh: 'Refresh',
+          autoRefresh: 'Auto Refresh',
+          loading: 'Loading…',
+          error: 'Failed to load, please try again'
+        }
+      }[lang]),
+    [lang]
+  )
 
   // 🔓 解鎖音效播放限制（使用者互動一次後才允許播放）
   useEffect(() => {
@@ -129,107 +151,118 @@ export default function StoreOrdersPage() {
     document.addEventListener('click', enableAudio, { once: true })
   }, [])
 
+  // 讀取 store_id
   useEffect(() => {
     const stored = localStorage.getItem('store_id')
     if (stored) setStoreId(stored)
   }, [])
 
-  // 依篩選區間輪詢
-  useEffect(() => {
-    if (!storeId) return
-
+  // 計算目前範圍的起訖時間（以台灣時區直觀計算）
+  const calcRange = (): { fromIso: string; toIso: string } | null => {
+    const toTz = (d: Date) =>
+      new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds()))
     const now = new Date()
     let start = new Date()
     let end = new Date()
-
     if (range === 'today') {
       start.setHours(0, 0, 0, 0)
       end.setHours(23, 59, 59, 999)
     } else if (range === 'week') {
-      const day = now.getDay() || 7
+      const day = now.getDay() || 7 // 週一為第一天
       start.setDate(now.getDate() - day + 1)
       start.setHours(0, 0, 0, 0)
       end.setHours(23, 59, 59, 999)
     } else if (range === 'custom') {
-      if (!startDate || !endDate) return
+      if (!startDate || !endDate) return null
       start = new Date(startDate + 'T00:00:00')
       end = new Date(endDate + 'T23:59:59')
     }
+    return { fromIso: toTz(start).toISOString(), toIso: toTz(end).toISOString() }
+  }
 
-    fetchOrders(storeId, start.toISOString(), end.toISOString())
+  // 啟動/停止輪詢
+  useEffect(() => {
+    if (!storeId) return
+    const doFetch = async () => {
+      const win = calcRange()
+      if (!win) return
+      await fetchOrders(storeId, win.fromIso, win.toIso)
+    }
 
-    const interval = setInterval(() => {
-      fetchOrders(storeId, start.toISOString(), end.toISOString())
-    }, 3000)
+    // 先拉一次
+    void doFetch()
 
-    return () => clearInterval(interval)
-  }, [storeId, range, startDate, endDate])
+    // 控制輪詢
+    if (autoRefresh) {
+      if (pollRef.current) clearInterval(pollRef.current)
+      pollRef.current = setInterval(doFetch, 3000)
+      return () => {
+        if (pollRef.current) clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+    } else {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+    }
+  }, [storeId, range, startDate, endDate, autoRefresh])
 
-  const fetchOrders = async (storeId: string, from: string, to: string) => {
+  // 主要查詢（管理頁：顯示全部狀態，僅用 store_id + 時間窗）
+  const fetchOrders = async (sid: string, fromIso: string, toIso: string) => {
+    setLoading(true)
+    setErrorMsg('')
     const { data, error } = await supabase
       .from('orders')
       .select('*')
-      .eq('store_id', storeId)
-      .gte('created_at', from)
-      .lte('created_at', to)
+      .eq('store_id', sid)
+      .gte('created_at', fromIso)
+      .lte('created_at', toIso)
       .order('created_at', { ascending: false })
 
+    setLoading(false)
     if (error) {
       console.error('❌ 查詢失敗：', error.message)
+      setErrorMsg(error.message)
       return
     }
 
-    if (lastOrderCount.current !== null && data.length > (lastOrderCount.current ?? 0)) {
-      audioRef.current?.play()
+    const list = (data || []) as Order[]
+
+    // 播放新單音效（數量增加才播）
+    if (lastOrderCount.current !== null && list.length > (lastOrderCount.current ?? 0)) {
+      audioRef.current?.play().catch(() => {})
     }
-    lastOrderCount.current = data.length
-    setOrders(data as Order[])
+    lastOrderCount.current = list.length
+
+    setOrders(list)
   }
 
-  const refreshByCurrentRange = async () => {
+  const manualRefresh = async () => {
     if (!storeId) return
-    const now = new Date()
-    let from = new Date()
-    let to = new Date()
-
-    if (range === 'today') {
-      from.setHours(0, 0, 0, 0)
-      to.setHours(23, 59, 59, 999)
-    } else if (range === 'week') {
-      const day = now.getDay() || 7
-      from.setDate(now.getDate() - day + 1)
-      from.setHours(0, 0, 0, 0)
-      to.setHours(23, 59, 59, 999)
-    } else {
-      if (!startDate || !endDate) return
-      from = new Date(startDate + 'T00:00:00')
-      to = new Date(endDate + 'T23:59:59')
-    }
-    await fetchOrders(storeId, from.toISOString(), to.toISOString())
+    const win = calcRange()
+    if (!win) return
+    await fetchOrders(storeId, win.fromIso, win.toIso)
   }
 
+  // 完成訂單
   const handleComplete = async (id: string) => {
-    const { error } = await supabase
-      .from('orders')
-      .update({ status: 'completed' })
-      .eq('id', id)
-
+    const { error } = await supabase.from('orders').update({ status: 'completed' }).eq('id', id)
     if (error) {
       alert('訂單更新失敗，請稍後再試')
       return
     }
-    refreshByCurrentRange()
+    manualRefresh()
   }
 
   // 進入編輯
   const openEdit = (order: Order) => {
     setEditingOrder({ ...order })
-    // 帶入 price，缺少則預設 0
     setEditItems(
       (order.items ?? []).map((i: any) => ({
         name: String(i?.name ?? ''),
-        quantity: Number.isFinite(Number(i?.quantity)) ? Math.floor(Number(i.quantity)) : 0,
-        price: Number.isFinite(Number(i?.price)) ? Number(i.price) : 0
+        quantity: Number.isFinite(Number(i?.quantity)) ? Math.max(0, Math.floor(Number(i.quantity))) : 0,
+        price: Number.isFinite(Number(i?.price)) ? Math.max(0, Number(i.price)) : 0
       }))
     )
   }
@@ -238,35 +271,33 @@ export default function StoreOrdersPage() {
   const updateItem = (idx: number, key: 'name' | 'quantity' | 'price', value: string | number) => {
     setEditItems(prev => {
       const next = [...prev]
-      const target = { ...next[idx] }
-      if (key === 'name') target.name = String(value)
+      const t = { ...next[idx] }
+      if (key === 'name') t.name = String(value)
       if (key === 'quantity') {
         const n = Number(value)
-        target.quantity = Number.isNaN(n) || n < 0 ? 0 : Math.floor(n)
+        t.quantity = Number.isNaN(n) || n < 0 ? 0 : Math.floor(n)
       }
       if (key === 'price') {
         const p = Number(value)
-        target.price = Number.isNaN(p) || p < 0 ? 0 : p
+        t.price = Number.isNaN(p) || p < 0 ? 0 : p
       }
-      next[idx] = target
+      next[idx] = t
       return next
     })
   }
 
   // 新增/刪除品項
   const addItem = () => setEditItems(prev => [...prev, { name: '', quantity: 1, price: 0 }])
-  const removeItem = (idx: number) =>
-    setEditItems(prev => prev.filter((_, i) => i !== idx))
+  const removeItem = (idx: number) => setEditItems(prev => prev.filter((_, i) => i !== idx))
 
   // 儲存編輯內容
   const saveEdit = async () => {
     if (!editingOrder) return
-    if (!editingOrder.table_number) {
-      alert('請輸入桌號（或外帶）')
+    if (!editingOrder.table_number || !String(editingOrder.table_number).trim()) {
+      alert(lang === 'zh' ? '請輸入桌號（或外帶）' : 'Please input table number or takeout.')
       return
     }
 
-    // 整理品項：去除空白品名/數量<=0；價格預設 0
     const cleanedItems = editItems
       .map(i => ({
         name: String(i.name || '').trim(),
@@ -275,15 +306,14 @@ export default function StoreOrdersPage() {
       }))
       .filter(i => i.name && i.quantity > 0)
 
-    // 動態 payload
     const payload: Record<string, any> = {
-      table_number: editingOrder.table_number,
-      status: ['pending', 'completed'].includes(editingOrder.status || '') ? editingOrder.status : 'pending',
-      note: editingOrder.note?.trim() ? editingOrder.note.trim() : null,
+      table_number: String(editingOrder.table_number).trim(),
+      status: ['pending', 'completed'].includes(String(editingOrder.status || '')) ? editingOrder.status : 'pending',
+      note: editingOrder.note?.toString().trim() ? editingOrder.note!.toString().trim() : null,
       items: cleanedItems
     }
-    if (editingOrder.spicy_level && editingOrder.spicy_level.trim()) {
-      payload.spicy_level = editingOrder.spicy_level.trim()
+    if (editingOrder.spicy_level && editingOrder.spicy_level.toString().trim()) {
+      payload.spicy_level = editingOrder.spicy_level.toString().trim()
     }
 
     setIsSaving(true)
@@ -298,14 +328,11 @@ export default function StoreOrdersPage() {
 
     setEditingOrder(null)
     setEditItems([])
-    refreshByCurrentRange()
+    manualRefresh()
   }
 
-  // 刪除訂單
-  const deleteOrder = async (id: string) => {
-    setDeletingId(id)
-  }
-
+  // 刪除訂單（帶保護確認框）
+  const deleteOrder = (id: string) => setDeletingId(id)
   const confirmDelete = async () => {
     if (!deletingId) return
     const { error } = await supabase.from('orders').delete().eq('id', deletingId)
@@ -314,28 +341,54 @@ export default function StoreOrdersPage() {
       return
     }
     setDeletingId(null)
-    refreshByCurrentRange()
+    manualRefresh()
   }
-
   const cancelDelete = () => setDeletingId(null)
 
-  const filteredOrders = orders.filter(order => {
-    if (filter === 'pending') return order.status !== 'completed'
-    if (filter === 'completed') return order.status === 'completed'
-    return true
-  })
+  // 狀態篩選
+  const filteredOrders = useMemo(() => {
+    return orders.filter(order => {
+      if (filter === 'pending') return order.status !== 'completed'
+      if (filter === 'completed') return order.status === 'completed'
+      return true
+    })
+  }, [orders, filter])
+
+  // 數學：總金額（若 DB 沒 total，就用 items 計算）
+  const calcTotal = (o: Order) =>
+    typeof o.total === 'number' && !Number.isNaN(o.total)
+      ? o.total
+      : (o.items || []).reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 0), 0)
+
+  // 顯示的桌號（兼容 'takeout' / '外帶' / 0）
+  const displayTable = (t: string | null) => {
+    if (!t) return '-'
+    const s = String(t).trim().toLowerCase()
+    if (s === 'takeout' || s === '外帶' || s === '0') return dict.takeout
+    return t
+  }
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <audio ref={audioRef} src="/ding.mp3" preload="auto" />
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">📦 {dict.title}</h1>
-        <button
-          onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-          className="text-sm border px-2 py-1 rounded"
-        >
-          {lang === 'zh' ? 'EN' : '中'}
-        </button>
+        <div className="flex items-center gap-2">
+          <label className="text-sm flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+            />
+            {dict.autoRefresh}
+          </label>
+          <button
+            onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+            className="text-sm border px-2 py-1 rounded"
+          >
+            {lang === 'zh' ? 'EN' : '中'}
+          </button>
+        </div>
       </div>
 
       {/* 區間選擇 */}
@@ -347,21 +400,29 @@ export default function StoreOrdersPage() {
         {range === 'custom' && (
           <>
             <input
+              aria-label={dict.from}
               type="date"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
               className="border p-1 rounded"
-              placeholder={dict.from}
             />
             <input
+              aria-label={dict.to}
               type="date"
               value={endDate}
               onChange={e => setEndDate(e.target.value)}
               className="border p-1 rounded"
-              placeholder={dict.to}
             />
           </>
         )}
+
+        <button
+          onClick={manualRefresh}
+          className="ml-auto px-4 py-1 rounded border hover:bg-gray-100"
+          aria-label={dict.refresh}
+        >
+          {dict.refresh}
+        </button>
       </div>
 
       {/* 狀態篩選 */}
@@ -370,6 +431,10 @@ export default function StoreOrdersPage() {
         <button onClick={() => setFilter('pending')} className={`px-4 py-1 rounded ${filter === 'pending' ? 'bg-yellow-500 text-white' : 'bg-gray-200'}`}>{dict.pending}</button>
         <button onClick={() => setFilter('completed')} className={`px-4 py-1 rounded ${filter === 'completed' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>{dict.completed}</button>
       </div>
+
+      {/* 錯誤 / 讀取 */}
+      {loading && <p className="text-gray-500 mb-2">{dict.loading}</p>}
+      {errorMsg && <p className="text-red-600 mb-2">❌ {dict.error}（{errorMsg}）</p>}
 
       {/* 訂單清單 */}
       {filteredOrders.length === 0 ? (
@@ -382,7 +447,7 @@ export default function StoreOrdersPage() {
             <div key={order.id} className="border rounded-lg p-4 shadow hover:shadow-md transition">
               <div className="flex justify-between items-center mb-2">
                 <h2 className="font-semibold">
-                  {dict.table}：{order.table_number === '外帶' ? dict.takeout : order.table_number}
+                  {dict.table}：{displayTable(order.table_number)}
                 </h2>
                 <div className="flex items-center gap-2">
                   {order.status === 'completed' && <span className="text-green-600 text-sm">{dict.done}</span>}
@@ -411,6 +476,10 @@ export default function StoreOrdersPage() {
                     {idx < (order.items?.length ?? 0) - 1 ? '、' : ''}
                   </span>
                 ))}
+              </div>
+
+              <div className="text-sm text-gray-700">
+                <strong>{dict.total}：</strong> NT$ {calcTotal(order)}
               </div>
 
               {order.spicy_level && (
@@ -452,7 +521,7 @@ export default function StoreOrdersPage() {
                 <label className="block text-sm text-gray-600 mb-1">{dict.table}</label>
                 <input
                   type="text"
-                  value={editingOrder.table_number}
+                  value={editingOrder.table_number ?? ''}
                   onChange={e => setEditingOrder(prev => prev ? { ...prev, table_number: e.target.value } : prev)}
                   className="w-full border rounded px-3 py-2"
                   placeholder={dict.takeout}
@@ -463,7 +532,7 @@ export default function StoreOrdersPage() {
                 <label className="block text-sm text-gray-600 mb-1">{dict.status}</label>
                 <select
                   value={editingOrder.status ?? 'pending'}
-                  onChange={e => setEditingOrder(prev => prev ? { ...prev, status: e.target.value } : prev)}
+                  onChange={e => setEditingOrder(prev => prev ? { ...prev, status: e.target.value as any } : prev)}
                   className="w-full border rounded px-3 py-2"
                 >
                   <option value="pending">{dict.status_pending}</option>
