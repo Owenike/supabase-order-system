@@ -5,6 +5,8 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 import { getLiff } from '@/lib/liffClient'
+import { fetchItemOptions, type OptionGroup } from '@/utils/fetchItemOptions'
+import ItemOptionPicker from '@/components/ItemOptionPicker'
 
 // ---------- 常數與工具 ----------
 const SAVED_QS_KEY = 'order_return_qs'
@@ -273,6 +275,11 @@ function OrderPage() {
   const [hasLineCookie, setHasLineCookie] = useState<boolean>(!!getCookie('line_user_id'))
   const [loggingIn, setLoggingIn] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // === 新增：商品選項相關狀態 ===
+  const [optionGroups, setOptionGroups] = useState<OptionGroup[]>([])
+  const [chosenOptions, setChosenOptions] = useState<Record<string, string | string[]>>({})
+  const [activeMenu, setActiveMenu] = useState<MenuItem | null>(null)
 
   // 內用旗標
   const [dineInEnabled, setDineInEnabled] = useState<boolean>(true)
@@ -589,19 +596,46 @@ function OrderPage() {
   }, [router.query, isLiffReady, isTakeout])
 
   // ---------- UI 事件 ----------
-  const toggleItem = (menu: MenuItem) => {
-    const exists = selectedItems.find((i) => i.id === menu.id)
-    if (exists) {
-      setSelectedItems(
-        selectedItems.map((i) => (i.id === menu.id ? { ...i, quantity: i.quantity + 1 } : i))
-      )
-    } else {
-      setSelectedItems([
-        ...selectedItems,
-        { id: menu.id, name: menu.name, price: menu.price, quantity: 1 }
-      ])
+  // === 修改：點擊菜單 → 先讀取商品選項（有選項就跳出彈窗；沒選項直接加入） ===
+  const toggleItem = async (menu: MenuItem) => {
+    try {
+      const groups = await fetchItemOptions(menu.id)
+      // 若 groups 為空，走原本「直接 +1」邏輯
+      if (!groups || groups.length === 0) {
+        const exists = selectedItems.find((i) => i.id === menu.id)
+        if (exists) {
+          setSelectedItems(
+            selectedItems.map((i) => (i.id === menu.id ? { ...i, quantity: i.quantity + 1 } : i))
+          )
+        } else {
+          setSelectedItems((prev) => [
+            ...prev,
+            { id: menu.id, name: menu.name, price: menu.price, quantity: 1 }
+          ])
+        }
+        return
+      }
+      // 有選項：開啟彈窗
+      setOptionGroups(groups)
+      setChosenOptions({})
+      setActiveMenu(menu)
+    } catch (e) {
+      console.error('fetchItemOptions error:', e)
+      // fallback：若讀取失敗，仍允許直接加入
+      const exists = selectedItems.find((i) => i.id === menu.id)
+      if (exists) {
+        setSelectedItems(
+          selectedItems.map((i) => (i.id === menu.id ? { ...i, quantity: i.quantity + 1 } : i))
+        )
+      } else {
+        setSelectedItems((prev) => [
+          ...prev,
+          { id: menu.id, name: menu.name, price: menu.price, quantity: 1 }
+        ])
+      }
     }
   }
+
   const reduceItem = (id: string) => {
     setSelectedItems(
       selectedItems
@@ -609,6 +643,39 @@ function OrderPage() {
         .filter((i) => i.quantity > 0)
     )
   }
+
+  // 新增：在彈窗中按「加入」後，把選項加價計入單價並加入購物車
+  const addToCart = () => {
+    if (!activeMenu) return
+    // 必填檢查
+    const missing = optionGroups.find((g) => g.required && !chosenOptions[g.id])
+    if (missing) {
+      alert(`請選擇 ${missing.name}`)
+      return
+    }
+    // 計算加價
+    let delta = 0
+    optionGroups.forEach((g) => {
+      const val = chosenOptions[g.id]
+      if (!val) return
+      if (g.input_type === 'single') {
+        const v = g.values.find((x) => x.value === val)
+        if (v?.price_delta) delta += v.price_delta
+      } else {
+        ;(val as string[]).forEach((vv) => {
+          const v = g.values.find((x) => x.value === vv)
+          if (v?.price_delta) delta += v.price_delta
+        })
+      }
+    })
+    const finalPrice = activeMenu.price + delta
+    setSelectedItems((prev) => [
+      ...prev,
+      { id: activeMenu.id, name: activeMenu.name, price: finalPrice, quantity: 1 }
+    ])
+    setActiveMenu(null)
+  }
+
   const handleConfirm = () => {
     if (selectedItems.length === 0) return setErrorMsg(t.errorNoItem)
     if (isTakeout) {
@@ -1092,6 +1159,34 @@ function OrderPage() {
       {success && <div className="bg-green-100 text-green-700 p-3 rounded mb-4 shadow">{t.success}</div>}
 
       {content}
+
+      {/* === 商品選項彈窗 === */}
+      {activeMenu && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded p-6 w-full max-w-md shadow-lg">
+            <h2 className="text-lg font-bold mb-4">{activeMenu.name}</h2>
+            <ItemOptionPicker
+              groups={optionGroups}
+              value={chosenOptions}
+              onChange={setChosenOptions}
+            />
+            <div className="mt-4 flex justify-end gap-3">
+              <button
+                onClick={() => setActiveMenu(null)}
+                className="px-4 py-2 border rounded"
+              >
+                取消
+              </button>
+              <button
+                onClick={addToCart}
+                className="px-4 py-2 bg-green-600 text-white rounded"
+              >
+                加入
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
