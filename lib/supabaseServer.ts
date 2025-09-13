@@ -36,7 +36,6 @@ export function createServerSupabaseClient(req: NextApiRequest, res: NextApiResp
       },
       set(name: string, value: string, options?: CookieOptions) {
         const cookie = serialize(name, value, {
-          // 預設選項
           path: options?.path ?? '/',
           httpOnly: options?.httpOnly ?? true,
           sameSite: (options?.sameSite as any) ?? (isProd ? 'lax' : 'lax'),

@@ -1,8 +1,8 @@
-// /pages/_app.tsx
+// pages/_app.tsx
 import type { AppProps } from 'next/app'
-import React from 'react'
+import React, { useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import '@/styles/globals.css'               // ★ 加這行！載入 Tailwind
+import '@/styles/globals.css'               // ★ 載入全域樣式（Tailwind 等）
 
 class RootErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; msg: string }> {
   constructor(props: any) { super(props); this.state = { hasError: false, msg: '' } }
@@ -33,6 +33,31 @@ class RootErrorBoundary extends React.Component<{ children: React.ReactNode }, {
 }
 
 export default function MyApp({ Component, pageProps }: AppProps) {
+  // ✅ 關鍵：把前端 session 同步成 Cookie，供 API 端讀取
+  useEffect(() => {
+    // 1) 首次載入時，若已經登入，主動同步一次
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      await fetch('/api/auth/callback', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: 'INITIAL', session }),
+      })
+    })()
+
+    // 2) 登入/登出/token 變更時，同步 Cookie
+    const { data: subscription } = supabase.auth.onAuthStateChange(async (event, session) => {
+      await fetch('/api/auth/callback', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event, session }),
+      })
+    })
+    return () => { subscription.subscription.unsubscribe() }
+  }, [])
+
   return (
     <RootErrorBoundary>
       <Component {...pageProps} />
