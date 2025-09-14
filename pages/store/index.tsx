@@ -211,20 +211,22 @@ export default function StoreHomePage() {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* ==== 頂部導覽：左上角 LOGO、右上角語言與登出 ==== */}
-      <header className="flex items-center justify-between px-4 sm:px-6 md:px-10 py-4">
-        <div className="flex items-center gap-3">
+      {/* ==== 頂部導覽：左上角 LOGO、右上角語言與登出（放大版） ==== */}
+      <header className="flex items-center justify-between px-4 sm:px-6 md:px-10 py-6 md:py-8">
+        <div className="flex items-center gap-4 sm:gap-5">
+          {/* LOGO 放大：手機 56、平板 64、桌機 80 */}
           <Image
             src="/logo.png"
             alt="品牌 Logo"
-            width={40}
-            height={40}
-            className="rounded-full"
+            width={80}
+            height={80}
+            className="rounded-full w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 shadow-lg"
             priority
           />
-          <div className="hidden sm:block text-sm text-white/70">
+          {/* 文字放大：手機 lg、平板 xl、桌機 2xl；不再 hidden */}
+          <div className="text-lg sm:text-xl md:text-2xl text-white/90 leading-tight">
             {t.brandSubtitle}{' '}
-            <span className="text-white font-medium">{storeName}</span>
+            <span className="font-semibold text-white">{storeName}</span>
           </div>
         </div>
 
