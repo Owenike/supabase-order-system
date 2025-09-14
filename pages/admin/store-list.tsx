@@ -67,7 +67,7 @@ export default function StoreListPage() {
           ...s,
           email: s.email ?? null,
           phone: s.phone ?? null,
-          dine_in_enabled: true,
+          dine_in_enabled: true, // 預設啟用，後面旗標覆蓋
         })) ?? [];
 
       // 2) 一次抓回所有店家的 dine_in 旗標
@@ -160,7 +160,7 @@ export default function StoreListPage() {
       method: 'DELETE',
       headers,
       body: JSON.stringify({ email, store_id }),
-      credentials: 'include',
+      credentials: 'include', // 帶 Supabase Cookie
     });
 
     const result = await res.json();
@@ -172,7 +172,7 @@ export default function StoreListPage() {
     }
   };
 
-  // === 重要修正：暫停/啟用時，連動前台內用/外帶旗標（改由 Server API 執行，避免 RLS 403）===
+  // === 改用 Server API：不要在前端 upsert store_feature_flags ===
   async function cascadeOrderingFlags(store_id: string, enabled: boolean) {
     const headers = await getAuthHeaders();
     const resp = await fetch('/api/admin/set-ordering-flags', {
@@ -200,14 +200,16 @@ export default function StoreListPage() {
       });
 
       const result = await res.json();
-      if (!res.ok) throw new Error(result?.error || 'toggle-store-active failed');
+      if (!res.ok) {
+        throw new Error(result?.error || 'toggle-store-active failed');
+      }
 
       // 更新列表狀態
       setStores((prev) =>
         prev.map((s) => (s.id === store_id ? { ...s, is_active: isActive } : s))
       );
 
-      // ★ 同步前台：is_active=false → 封鎖內用與外帶；true → 全部開啟（由 Server 以 service_role upsert）
+      // ★ 這裡只呼叫 Server API，同步關閉/開啟前台內用/外帶旗標
       try {
         await cascadeOrderingFlags(store_id, isActive);
       } catch (e: any) {
@@ -219,10 +221,11 @@ export default function StoreListPage() {
     }
   };
 
-  // 切換「內用」旗標（保留你原本的單獨控管路徑 /api/admin/toggle-dinein）
+  // 單獨切換「內用」：呼叫 Server 端 /api/admin/toggle-dinein（service_role）
   const handleToggleDineIn = async (store_id: string) => {
     try {
       setBusy(store_id);
+
       // 樂觀更新：先反轉
       setStores((prev) =>
         prev.map((s) =>
@@ -235,11 +238,13 @@ export default function StoreListPage() {
         method: 'POST',
         headers,
         body: JSON.stringify({ store_id }),
-        credentials: 'include',
+        credentials: 'include', // 帶 Supabase Cookie
       });
 
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || '切換失敗');
+      if (!res.ok) {
+        throw new Error(json?.error || '切換失敗');
+      }
 
       // 以後端值校正
       setStores((prev) =>
@@ -275,7 +280,7 @@ export default function StoreListPage() {
             編輯
           </button>
 
-          {/* 內用開關 */}
+          {/* 內用開關：dine_in_enabled=true → 顯示「封鎖內用」 */}
           <button
             onClick={() => handleToggleDineIn(store.id)}
             disabled={busy === store.id}
@@ -297,7 +302,7 @@ export default function StoreListPage() {
               : '啟動內用'}
           </button>
 
-          {/* 啟用/暫停（同步關閉/開啟前台內用/外帶） */}
+          {/* 啟用/暫停（你原有的 is_active） */}
           <button
             onClick={() =>
               handleToggleActive(store.email || '', store.id, !store.is_active)
