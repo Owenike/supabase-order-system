@@ -243,6 +243,48 @@ const langMap = {
   }
 }
 
+// ---------- 舊資料鍵值的中文對應（防呆用） ----------
+function translateOptionPair(key: string, value: string | string[]): { k: string; v: string } {
+  const toText = (x: any) => String(x ?? '').trim()
+  const V = Array.isArray(value) ? value.map(toText) : [toText(value)]
+  let k = key
+  // key 映射
+  if (key === 'fixed_sweetness') k = '甜度'
+  else if (key === 'fixed_ice') k = '冰塊'
+  else if (key === 'fixed_size') k = '容量'
+  else if (/^[0-9a-f-]{24,}$/.test(key)) k = '加料' // 可能是選項組/值的 UUID，統一稱「加料」
+
+  // value 映射（只針對舊資料常見值，新的會直接是中文）
+  const mapSweet: Record<string, string> = { '0': '無糖', '30': '微糖', '50': '半糖', '70': '少糖', '100': '全糖' }
+  const mapIce: Record<string, string> = { '0': '去冰', '30': '微冰', '50': '少冰', '100': '正常冰' }
+  const mapSize: Record<string, string> = { S: '小杯', M: '中杯', L: '大杯' }
+
+  let vText = V.join('、')
+  if (key === 'fixed_sweetness') vText = V.map((x) => mapSweet[x] || x).join('、')
+  if (key === 'fixed_ice') vText = V.map((x) => mapIce[x] || x).join('、')
+  if (key === 'fixed_size') vText = V.map((x) => mapSize[x] || x).join('、')
+
+  return { k, v: vText }
+}
+
+function renderOptionsList(opts?: OptionsMap | null) {
+  if (!opts || typeof opts !== 'object') return null
+  const entries = Object.entries(opts)
+  if (!entries.length) return null
+  return (
+    <ul className="ml-4 text-sm text-gray-600 list-disc">
+      {entries.map(([rawK, rawV]) => {
+        const { k, v } = translateOptionPair(rawK, rawV)
+        return (
+          <li key={rawK}>
+            {k}：{v}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 // ---------- Page ----------
 function OrderPage() {
   const router = useRouter()
@@ -282,7 +324,7 @@ function OrderPage() {
   const [loggingIn, setLoggingIn] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  // === 新增：商品選項相關狀態 ===
+  // === 商品選項狀態 ===
   const [optionGroups, setOptionGroups] = useState<OptionGroup[]>([])
   const [chosenOptions, setChosenOptions] = useState<Record<string, string | string[]>>({})
   const [activeMenu, setActiveMenu] = useState<MenuItem | null>(null)
@@ -297,7 +339,7 @@ function OrderPage() {
     [selectedItems]
   )
 
-  // 取得 LINE user cookie（優先 ID Token 的 sub，再補 profile）
+  // 取得 LINE user cookie
   const ensureLineCookie = useCallback(async () => {
     try {
       const liff = liffRef
@@ -325,7 +367,7 @@ function OrderPage() {
     }
   }, [liffRef])
 
-  // ---------- 初始化 LIFF（內用/外帶都需要登入） ----------
+  // ---------- 初始化 LIFF ----------
   useEffect(() => {
     const w = safeWindow()
     if (!w || !routerReady) return
@@ -333,7 +375,6 @@ function OrderPage() {
 
     ;(async () => {
       try {
-        // 允許 debug 跳過 LIFF
         if (router.query.__debug_noliff === '1') {
           setIsLiffReady(true)
           return
@@ -356,17 +397,14 @@ function OrderPage() {
           await ensureLineCookie()
           if (hasAuthParams) {
             const cleanUrl = buildCleanRedirectUrl(w, router.query)
-            console.log('[LIFF] logged-in & has code/state → clean URL to', cleanUrl)
             router.replace(cleanUrl)
           }
           if (!disposed) setIsLiffReady(true)
           return
         }
 
-        // 未登入：保留參數還原能力，先清 code/state
         if (hasAuthParams) {
           const cleanUrl = buildCleanRedirectUrl(w, router.query)
-          console.log('[LIFF] not-logged & has code/state → clean URL to', cleanUrl)
           router.replace(cleanUrl)
         }
         if (!disposed) setIsLiffReady(true)
@@ -394,7 +432,6 @@ function OrderPage() {
     if (hasCode && (!hasStore || !hasTable)) {
       const cookieQs = getCookie(COOKIE_QS_KEY)
       if (cookieQs) {
-        console.log('[LIFF] restore via cookie', cookieQs)
         router.replace(`/order${cookieQs}`)
         delCookie(COOKIE_QS_KEY)
         setQsRestored(true)
@@ -408,14 +445,11 @@ function OrderPage() {
           const s = u.searchParams.get('store')
           const t2 = u.searchParams.get('table')
           if (s && t2) {
-            console.log('[LIFF] restore via liffRedirectUri', decoded)
             router.replace(`/order?store=${encodeURIComponent(s)}&table=${encodeURIComponent(t2)}`)
             setQsRestored(true)
             return
           }
-        } catch (e) {
-          console.warn('parse liffRedirectUri failed', e)
-        }
+        } catch {}
       }
 
       const savedQs = w.sessionStorage.getItem(SAVED_QS_KEY) || ''
@@ -423,7 +457,6 @@ function OrderPage() {
         const parsed = parseQS(savedQs)
         const s = parsed.store || FALLBACK_STORE_ID
         const t2 = parsed.table || FALLBACK_TABLE
-        console.log('[LIFF] restore via session/local/fallback', s, t2)
         router.replace(`/order?store=${encodeURIComponent(s)}&table=${encodeURIComponent(t2)}`)
         w.sessionStorage.removeItem(SAVED_QS_KEY)
         setQsRestored(true)
@@ -438,7 +471,7 @@ function OrderPage() {
     }
   }, [routerReady, router.query, code, liffRedirectUri, router, qsRestored])
 
-  // ---------- 監聽 query 變化，寫入 storeId（含 UUID 防呆） ----------
+  // ---------- 監聽 query 變化，寫入 storeId ----------
   useEffect(() => {
     const w = safeWindow()
     const candidate =
@@ -476,9 +509,9 @@ function OrderPage() {
         .maybeSingle()
       if (error) {
         console.warn('fetchDineInFlag error:', error.message)
-        setDineInEnabled(true) // 無法讀取時，先視為可內用（可改為 false 取保守策略）
+        setDineInEnabled(true)
       } else {
-        setDineInEnabled(data ? !!data.enabled : true) // 沒旗標視為啟用
+        setDineInEnabled(data ? !!data.enabled : true)
       }
       setFlagLoaded(true)
     },
@@ -486,12 +519,10 @@ function OrderPage() {
   )
 
   // ---------- 資料載入 ----------
-  // ✅ 修正：只顯示「未完成」的訂單（completed / canceled 都不顯示）
   const fetchOrders = useCallback(async () => {
     if (!storeId || !UUID_RE.test(storeId)) return
     const lineUserId = getCookie('line_user_id')
 
-    // 查詢時間窗（近 60 天）
     const SINCE_DAYS = 60
     const sinceIso = new Date(Date.now() - SINCE_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
@@ -554,7 +585,6 @@ function OrderPage() {
     if (data) setCategories(data as unknown as Category[])
   }
 
-  // 旗標 + LIFF + 資料載入
   useEffect(() => {
     if (!storeId || !UUID_RE.test(storeId)) return
     ;(async () => {
@@ -573,21 +603,6 @@ function OrderPage() {
       await fetchOrders()
     })()
   }, [isLiffReady, storeId, fetchOrders, ensureLineCookie, liffRef, flagLoaded])
-
-  // ---------- 缺 cookie 上報（非必要，可保留除錯） ----------
-  useEffect(() => {
-    if (!isLiffReady) return
-    const lineUserId = getCookie('line_user_id')
-    const storeParam = typeof router.query.store === 'string' ? router.query.store : 'unknown'
-    if (isTakeout && !lineUserId) {
-      void supabase.from('login_logs').insert({
-        line_user_id: 'MISSING',
-        error_message: 'line_user_id not found in cookie',
-        user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
-        store_id: UUID_RE.test(storeParam) ? storeParam : null
-      })
-    }
-  }, [router.query, isLiffReady, isTakeout])
 
   // ---------- UI 事件 ----------
   // 點餐：先讀取商品選項（有選項→彈窗；沒選項→直接 +1）
@@ -635,15 +650,15 @@ function OrderPage() {
     )
   }
 
-  // 新增：在彈窗中按「加入」後，把選項加價計入單價並加入購物車（含 options）
+  // 在彈窗中按「加入」：把中文群組名 + 中文選項標籤寫入 options
   const addToCart = () => {
     if (!activeMenu) return
-    // 必填檢查
     const missing = optionGroups.find((g) => g.required && !chosenOptions[g.id])
     if (missing) {
       alert(`請選擇 ${missing.name}`)
       return
     }
+
     // 計算加價
     let delta = 0
     optionGroups.forEach((g) => {
@@ -661,22 +676,35 @@ function OrderPage() {
     })
     const finalPrice = activeMenu.price + delta
 
-    // 正規化空字串／空陣列 → 移除
-    const normalizedOptions: OptionsMap = {}
-    Object.entries(chosenOptions).forEach(([k, v]) => {
-      if (Array.isArray(v)) {
-        const arr = v.map((x) => String(x)).map((s) => s.trim()).filter(Boolean)
-        if (arr.length) normalizedOptions[k] = arr
+    // 產生「中文友善」的 options
+    const displayOptions: OptionsMap = {}
+    optionGroups.forEach((g) => {
+      const val = chosenOptions[g.id]
+      if (!val) return
+      if (g.input_type === 'single') {
+        const found = g.values.find((x) => x.value === val)
+        const label = (found?.label ?? found?.value ?? '').toString().trim()
+        if (label) displayOptions[g.name] = label
       } else {
-        const s = String(v).trim()
-        if (s) normalizedOptions[k] = s
+        const labels = (val as string[])
+          .map((vv) => {
+            const f = g.values.find((x) => x.value === vv)
+            return (f?.label ?? f?.value ?? '').toString().trim()
+          })
+          .filter(Boolean)
+        if (labels.length) displayOptions[g.name] = labels
       }
     })
-    const optionsToSave = Object.keys(normalizedOptions).length ? normalizedOptions : undefined
 
     setSelectedItems((prev) => [
       ...prev,
-      { id: activeMenu.id, name: activeMenu.name, price: finalPrice, quantity: 1, ...(optionsToSave ? { options: optionsToSave } : {}) }
+      {
+        id: activeMenu.id,
+        name: activeMenu.name,
+        price: finalPrice,
+        quantity: 1,
+        ...(Object.keys(displayOptions).length ? { options: displayOptions } : {})
+      }
     ])
     setActiveMenu(null)
   }
@@ -695,7 +723,6 @@ function OrderPage() {
     setConfirming(true)
   }
 
-  // 切換為外帶（用於被封鎖時）
   const switchToTakeout = () => {
     const q = new URLSearchParams(router.asPath.split('?')[1] || '')
     q.set('table', 'takeout')
@@ -703,7 +730,6 @@ function OrderPage() {
     router.replace(`/order?${q.toString()}`)
   }
 
-  // 只在使用者按下按鈕時才觸發登入（回跳到 /line-success）
   const handleManualLogin = async () => {
     const w = safeWindow()
     if (!w || loggingIn) return
@@ -792,13 +818,12 @@ function OrderPage() {
         body: JSON.stringify({
           store_id: storeId,
           table_number: effectiveTable || (isTakeout ? 'takeout' : ''),
-          items: selectedItems, // 內含 options
+          items: selectedItems, // 含 options（中文）
           note: noteText,
           status: 'pending',
           total: totalAmount,
           line_user_id: isTakeout ? lineUserId : null,
           spicy_level: spicyLevel || null
-          // display_name: 移除
         })
       })
 
@@ -826,7 +851,7 @@ function OrderPage() {
     }
   }
 
-  // ---------- Render：若未登入 LINE（無 cookie），先顯示登入卡片並阻擋內容 ----------
+  // ---------- Render ----------
   if (invalidStore) {
     return (
       <div className="p-4 max-w-2xl mx-auto">
@@ -852,7 +877,6 @@ function OrderPage() {
     return <p className="text-red-500 p-4">❗請稍候，頁面初始化中…</p>
   }
 
-  // 內用被封鎖且目前不是外帶：阻擋 + 提供「切換為外帶」
   if (!isTakeout && !dineInEnabled) {
     return (
       <div className="p-4 max-w-2xl mx-auto relative">
@@ -876,7 +900,6 @@ function OrderPage() {
     )
   }
 
-  // 內用/外帶統一登入門檻：沒有 line_user_id 就先顯示登入卡片
   if (!hasLineCookie) {
     return (
       <div className="p-4 max-w-2xl mx-auto relative">
@@ -927,21 +950,6 @@ function OrderPage() {
     )
   }
 
-  const renderOptions = (opts?: OptionsMap | null) => {
-    if (!opts || typeof opts !== 'object') return null
-    const entries = Object.entries(opts)
-    if (!entries.length) return null
-    return (
-      <ul className="ml-4 text-sm text-gray-600 list-disc">
-        {entries.map(([group, val]) => (
-          <li key={group}>
-            {group}：{Array.isArray(val) ? val.join('、') : val}
-          </li>
-        ))}
-      </ul>
-    )
-  }
-
   const content = !confirming ? (
     <>
       {orderHistory.length > 0 && (
@@ -969,7 +977,7 @@ function OrderPage() {
                 {order.items.map((item, i) => (
                   <li key={i} className="mb-1">
                     {item.name} × {item.quantity}（NT$ {item.price * item.quantity}）
-                    {renderOptions(item.options)}
+                    {renderOptionsList(item.options)}
                   </li>
                 ))}
               </ul>
@@ -1111,7 +1119,7 @@ function OrderPage() {
         {selectedItems.map((item, idx) => (
           <li key={idx} className="mb-1">
             {item.name} × {item.quantity}（NT$ {item.price}）
-            {renderOptions(item.options)}
+            {renderOptionsList(item.options)}
           </li>
         ))}
       </ul>
@@ -1140,20 +1148,6 @@ function OrderPage() {
       </div>
     </div>
   )
-
-  // 清除授權參數（保留 store/table）
-  const clearAuthParams = () => {
-    const w = safeWindow()
-    if (!w) return
-    const cookieQs = getCookie(COOKIE_QS_KEY)
-    if (cookieQs) {
-      router.replace(`/order${cookieQs}`)
-      delCookie(COOKIE_QS_KEY)
-      return
-    }
-    const cleanUrl = buildCleanRedirectUrl(w, router.query)
-    router.replace(cleanUrl)
-  }
 
   return (
     <div className="p-4 max-w-2xl mx-auto relative">

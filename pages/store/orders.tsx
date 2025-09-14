@@ -4,10 +4,14 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
+type OptionsMap = Record<string, string | string[]>
+
 interface OrderItem {
   name: string
   quantity: number
   price: number
+  // 新增：顯示用選項（可能是中文，也可能是舊資料的英文字鍵）
+  options?: OptionsMap | null
 }
 interface Order {
   id: string
@@ -93,7 +97,8 @@ export default function StoreOrdersPage() {
           autoRefresh: '自動刷新',
           loading: '讀取中…',
           error: '讀取失敗，請稍後再試',
-          noStore: '尚未取得 store_id，請確認已登入且 localStorage 有 store_id'
+          noStore: '尚未取得 store_id，請確認已登入且 localStorage 有 store_id',
+          options: '選項'
         },
         en: {
           title: 'Order Management',
@@ -137,11 +142,51 @@ export default function StoreOrdersPage() {
           autoRefresh: 'Auto Refresh',
           loading: 'Loading…',
           error: 'Failed to load, please try again',
-          noStore: 'store_id not found. Please ensure you are logged in and localStorage has store_id.'
+          noStore: 'store_id not found. Please ensure you are logged in and localStorage has store_id.',
+          options: 'Options'
         }
       }[lang]),
     [lang]
   )
+
+  // 舊資料鍵值中文化（與前台一致）
+  const translateOptionPair = (key: string, value: string | string[]): { k: string; v: string } => {
+    const toText = (x: any) => String(x ?? '').trim()
+    const V = Array.isArray(value) ? value.map(toText) : [toText(value)]
+    let k = key
+    if (key === 'fixed_sweetness') k = '甜度'
+    else if (key === 'fixed_ice') k = '冰塊'
+    else if (key === 'fixed_size') k = '容量'
+    else if (/^[0-9a-f-]{24,}$/.test(key)) k = '加料'
+
+    const mapSweet: Record<string, string> = { '0': '無糖', '30': '微糖', '50': '半糖', '70': '少糖', '100': '全糖' }
+    const mapIce: Record<string, string> = { '0': '去冰', '30': '微冰', '50': '少冰', '100': '正常冰' }
+    const mapSize: Record<string, string> = { S: '小杯', M: '中杯', L: '大杯' }
+
+    let vText = V.join('、')
+    if (key === 'fixed_sweetness') vText = V.map((x) => mapSweet[x] || x).join('、')
+    if (key === 'fixed_ice') vText = V.map((x) => mapIce[x] || x).join('、')
+    if (key === 'fixed_size') vText = V.map((x) => mapSize[x] || x).join('、')
+    return { k, v: vText }
+  }
+
+  const renderOptions = (opts?: OptionsMap | null) => {
+    if (!opts || typeof opts !== 'object') return null
+    const entries = Object.entries(opts)
+    if (!entries.length) return null
+    return (
+      <ul className="ml-4 list-disc text-gray-600">
+        {entries.map(([rawK, rawV]) => {
+          const { k, v } = translateOptionPair(rawK, rawV)
+          return (
+            <li key={rawK} className="text-sm">
+              {k}：{v}
+            </li>
+          )
+        })}
+      </ul>
+    )
+  }
 
   // 允許播放提示音
   useEffect(() => {
@@ -204,7 +249,7 @@ export default function StoreOrdersPage() {
     }
   }, [storeId, range, startDate, endDate, autoRefresh])
 
-  // 查詢（顯示所有狀態）
+  // 查詢
   const fetchOrders = async (sid: string, fromIso: string, toIso: string) => {
     setLoading(true)
     setErrorMsg('')
@@ -251,11 +296,13 @@ export default function StoreOrdersPage() {
   // 編輯
   const openEdit = (order: Order) => {
     setEditingOrder({ ...order })
+    // 編輯面板不改 options，但要保留
     setEditItems(
       (order.items ?? []).map((i: any) => ({
         name: String(i?.name ?? ''),
         quantity: Number.isFinite(Number(i?.quantity)) ? Math.max(0, Math.floor(Number(i.quantity))) : 0,
-        price: Number.isFinite(Number(i?.price)) ? Math.max(0, Number(i.price)) : 0
+        price: Number.isFinite(Number(i?.price)) ? Math.max(0, Number(i.price)) : 0,
+        options: i?.options ?? null
       }))
     )
   }
@@ -288,11 +335,13 @@ export default function StoreOrdersPage() {
       return
     }
 
+    // 保留每個品項原本的 options（不提供修改 UI）
     const cleanedItems = editItems
-      .map(i => ({
+      .map((i, idx) => ({
         name: String(i.name || '').trim(),
         quantity: Number.isFinite(Number(i.quantity)) ? Math.max(0, Math.floor(Number(i.quantity))) : 0,
-        price: Number.isFinite(Number(i.price)) ? Math.max(0, Number(i.price)) : 0
+        price: Number.isFinite(Number(i.price)) ? Math.max(0, Number(i.price)) : 0,
+        ...(editingOrder.items?.[idx]?.options ? { options: editingOrder.items[idx].options as OptionsMap } : {})
       }))
       .filter(i => i.name && i.quantity > 0)
 
@@ -464,11 +513,11 @@ export default function StoreOrdersPage() {
 
               <div className="text-sm text-gray-700 mb-1">
                 <strong>{dict.items}：</strong>
-                {order.items?.map((item, idx) => (
-                  <span key={idx}>
+                {(order.items ?? []).map((item, idx) => (
+                  <div key={idx} className="mb-1">
                     {item.name} ×{item.quantity}
-                    {idx < (order.items?.length ?? 0) - 1 ? '、' : ''}
-                  </span>
+                    {renderOptions(item.options)}
+                  </div>
                 ))}
               </div>
 
@@ -557,7 +606,7 @@ export default function StoreOrdersPage() {
               </div>
             </div>
 
-            {/* 品項編輯 */}
+            {/* 品項編輯（不動 options，但會保留） */}
             <div className="mt-4">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-medium">{dict.items}</h4>
