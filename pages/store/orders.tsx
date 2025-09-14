@@ -552,7 +552,7 @@ export default function StoreOrdersPage() {
 
       {/* 編輯面板 */}
       {editingOrder && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify中心 z-50">
           <div className="bg-white w-full max-w-2xl rounded-lg shadow-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">{dict.editOrder}</h3>
@@ -668,7 +668,7 @@ export default function StoreOrdersPage() {
               </button>
               <button
                 onClick={saveEdit}
-                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+                className="px-4 py-2 rounded bg-blue-600 text白 hover:bg-blue-700 disabled:opacity-60"
                 disabled={isSaving}
               >
                 {isSaving ? dict.saving : dict.save}
@@ -680,15 +680,15 @@ export default function StoreOrdersPage() {
 
       {/* 刪除確認框 */}
       {deletingId && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white w-full max-w-md rounded-lg shadow-lg p-6">
+        <div className="fixed inset-0 bg黑/40 flex items-center justify-center z-50">
+          <div className="bg白 w-full max-w-md rounded-lg shadow-lg p-6">
             <h3 className="text-lg font-semibold mb-2">{dict.confirmDeleteTitle}</h3>
             <p className="text-sm text-gray-700">{dict.confirmDeleteText}</p>
             <div className="mt-6 flex justify-end gap-3">
               <button onClick={cancelDelete} className="px-4 py-2 rounded border">{dict.cancel}</button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+                className="px-4 py-2 rounded bg-red-600 text白 hover:bg-red-700"
               >
                 {dict.confirm}
               </button>
