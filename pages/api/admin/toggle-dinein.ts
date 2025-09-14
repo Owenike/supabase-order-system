@@ -1,67 +1,75 @@
-// pages/api/admin/toggle-dinein.ts
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { createClient } from '@supabase/supabase-js';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import type { NextApiRequest, NextApiResponse } from 'next'
+import { createClient, type User } from '@supabase/supabase-js'
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
+
+const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+})
+
+async function isAdmin(user: User): Promise<boolean> {
+  const um: any = user.user_metadata || {}
+  const am: any = (user as any).app_metadata || {}
+  const roles = new Set<string>()
+  const push = (v: any) => {
+    if (!v) return
+    if (Array.isArray(v)) v.forEach((x) => x && roles.add(String(x)))
+    else roles.add(String(v))
+  }
+  push(um.role); push(um.roles); push(am.role); push(am.roles)
+  if (roles.has('admin')) return true
+
+  try {
+    const { data } = await admin
+      .from('store_accounts')
+      .select('is_admin, role')
+      .eq('email', user.email!)
+      .maybeSingle()
+    if (data?.is_admin === true) return true
+    if (data?.role === 'admin') return true
+  } catch {}
+  return false
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST'); return res.status(405).json({ error: 'Method Not Allowed' })
+  }
+
   try {
-    if (req.method !== 'POST') {
-      return res.status(405).json({ error: 'Method Not Allowed' });
-    }
+    const authz = req.headers.authorization || ''
+    const token = authz.startsWith('Bearer ') ? authz.slice(7) : null
+    if (!token) return res.status(401).json({ error: 'Missing bearer token' })
 
-    // 1) 從 Authorization header 取出 access_token
-    const auth = req.headers.authorization || '';
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : undefined;
-    if (!token) return res.status(401).json({ error: 'Unauthorized' });
+    const { data: userRes, error: userErr } = await admin.auth.getUser(token)
+    if (userErr || !userRes?.user) return res.status(401).json({ error: 'Invalid token' })
 
-    // 2) 用 token 取得當前使用者資料（不靠 cookies）
-    const supabaseAuth = createClient(SUPABASE_URL, ANON_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    const { data: userRes, error: userErr } = await supabaseAuth.auth.getUser(token);
-    if (userErr || !userRes?.user) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    const user = userRes.user;
-    if (user.user_metadata?.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden: admin only' });
-    }
+    const allowed = await isAdmin(userRes.user)
+    if (!allowed) return res.status(403).json({ error: 'Forbidden: admin only' })
 
-    // 3) 參數
-    const { store_id } = req.body as { store_id?: string };
-    if (!store_id) return res.status(400).json({ error: 'Missing store_id' });
+    const { store_id } = req.body as { store_id?: string }
+    if (!store_id) return res.status(400).json({ error: 'store_id is required' })
 
-    // 4) 讀取現況
-    const { data: existing, error: getErr } = await supabaseAdmin
+    const { data: curr, error: selErr } = await admin
       .from('store_feature_flags')
-      .select('id, enabled')
+      .select('enabled')
       .eq('store_id', store_id)
       .eq('feature_key', 'dine_in')
-      .maybeSingle();
-    if (getErr) return res.status(500).json({ error: getErr.message });
+      .maybeSingle()
+    if (selErr) return res.status(500).json({ error: selErr.message })
 
-    const nextEnabled = existing ? !existing.enabled : false; // 第一次點→封鎖(false)
-
-    // 5) UPSERT 反轉
-    const { error: upsertErr } = await supabaseAdmin
+    const newEnabled = !(curr ? !!curr.enabled : true)
+    const { error: upErr } = await admin
       .from('store_feature_flags')
       .upsert(
-        {
-          store_id,
-          feature_key: 'dine_in',
-          enabled: nextEnabled,
-          updated_at: new Date().toISOString(),
-          updated_by: user.id,
-        },
+        { store_id, feature_key: 'dine_in', enabled: newEnabled, updated_at: new Date().toISOString() },
         { onConflict: 'store_id,feature_key' }
-      );
-    if (upsertErr) return res.status(500).json({ error: upsertErr.message });
+      )
+    if (upErr) return res.status(500).json({ error: upErr.message })
 
-    return res.status(200).json({ store_id, dine_in_enabled: nextEnabled });
+    return res.status(200).json({ ok: true, dine_in_enabled: newEnabled })
   } catch (e: any) {
-    return res.status(500).json({ error: e?.message || 'Unexpected error' });
+    return res.status(500).json({ error: e?.message || 'Unexpected error' })
   }
 }

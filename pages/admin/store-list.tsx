@@ -28,6 +28,25 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+/** 前端的彈性 admin 判斷，避免誤判導回 login（API 端仍會再次嚴格驗證） */
+function sessionIsAdmin(session: any): boolean {
+  const u = session?.user;
+  if (!u) return false;
+  const um = u.user_metadata || {};
+  const am = (u as any).app_metadata || {};
+  const roles = new Set<string>();
+  const push = (v: any) => {
+    if (!v) return;
+    if (Array.isArray(v)) v.forEach((x) => x && roles.add(String(x)));
+    else roles.add(String(v));
+  };
+  push(um.role);
+  push(um.roles);
+  push(am.role);
+  push(am.roles);
+  return roles.has('admin');
+}
+
 export default function StoreListPage() {
   const [stores, setStores] = useState<StoreRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +64,7 @@ export default function StoreListPage() {
       const sessionRes = await supabase.auth.getSession();
       const session = sessionRes.data.session;
 
-      if (!session || session.user.user_metadata?.role !== 'admin') {
+      if (!session || !sessionIsAdmin(session)) {
         router.replace('/admin/login');
         return;
       }
