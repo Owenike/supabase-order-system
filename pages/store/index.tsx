@@ -15,19 +15,19 @@ interface Order {
 
 const langMap = {
   zh: {
-    pageTitle: '從新客到熟客，掌握全渠道會員經營',
-    manageTitle: '電子會員卡 / 分類與菜單管理',
+    pageTitle: '從新客到熟客，營收成長看得見',
+    manageTitle: '分類與菜單管理',
     manageDesc:
-      '在後台快速建立分類與餐點，支援多分店同步管理；消費者可透過 LINE/QR 連結下單與查看點數。',
-    ordersTitle: '自動蒐集顧客資料 / 訂單管理',
+      '在後台快速建立分類與餐點，支援多分店同步管理；消費者可透過 LINE/QR 連結下單。',
+    ordersTitle: '訂單管理',
     ordersDesc:
-      '整合訂單狀態、備註與通知，結合行銷工具蒐集來客資料，打造回流漏斗。',
-    statsTitle: '自動化分眾與再行銷 / 銷售報表',
+      '整合訂單狀態、備註與通知，出餐流程更順、不漏單。',
+    statsTitle: '銷售報表',
     statsDesc:
       '以日期與品項維度查看營收與熱門時段，協助你做分眾與再行銷決策。',
-    qrcodeTitle: '完善的會員分級制度 / 產生 QRCode',
+    qrcodeTitle: '產生 QRCode',
     qrcodeDesc:
-      '一鍵產生桌號 / 外帶 QRCode，支援列印與下載，配合會員等級優惠策略使用。',
+      '一鍵產生桌號 / 外帶 QRCode，支援列印與下載。',
     brandSubtitle: '您的店家名稱：',
     langSwitch: 'EN',
     langSwitchEn: '中',
