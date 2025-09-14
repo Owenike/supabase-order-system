@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/router'
+import Link from 'next/link'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -39,20 +40,22 @@ export default function StoreShell({
 
   useEffect(() => {
     const init = async () => {
-      // 1) Auth
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session || !session.user) {
         router.replace('/login')
         return
       }
-      // 2) store_id
-      const storeId = typeof window !== 'undefined' ? localStorage.getItem('store_id') : null
+
+      const storeId =
+        typeof window !== 'undefined' ? localStorage.getItem('store_id') : null
       if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
         localStorage.clear()
         router.replace('/login')
         return
       }
-      // 3) 店名
+
       const { data: storeData } = await supabase
         .from('stores')
         .select('name')
@@ -60,7 +63,6 @@ export default function StoreShell({
         .maybeSingle()
       setStoreName(storeData?.name || '')
 
-      // 4) 帳號啟用
       const { data: accountData } = await supabase
         .from('store_accounts')
         .select('id, is_active')
@@ -97,22 +99,27 @@ export default function StoreShell({
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* 頂部：放大 LOGO＋店名、右上語言/登出 */}
+      {/* 頂部：左上 LOGO/店名（可點回 /store），右上語言/登出 */}
       <header className="flex items-center justify-between px-4 sm:px-6 md:px-10 py-6 md:py-8">
-        <div className="flex items-center gap-4 sm:gap-5">
+        <Link
+          href="/store"
+          className="flex items-center gap-4 sm:gap-5 group"
+          aria-label="返回店家首頁"
+          title="返回店家首頁"
+        >
           <Image
             src="/logo.png"
             alt="品牌 Logo"
             width={80}
             height={80}
-            className="rounded-full w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 shadow-lg"
+            className="rounded-full w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 shadow-lg transition-transform group-hover:scale-[1.03]"
             priority
           />
           <div className="text-lg sm:text-xl md:text-2xl text-white/90 leading-tight">
             {t.brandSubtitle}{' '}
             <span className="font-semibold text-white">{storeName}</span>
           </div>
-        </div>
+        </Link>
 
         <div className="flex items-center gap-2">
           <button
@@ -130,7 +137,7 @@ export default function StoreShell({
         </div>
       </header>
 
-      {/* 可選：頁面標題（由 _app 傳入） */}
+      {/* 可選：頁面標題 */}
       {title ? (
         <section className="px-4 sm:px-6 md:px-10 pt-2 pb-4 text-center">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight">
@@ -139,8 +146,25 @@ export default function StoreShell({
         </section>
       ) : null}
 
-      {/* 內容容器（與首頁一致的左右內距/下方留白） */}
-      <main className="px-4 sm:px-6 md:px-10 pb-16">{children}</main>
+      {/* 內容容器：預設白字；同時針對「白底元件」自動把文字改為深色 */}
+      <main
+        className="
+          px-4 sm:px-6 md:px-10 pb-16
+          [&_.surface]:text-gray-900
+          [&_.card]:text-gray-900
+          [&_.panel]:text-gray-900
+          [&_.prose]:text-gray-900
+          [&_.bg-white]:text-gray-900
+          [&_.bg-gray-50]:text-gray-900
+          [&_.bg-gray-100]:text-gray-900
+          [&_input]:text-gray-900 [&_input::placeholder]:text-gray-400
+          [&_textarea]:text-gray-900 [&_textarea::placeholder]:text-gray-400
+          [&_select]:text-gray-900 [&_option]:text-gray-900
+          [&_thead]:text-gray-900
+        "
+      >
+        {children}
+      </main>
     </div>
   )
 }

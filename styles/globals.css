@@ -91,3 +91,74 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ===================================================================================== */
+/* 讓「白底/淺底區塊」在深色頁面上自動使用深色文字（避免白字看不到） */
+/* 套用於常見容器類別與淺底背景，並處理表單、表格與 Prose 文字顏色。        */
+/* ===================================================================================== */
+
+:root {
+  --light-surface-fg: #111827; /* tailwind text-gray-900 */
+  --light-surface-muted: #6b7280; /* text-gray-500 */
+}
+
+/* 淺底容器本體 */
+.bg-white,
+.bg-gray-50,
+.bg-gray-100,
+.bg-slate-50,
+.bg-zinc-50,
+.surface,
+.card,
+.panel,
+.prose {
+  color: var(--light-surface-fg) !important;
+}
+
+/* 淺底容器內的文字元素（避免繼承到白字） */
+.bg-white :is(h1,h2,h3,h4,h5,h6,p,span,small,li,div,strong,em,a,label),
+.bg-gray-50 :is(h1,h2,h3,h4,h5,h6,p,span,small,li,div,strong,em,a,label),
+.bg-gray-100 :is(h1,h2,h3,h4,h5,h6,p,span,small,li,div,strong,em,a,label),
+.bg-slate-50 :is(h1,h2,h3,h4,h5,h6,p,span,small,li,div,strong,em,a,label),
+.bg-zinc-50 :is(h1,h2,h3,h4,h5,h6,p,span,small,li,div,strong,em,a,label),
+.surface :is(h1,h2,h3,h4,h5,h6,p,span,small,li,div,strong,em,a,label),
+.card :is(h1,h2,h3,h4,h5,h6,p,span,small,li,div,strong,em,a,label),
+.panel :is(h1,h2,h3,h4,h5,h6,p,span,small,li,div,strong,em,a,label),
+.prose :is(h1,h2,h3,h4,h5,h6,p,span,small,li,div,strong,em,a,label) {
+  color: var(--light-surface-fg) !important;
+}
+
+/* 表單（輸入/下拉/文字區） */
+.bg-white :is(input,textarea,select,option),
+.bg-gray-50 :is(input,textarea,select,option),
+.bg-gray-100 :is(input,textarea,select,option),
+.bg-slate-50 :is(input,textarea,select,option),
+.bg-zinc-50 :is(input,textarea,select,option),
+.surface :is(input,textarea,select,option),
+.card :is(input,textarea,select,option),
+.panel :is(input,textarea,select,option) {
+  color: var(--light-surface-fg) !important;
+}
+
+.bg-white :is(input::placeholder,textarea::placeholder),
+.bg-gray-50 :is(input::placeholder,textarea::placeholder),
+.bg-gray-100 :is(input::placeholder,textarea::placeholder),
+.bg-slate-50 :is(input::placeholder,textarea::placeholder),
+.bg-zinc-50 :is(input::placeholder,textarea::placeholder),
+.surface :is(input::placeholder,textarea::placeholder),
+.card :is(input::placeholder,textarea::placeholder),
+.panel :is(input::placeholder,textarea::placeholder) {
+  color: var(--light-surface-muted) !important;
+}
+
+/* 表格表頭/內容（常見是 bg-gray-50/100） */
+.bg-white :is(th, thead *),
+.bg-gray-50 :is(th, thead *),
+.bg-gray-100 :is(th, thead *),
+.surface :is(th, thead *),
+.card :is(th, thead *),
+.panel :is(th, thead *) {
+  color: var(--light-surface-fg) !important;
+}
+
+/* 若有使用 shadcn/ui 卡片，可手動加上 .card 讓上面規則生效 */
