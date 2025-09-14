@@ -116,13 +116,13 @@ export default function StoreListPage() {
       // 2) 讀 dine_in 旗標
       const ids = baseRows.map((s) => s.id);
       if (ids.length > 0) {
-        const { data: flags, error: flagsErr } = await supabase
+        const { data: flags } = await supabase
           .from('store_feature_flags')
           .select('store_id, feature_key, enabled')
           .in('store_id', ids)
           .eq('feature_key', 'dine_in');
 
-        if (!flagsErr && flags) {
+        if (flags) {
           const map = new Map<string, boolean>();
           (flags as any[]).forEach((f) => map.set(f.store_id as string, !!f.enabled));
           baseRows.forEach((row) => {
@@ -147,13 +147,10 @@ export default function StoreListPage() {
       .update({ name: newName.trim() })
       .eq('id', storeId);
 
-    if (error) {
-      alert('❌ 修改失敗：' + error.message);
-    } else {
+    if (error) alert('❌ 修改失敗：' + error.message);
+    else {
       alert('✅ 店名已更新');
-      setStores((prev) =>
-        prev.map((s) => (s.id === storeId ? { ...s, name: newName.trim() } : s))
-      );
+      setStores((prev) => prev.map((s) => (s.id === storeId ? { ...s, name: newName.trim() } : s)));
     }
   };
 
@@ -164,23 +161,17 @@ export default function StoreListPage() {
     const password = prompt('請輸入管理員密碼確認刪除：');
     if (!password) return;
 
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !session?.user) {
-      alert('登入狀態失效，請重新登入');
-      return;
-    }
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return alert('登入狀態失效，請重新登入');
 
     const adminEmail = session.user.email!;
-    const { data: adminAccount, error: fetchErr } = await supabase
+    const { data: adminAccount } = await supabase
       .from('store_accounts')
       .select('password_hash')
       .eq('email', adminEmail)
-      .single();
+      .maybeSingle();
 
-    if (fetchErr || !adminAccount?.password_hash) {
-      alert('驗證管理員密碼失敗');
-      return;
-    }
+    if (!adminAccount?.password_hash) return alert('驗證管理員密碼失敗');
 
     const bcrypt = await import('bcryptjs');
     const match = await bcrypt.compare(password, adminAccount.password_hash);
@@ -190,8 +181,8 @@ export default function StoreListPage() {
     const res = await fetch('/api/delete-store', {
       method: 'DELETE',
       headers,
-      body: JSON.stringify({ email, store_id }),
       credentials: 'include',
+      body: JSON.stringify({ email, store_id }),
     });
 
     const result = await res.json();

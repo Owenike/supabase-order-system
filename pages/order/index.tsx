@@ -495,32 +495,37 @@ function OrderPage() {
     }
   }, [storeIdFromQuery])
 
-  // ---------- 讀取「內用/外帶 是否開放」旗標（一次抓兩個） ----------
+  // ---------- 讀取「內用/外帶 是否開放」旗標（透過 Server API，免 RLS） ----------
   const fetchFeatureFlags = useCallback(
     async (sid: string) => {
-      if (!UUID_RE.test(sid)) {
+      try {
+        if (!UUID_RE.test(sid)) {
+          setDineInEnabled(true)
+          setTakeoutEnabled(true)
+          setFlagsLoaded(true)
+          return
+        }
+        const resp = await fetch('/api/public/get-flags', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_id: sid }),
+        })
+        const json = await resp.json().catch(() => ({} as any))
+        if (!resp.ok) {
+          console.warn('get-flags failed:', json?.error)
+          setDineInEnabled(true)
+          setTakeoutEnabled(true)
+        } else {
+          setDineInEnabled(json?.dine_in ?? true)
+          setTakeoutEnabled(json?.takeout ?? true)
+        }
+      } catch (e: any) {
+        console.warn('fetchFeatureFlags error:', e?.message || e)
         setDineInEnabled(true)
         setTakeoutEnabled(true)
+      } finally {
         setFlagsLoaded(true)
-        return
       }
-      const { data, error } = await supabase
-        .from('store_feature_flags')
-        .select('feature_key, enabled')
-        .eq('store_id', sid)
-        .in('feature_key', ['dine_in', 'takeout'])
-
-      if (error) {
-        console.warn('fetchFeatureFlags error:', error.message)
-        setDineInEnabled(true)
-        setTakeoutEnabled(true)
-      } else {
-        const map = new Map<string, boolean>()
-        ;(data || []).forEach((r: any) => map.set(r.feature_key, !!r.enabled))
-        setDineInEnabled(map.has('dine_in') ? !!map.get('dine_in') : true)
-        setTakeoutEnabled(map.has('takeout') ? !!map.get('takeout') : true)
-      }
-      setFlagsLoaded(true)
     },
     []
   )
@@ -798,32 +803,27 @@ function OrderPage() {
         return
       }
 
-      // 後端再次保護：依場景即時查旗標
-      if (!isTakeout) {
-        const { data: flag, error: flagErr } = await supabase
-          .from('store_feature_flags')
-          .select('enabled')
-          .eq('store_id', storeId)
-          .eq('feature_key', 'dine_in')
-          .maybeSingle()
-        const allowDineIn = flagErr ? dineInEnabled : flag ? !!flag.enabled : true
-        if (!allowDineIn) {
-          setErrorMsg(t.dineInBlocked)
-          return
+      // 送單前，再向 Server API 取一次最新旗標，避免前端狀態不同步
+      try {
+        const resp = await fetch('/api/public/get-flags', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_id: storeId }),
+        })
+        const json = await resp.json().catch(() => ({} as any))
+        if (resp.ok) {
+          const latestDineIn = json?.dine_in ?? true
+          const latestTakeout = json?.takeout ?? true
+          if (!isTakeout && !latestDineIn) {
+            setErrorMsg(t.dineInBlocked)
+            return
+          }
+          if (isTakeout && !latestTakeout) {
+            setErrorMsg(t.takeoutBlocked)
+            return
+          }
         }
-      } else {
-        const { data: flag2, error: flagErr2 } = await supabase
-          .from('store_feature_flags')
-          .select('enabled')
-          .eq('store_id', storeId)
-          .eq('feature_key', 'takeout')
-          .maybeSingle()
-        const allowTakeout = flagErr2 ? takeoutEnabled : flag2 ? !!flag2.enabled : true
-        if (!allowTakeout) {
-          setErrorMsg(t.takeoutBlocked)
-          return
-        }
-      }
+      } catch {}
 
       const lineUserId = getCookie('line_user_id')
       if (isTakeout && !lineUserId) {
