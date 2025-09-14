@@ -27,7 +27,7 @@ const langMap = {
       '以日期與品項維度查看營收與熱門時段，協助你做分眾與再行銷決策。',
     qrcodeTitle: '產生 QRCode',
     qrcodeDesc:
-      '一鍵產生桌號 / 外帶 QRCode，支援列印與下載。',
+      '一鍵產生桌號 / 外帶 QRCode，支援PDF下載。',
     brandSubtitle: '您的店家名稱：',
     langSwitch: 'EN',
     langSwitchEn: '中',
