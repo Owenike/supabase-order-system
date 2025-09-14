@@ -11,12 +11,12 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",               // ← 改這行
     "incremental": true,
-    "baseUrl": ".",                            
-    "paths": {
-      "@/*": ["./*"]
-    }
+    "baseUrl": ".",
+    "paths": { "@/*": ["./*"] },
+    "types": ["node", "react", "react-dom"],
+    "plugins": [{ "name": "next" }]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]

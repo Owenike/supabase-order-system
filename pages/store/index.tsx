@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, type ReactNode } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 import Image from 'next/image'
@@ -15,36 +15,58 @@ interface Order {
 
 const langMap = {
   zh: {
-    title: '歡迎進入店家後台',
-    subtitle: '您的店家名稱：',
-    manage: '分類與菜單管理',
-    orders: '訂單管理',
-    stats: '銷售報表',
-    qrcode: '產生 QRCode',
+    pageTitle: '從新客到熟客，掌握全渠道會員經營',
+    manageTitle: '電子會員卡 / 分類與菜單管理',
+    manageDesc:
+      '在後台快速建立分類與餐點，支援多分店同步管理；消費者可透過 LINE/QR 連結下單與查看點數。',
+    ordersTitle: '自動蒐集顧客資料 / 訂單管理',
+    ordersDesc:
+      '整合訂單狀態、備註與通知，結合行銷工具蒐集來客資料，打造回流漏斗。',
+    statsTitle: '自動化分眾與再行銷 / 銷售報表',
+    statsDesc:
+      '以日期與品項維度查看營收與熱門時段，協助你做分眾與再行銷決策。',
+    qrcodeTitle: '完善的會員分級制度 / 產生 QRCode',
+    qrcodeDesc:
+      '一鍵產生桌號 / 外帶 QRCode，支援列印與下載，配合會員等級優惠策略使用。',
+    brandSubtitle: '您的店家名稱：',
+    langSwitch: 'EN',
+    langSwitchEn: '中',
     logout: '登出',
     logoutMessage: '✅ 已成功登出',
     newOrder: '🛎️ 新訂單來囉！',
     inactive: '此帳號已被停用，請聯繫管理員',
   },
   en: {
-    title: 'Welcome to the Store Backend',
-    subtitle: 'Your store name:',
-    manage: 'Manage Menu',
-    orders: 'Orders',
-    stats: 'Sales Report',
-    qrcode: 'Generate QRCode',
+    pageTitle: 'From New to Loyal Customers — Omnichannel Membership Ops',
+    manageTitle: 'E-Membership / Menu Management',
+    manageDesc:
+      'Build categories & items fast. Multi-store sync. Customers order via LINE/QR and check points.',
+    ordersTitle: 'Auto Data Collection / Orders',
+    ordersDesc:
+      'Manage statuses & notes with alerts. Capture customer data to power remarketing.',
+    statsTitle: 'Segmentation & Remarketing / Sales',
+    statsDesc:
+      'Analyze revenue by date & item. Find peak hours to guide segmentation and campaigns.',
+    qrcodeTitle: 'Tiered Membership / QR Codes',
+    qrcodeDesc:
+      'Generate table/takeout QR codes in one click. Print or download for tiered offers.',
+    brandSubtitle: 'Your store name:',
+    langSwitch: '中',
+    langSwitchEn: 'EN',
     logout: 'Logout',
     logoutMessage: '✅ Logged out successfully',
     newOrder: '🛎️ New Order Received!',
     inactive: 'This account has been deactivated. Please contact admin.',
   },
-}
+} as const
+
+type Lang = keyof typeof langMap
 
 export default function StoreHomePage() {
   const router = useRouter()
   const [storeName, setStoreName] = useState('')
   const [, setLatestOrder] = useState<Order | null>(null)
-  const [lang, setLang] = useState<'zh' | 'en'>('zh')
+  const [lang, setLang] = useState<Lang>('zh')
   const [showAlert, setShowAlert] = useState(false)
   const [loading, setLoading] = useState(true)
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -53,12 +75,16 @@ export default function StoreHomePage() {
 
   useEffect(() => {
     const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
+      // 1) Auth 檢查
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
       if (!session || !session.user) {
         router.replace('/login')
         return
       }
 
+      // 2) store_id 檢查
       const storeId = localStorage.getItem('store_id')
       if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
         localStorage.clear()
@@ -66,6 +92,7 @@ export default function StoreHomePage() {
         return
       }
 
+      // 3) 店家名稱
       const { data: storeData, error: storeErr } = await supabase
         .from('stores')
         .select('name')
@@ -77,9 +104,9 @@ export default function StoreHomePage() {
         router.replace('/login')
         return
       }
-
       setStoreName(storeData.name)
 
+      // 4) 帳號啟用
       const { data: accountData, error: accountErr } = await supabase
         .from('store_accounts')
         .select('id, is_active')
@@ -91,7 +118,6 @@ export default function StoreHomePage() {
         router.replace('/login')
         return
       }
-
       if (!accountData.is_active) {
         alert(t.inactive)
         await supabase.auth.signOut()
@@ -103,6 +129,7 @@ export default function StoreHomePage() {
       localStorage.setItem('store_account_id', accountData.id)
       setLoading(false)
 
+      // 5) 新訂單通知
       const channel = supabase
         .channel('order_notifications')
         .on(
@@ -137,89 +164,187 @@ export default function StoreHomePage() {
     router.push('/login')
   }
 
+  const go = (path: string) => {
+    router.push(path)
+  }
+
+  const Card = ({
+    icon,
+    title,
+    desc,
+    onClick,
+    ariaLabel,
+  }: {
+    icon: ReactNode
+    title: string
+    desc: string
+    onClick: () => void
+    ariaLabel: string
+  }) => (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={ariaLabel}
+      onClick={onClick}
+      onKeyDown={(e) => (e.key === 'Enter' ? onClick() : null)}
+      className="
+        group rounded-2xl bg-[#2B2B2B] border border-white/10
+        p-6 sm:p-7 md:p-8
+        hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/30
+        transition duration-200 cursor-pointer
+        flex flex-col
+      "
+    >
+      <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-md">
+        {icon}
+      </div>
+      <h3 className="text-white text-2xl font-extrabold tracking-tight mb-3">
+        {title}
+      </h3>
+      <p className="text-gray-300 leading-relaxed text-sm sm:text-base">
+        {desc}
+      </p>
+    </div>
+  )
+
   if (loading) return null
 
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-white to-gray-100 p-6 px-4 sm:px-6 pb-24">
-      <button
-        onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-        className="absolute top-4 right-4 text-sm text-gray-500 border px-2 py-1 rounded hover:bg-gray-100"
-      >
-        {lang === 'zh' ? 'EN' : '中'}
-      </button>
+    <div className="min-h-screen bg-black text-white">
+      {/* ==== 頂部導覽：左上角 LOGO、右上角語言與登出 ==== */}
+      <header className="flex items-center justify-between px-4 sm:px-6 md:px-10 py-4">
+        <div className="flex items-center gap-3">
+          <Image
+            src="/logo.png"
+            alt="品牌 Logo"
+            width={40}
+            height={40}
+            className="rounded-full"
+            priority
+          />
+          <div className="hidden sm:block text-sm text-white/70">
+            {t.brandSubtitle}{' '}
+            <span className="text-white font-medium">{storeName}</span>
+          </div>
+        </div>
 
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+            className="text-xs sm:text-sm text-white/80 border border-white/20 px-3 py-1.5 rounded-md hover:bg-white/10"
+          >
+            {lang === 'zh' ? t.langSwitch : t.langSwitchEn}
+          </button>
+          <button
+            onClick={handleLogout}
+            className="text-xs sm:text-sm text-white/90 border border-white/20 px-3 py-1.5 rounded-md hover:bg-white/10"
+          >
+            {t.logout}
+          </button>
+        </div>
+      </header>
+
+      {/* 新訂單提醒 */}
       {showAlert && (
         <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg animate-pulse z-50">
           {t.newOrder}
         </div>
       )}
 
-      <Image
-        src="/logo.png"
-        alt="系統品牌 Logo"
-        width={100}
-        height={100}
-        className="animate-float rounded-full mb-6 shadow-lg"
-      />
+      {/* ==== 主視覺：置中大標 ==== */}
+      <section className="px-4 sm:px-6 md:px-10 pt-4 pb-6 text-center">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight">
+          {t.pageTitle}
+        </h1>
+      </section>
 
-      <h1 className="text-3xl font-bold mb-1 text-center text-black tracking-wide">
-        {t.title}
-      </h1>
-      <p className="mb-8 text-gray-500 text-base tracking-tight">
-        {t.subtitle} {storeName}
-      </p>
+      {/* ==== 內容卡片（2×2） ==== */}
+      <main className="px-4 sm:px-6 md:px-10 pb-16">
+        <div className="grid gap-6 sm:gap-7 md:gap-8 grid-cols-1 md:grid-cols-2 max-w-6xl mx-auto">
+          {/* 1. 分類與菜單管理 → /store/manage-menus */}
+          <Card
+            ariaLabel="manage-menus"
+            onClick={() => go('/store/manage-menus')}
+            title={t.manageTitle}
+            desc={t.manageDesc}
+            icon={
+              <svg
+                viewBox="0 0 24 24"
+                className="h-12 w-12 text-yellow-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="M7 9h10M7 13h6" />
+              </svg>
+            }
+          />
 
-      <div className="flex flex-col gap-4 w-full max-w-md px-6 sm:px-8 md:px-10">
-        {/* ✅ 改成直接跳 manage-menus */}
-        <button
-          onClick={() => router.push('/store/manage-menus')}
-          className="w-full py-5 text-lg font-bold rounded-xl bg-gradient-to-r from-orange-400 to-yellow-400 text-white shadow-lg hover:scale-105 active:scale-95 transition-transform"
-        >
-          🍱 {t.manage}
-        </button>
-        <button
-          onClick={() => router.push('/store/orders')}
-          className="w-full py-5 text-lg font-bold rounded-xl bg-gradient-to-r from-green-500 to-teal-400 text-white shadow-lg hover:scale-105 active:scale-95 transition-transform"
-        >
-          🧾 {t.orders}
-        </button>
-        <button
-          onClick={() => router.push('/store/stats')}
-          className="w-full py-5 text-lg font-bold rounded-xl bg-gradient-to-r from-violet-500 to-pink-400 text-white shadow-lg hover:scale-105 active:scale-95 transition-transform"
-        >
-          📊 {t.stats}
-        </button>
-        <button
-          onClick={() => router.push('/qrcode')}
-          className="w-full py-5 text-lg font-bold rounded-xl bg-gradient-to-r from-gray-800 to-gray-600 text-white shadow-lg hover:scale-105 active:scale-95 transition-transform"
-        >
-          📷 {t.qrcode}
-        </button>
-        <button
-          onClick={handleLogout}
-          className="w-full py-5 text-lg font-bold rounded-xl border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 shadow-none hover:scale-105 active:scale-95 transition-transform"
-        >
-          {t.logout}
-        </button>
-      </div>
+          {/* 2. 訂單管理 → /store/orders */}
+          <Card
+            ariaLabel="orders"
+            onClick={() => go('/store/orders')}
+            title={t.ordersTitle}
+            desc={t.ordersDesc}
+            icon={
+              <svg
+                viewBox="0 0 24 24"
+                className="h-12 w-12 text-yellow-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M4 7h16M4 12h16M4 17h10" />
+                <circle cx="18" cy="17" r="0.8" fill="currentColor" />
+              </svg>
+            }
+          />
+
+          {/* 3. 銷售報表 → /store/stats */}
+          <Card
+            ariaLabel="stats"
+            onClick={() => go('/store/stats')}
+            title={t.statsTitle}
+            desc={t.statsDesc}
+            icon={
+              <svg
+                viewBox="0 0 24 24"
+                className="h-12 w-12 text-yellow-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M4 19V5M8 19v-6M12 19v-9M16 19V8M20 19V4" />
+              </svg>
+            }
+          />
+
+          {/* 4. 產生 QRCode → /qrcode */}
+          <Card
+            ariaLabel="qrcode"
+            onClick={() => go('/qrcode')}
+            title={t.qrcodeTitle}
+            desc={t.qrcodeDesc}
+            icon={
+              <svg
+                viewBox="0 0 24 24"
+                className="h-12 w-12 text-yellow-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+                <path d="M14 14h3v3M17 17h4M21 14v7" />
+              </svg>
+            }
+          />
+        </div>
+      </main>
 
       <audio ref={audioRef} src="/ding.mp3" preload="auto" />
-
-      <div className="absolute -bottom-4 left-0 w-full overflow-hidden leading-none pointer-events-none">
-        <svg viewBox="0 0 1200 120" preserveAspectRatio="none" className="w-full h-24">
-          <path
-            d="M0,40 C300,80 900,0 1200,60 L1200,120 L0,120 Z"
-            fill="url(#brand-gradient)"
-          />
-          <defs>
-            <linearGradient id="brand-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.3" />
-              <stop offset="50%" stopColor="#8B5CF6" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#10B981" stopOpacity="0.3" />
-            </linearGradient>
-          </defs>
-        </svg>
-      </div>
     </div>
   )
 }
