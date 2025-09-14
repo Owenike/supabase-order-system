@@ -1,4 +1,3 @@
-// /pages/order/index.tsx
 /* eslint-disable no-console */
 import dynamic from 'next/dynamic'
 import { useEffect, useState, useCallback, useMemo } from 'react'
@@ -211,7 +210,8 @@ const langMap = {
     spicyHot: '大辣',
     spicyPreview: '🌶️ 辣度',
     invalidStore: '店家 ID 無效，請確認網址中的 store 參數是否為正確的 UUID。',
-    dineInBlocked: '本店目前已暫停「內用」，僅提供外帶服務。你可以改為外帶繼續下單。'
+    dineInBlocked: '本店目前已暫停「內用」，僅提供外帶服務。你可以改為外帶繼續下單。',
+    takeoutBlocked: '本店目前已暫停「外帶」，暫不接受外帶點餐。'
   },
   en: {
     title: 'Dine-in Order',
@@ -224,7 +224,7 @@ const langMap = {
     back: 'Modify',
     submit: 'Submit Order',
     name: 'Enter your name (required)',
-    phone: 'Enter valid mobile (e.g. 0912345678)',
+    phone: 'Enter a valid mobile (e.g. 0912345678)',
     errorNoItem: 'Please select at least one item',
     errorName: 'Please enter your name',
     errorPhone: 'Please enter a valid mobile number',
@@ -239,7 +239,8 @@ const langMap = {
     spicyHot: 'Hot',
     spicyPreview: '🌶️ Spicy',
     invalidStore: 'Invalid store ID. Please ensure the "store" query param is a valid UUID.',
-    dineInBlocked: 'Dine-in is currently unavailable. Please switch to takeout to continue.'
+    dineInBlocked: 'Dine-in is currently unavailable. Please switch to takeout to continue.',
+    takeoutBlocked: 'Takeout is currently unavailable. We are not accepting takeout orders now.'
   }
 }
 
@@ -329,9 +330,10 @@ function OrderPage() {
   const [chosenOptions, setChosenOptions] = useState<Record<string, string | string[]>>({})
   const [activeMenu, setActiveMenu] = useState<MenuItem | null>(null)
 
-  // 內用旗標
+  // 內用/外帶旗標
   const [dineInEnabled, setDineInEnabled] = useState<boolean>(true)
-  const [flagLoaded, setFlagLoaded] = useState<boolean>(false)
+  const [takeoutEnabled, setTakeoutEnabled] = useState<boolean>(true)
+  const [flagsLoaded, setFlagsLoaded] = useState<boolean>(false)
 
   const t = langMap[lang]
   const total = useMemo(
@@ -493,29 +495,34 @@ function OrderPage() {
     }
   }, [storeIdFromQuery])
 
-  // ---------- 讀取「內用是否開放」旗標 ----------
-  const fetchDineInFlag = useCallback(
+  // ---------- 讀取「內用/外帶 是否開放」旗標（一次抓兩個） ----------
+  const fetchFeatureFlags = useCallback(
     async (sid: string) => {
       if (!UUID_RE.test(sid)) {
         setDineInEnabled(true)
-        setFlagLoaded(true)
+        setTakeoutEnabled(true)
+        setFlagsLoaded(true)
         return
       }
       const { data, error } = await supabase
         .from('store_feature_flags')
-        .select('enabled')
+        .select('feature_key, enabled')
         .eq('store_id', sid)
-        .eq('feature_key', 'dine_in')
-        .maybeSingle()
+        .in('feature_key', ['dine_in', 'takeout'])
+
       if (error) {
-        console.warn('fetchDineInFlag error:', error.message)
+        console.warn('fetchFeatureFlags error:', error.message)
         setDineInEnabled(true)
+        setTakeoutEnabled(true)
       } else {
-        setDineInEnabled(data ? !!data.enabled : true)
+        const map = new Map<string, boolean>()
+        ;(data || []).forEach((r: any) => map.set(r.feature_key, !!r.enabled))
+        setDineInEnabled(map.has('dine_in') ? !!map.get('dine_in') : true)
+        setTakeoutEnabled(map.has('takeout') ? !!map.get('takeout') : true)
       }
-      setFlagLoaded(true)
+      setFlagsLoaded(true)
     },
-    [setDineInEnabled, setFlagLoaded]
+    []
   )
 
   // ---------- 資料載入 ----------
@@ -588,12 +595,12 @@ function OrderPage() {
   useEffect(() => {
     if (!storeId || !UUID_RE.test(storeId)) return
     ;(async () => {
-      await fetchDineInFlag(storeId)
+      await fetchFeatureFlags(storeId)
     })()
-  }, [storeId, fetchDineInFlag])
+  }, [storeId, fetchFeatureFlags])
 
   useEffect(() => {
-    if (!isLiffReady || !storeId || !UUID_RE.test(storeId) || !flagLoaded) return
+    if (!isLiffReady || !storeId || !UUID_RE.test(storeId) || !flagsLoaded) return
     ;(async () => {
       if (liffRef?.isLoggedIn?.() && !getCookie('line_user_id')) {
         await ensureLineCookie()
@@ -602,7 +609,7 @@ function OrderPage() {
       await fetchCategories(storeId)
       await fetchOrders()
     })()
-  }, [isLiffReady, storeId, fetchOrders, ensureLineCookie, liffRef, flagLoaded])
+  }, [isLiffReady, storeId, fetchOrders, ensureLineCookie, liffRef, flagsLoaded])
 
   // ---------- UI 事件 ----------
   // 點餐：先讀取商品選項（有選項→彈窗；沒選項→直接 +1）
@@ -712,12 +719,17 @@ function OrderPage() {
   const handleConfirm = () => {
     if (selectedItems.length === 0) return setErrorMsg(t.errorNoItem)
     if (isTakeout) {
+      if (!takeoutEnabled && flagsLoaded) {
+        setErrorMsg(t.takeoutBlocked)
+        return
+      }
       if (!customerName.trim()) return setErrorMsg(t.errorName)
       if (!/^09\d{8}$/.test(customerPhone.trim())) return setErrorMsg(t.errorPhone)
-    }
-    if (!isTakeout && flagLoaded && !dineInEnabled) {
-      setErrorMsg(t.dineInBlocked)
-      return
+    } else {
+      if (flagsLoaded && !dineInEnabled) {
+        setErrorMsg(t.dineInBlocked)
+        return
+      }
     }
     setErrorMsg('')
     setConfirming(true)
@@ -786,6 +798,7 @@ function OrderPage() {
         return
       }
 
+      // 後端再次保護：依場景即時查旗標
       if (!isTakeout) {
         const { data: flag, error: flagErr } = await supabase
           .from('store_feature_flags')
@@ -796,6 +809,18 @@ function OrderPage() {
         const allowDineIn = flagErr ? dineInEnabled : flag ? !!flag.enabled : true
         if (!allowDineIn) {
           setErrorMsg(t.dineInBlocked)
+          return
+        }
+      } else {
+        const { data: flag2, error: flagErr2 } = await supabase
+          .from('store_feature_flags')
+          .select('enabled')
+          .eq('store_id', storeId)
+          .eq('feature_key', 'takeout')
+          .maybeSingle()
+        const allowTakeout = flagErr2 ? takeoutEnabled : flag2 ? !!flag2.enabled : true
+        if (!allowTakeout) {
+          setErrorMsg(t.takeoutBlocked)
           return
         }
       }
@@ -873,10 +898,11 @@ function OrderPage() {
     )
   }
 
-  if (!isLiffReady || !storeId || !flagLoaded) {
+  if (!isLiffReady || !storeId || !flagsLoaded) {
     return <p className="text-red-500 p-4">❗請稍候，頁面初始化中…</p>
   }
 
+  // 內用被封鎖：提供一鍵切換到外帶
   if (!isTakeout && !dineInEnabled) {
     return (
       <div className="p-4 max-w-2xl mx-auto relative">
@@ -896,6 +922,24 @@ function OrderPage() {
         >
           切換為外帶
         </button>
+      </div>
+    )
+  }
+
+  // 外帶被封鎖：顯示封鎖訊息（不提供切換，因為沒有桌號）
+  if (isTakeout && !takeoutEnabled) {
+    return (
+      <div className="p-4 max-w-2xl mx-auto relative">
+        <button
+          onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+          className="absolute top-4 right-4 text-sm border px-2 py-1 rounded"
+        >
+          {lang === 'zh' ? 'EN' : '中'}
+        </button>
+        <h1 className="text-2xl font-bold mb-4">🛍 {t.takeaway}</h1>
+        <div className="mb-4 p-3 rounded border border-red-300 bg-red-50 text-red-700">
+          {t.takeoutBlocked}
+        </div>
       </div>
     )
   }

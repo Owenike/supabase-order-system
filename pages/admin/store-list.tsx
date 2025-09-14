@@ -28,11 +28,30 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+/** upsert 單一 feature flag */
+async function upsertFeatureFlag(store_id: string, feature_key: string, enabled: boolean) {
+  const { error } = await supabase
+    .from('store_feature_flags')
+    .upsert(
+      { store_id, feature_key, enabled },
+      { onConflict: 'store_id,feature_key' }
+    );
+  if (error) throw new Error(error.message);
+}
+
+/** 暫停/啟用時，一併同步前台下單旗標（內用/外帶） */
+async function cascadeOrderingFlags(store_id: string, enabled: boolean) {
+  await Promise.all([
+    upsertFeatureFlag(store_id, 'dine_in', enabled),
+    upsertFeatureFlag(store_id, 'takeout', enabled), // 若你旗標使用其他 key，改這裡即可
+  ]);
+}
+
 export default function StoreListPage() {
   const [stores, setStores] = useState<StoreRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState<string | null>(null); // 正在切換的 store_id
+  const [busy, setBusy] = useState<string | null>(null); // 正在切換 dine-in 的 store_id
   const router = useRouter();
 
   useEffect(() => {
@@ -136,7 +155,7 @@ export default function StoreListPage() {
       return;
     }
 
-    const adminEmail = session.user.email;
+    const adminEmail = session.user.email!;
     const { data: adminAccount, error: fetchErr } = await supabase
       .from('store_accounts')
       .select('password_hash')
@@ -173,30 +192,44 @@ export default function StoreListPage() {
     }
   };
 
+  // === 重要修正：暫停/啟用時，連動前台內用/外帶旗標 ===
   const handleToggleActive = async (
     email: string,
     store_id: string,
     isActive: boolean
   ) => {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/toggle-store-active', {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ email, store_id, is_active: isActive }),
-      credentials: 'include',
-    });
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/toggle-store-active', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ email, store_id, is_active: isActive }),
+        credentials: 'include',
+      });
 
-    const result = await res.json();
-    if (res.ok) {
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result?.error || 'toggle-store-active failed');
+      }
+
+      // 更新列表狀態
       setStores((prev) =>
         prev.map((s) => (s.id === store_id ? { ...s, is_active: isActive } : s))
       );
-    } else {
-      alert('❌ 操作失敗：' + (result?.error || 'Unknown error'));
+
+      // ★ 同步前台：is_active=false → 封鎖內用與外帶；true → 全部開啟
+      try {
+        await cascadeOrderingFlags(store_id, isActive);
+      } catch (e: any) {
+        console.warn('cascadeOrderingFlags failed:', e?.message || e);
+        alert('⚠️ 已切換帳號狀態，但同步前台旗標時發生異常，請稍後重試。');
+      }
+    } catch (e: any) {
+      alert('❌ 操作失敗：' + (e?.message || 'Unknown error'));
     }
   };
 
-  // 新增：切換「內用」旗標
+  // 切換「內用」旗標（單獨控管）
   const handleToggleDineIn = async (store_id: string) => {
     try {
       setBusy(store_id);
@@ -287,6 +320,11 @@ export default function StoreListPage() {
                 ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
                 : 'bg-green-600 hover:bg-green-700 text-white'
             }`}
+            title={
+              store.is_active
+                ? '暫停帳號（並同步關閉前台內用/外帶）'
+                : '啟用帳號（並同步開啟前台內用/外帶）'
+            }
           >
             {store.is_active ? '暫停' : '啟用'}
           </button>
