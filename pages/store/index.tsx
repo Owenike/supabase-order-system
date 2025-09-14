@@ -69,7 +69,7 @@ export default function StoreHomePage() {
       const { data: storeData, error: storeErr } = await supabase
         .from('stores')
         .select('name')
-        .eq('id', storeId) // ✅ 改這裡
+        .eq('id', storeId)
         .maybeSingle()
 
       if (storeErr || !storeData?.name) {
@@ -128,7 +128,7 @@ export default function StoreHomePage() {
     }
 
     init()
-  }, [router])
+  }, [router, t.inactive])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -170,8 +170,9 @@ export default function StoreHomePage() {
       </p>
 
       <div className="flex flex-col gap-4 w-full max-w-md px-6 sm:px-8 md:px-10">
+        {/* ✅ 改成直接跳 manage-menus */}
         <button
-          onClick={() => router.push('/store/manage')}
+          onClick={() => router.push('/store/manage-menus')}
           className="w-full py-5 text-lg font-bold rounded-xl bg-gradient-to-r from-orange-400 to-yellow-400 text-white shadow-lg hover:scale-105 active:scale-95 transition-transform"
         >
           🍱 {t.manage}
