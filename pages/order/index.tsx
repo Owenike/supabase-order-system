@@ -24,6 +24,8 @@ const FALLBACK_TABLE = process.env.NEXT_PUBLIC_FALLBACK_TABLE || '外帶'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+type OptionsMap = Record<string, string | string[]>
+
 function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null
   const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'))
@@ -165,8 +167,15 @@ interface Category {
   id: string
   name: string
 }
+interface OrderItem {
+  id?: string
+  name: string
+  quantity: number
+  price: number
+  options?: OptionsMap | null
+}
 interface OrderRecord {
-  items: { id?: string; name: string; quantity: number; price: number }[]
+  items: OrderItem[]
   note: string
   total: number
   status?: string
@@ -254,7 +263,7 @@ function OrderPage() {
   const [menus, setMenus] = useState<MenuItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedItems, setSelectedItems] = useState<
-    { id: string; name: string; price: number; quantity: number }[]
+    { id: string; name: string; price: number; quantity: number; options?: OptionsMap | null }[]
   >([])
   const [note, setNote] = useState('')
   const [spicyLevel, setSpicyLevel] = useState<string>('')
@@ -491,18 +500,16 @@ function OrderPage() {
       .select('*')
       .eq('store_id', storeId)
       .gte('created_at', sinceIso)
-      .not('status', 'in', '("completed","canceled")') // ✅ 關鍵：只拿未完成
+      .not('status', 'in', '("completed","canceled")')
       .order('created_at', { ascending: false })
 
     if (isTakeout) {
-      // 外帶：依 line_user_id
       if (!lineUserId) {
         setOrderHistory([])
         return
       }
       q = q.eq('line_user_id', lineUserId).limit(20)
     } else {
-      // 內用：依桌號
       if (typeof tableParam !== 'string' || !tableParam) {
         setOrderHistory([])
         return
@@ -583,11 +590,10 @@ function OrderPage() {
   }, [router.query, isLiffReady, isTakeout])
 
   // ---------- UI 事件 ----------
-  // === 修改：點擊菜單 → 先讀取商品選項（有選項就跳出彈窗；沒選項直接加入） ===
+  // 點餐：先讀取商品選項（有選項→彈窗；沒選項→直接 +1）
   const toggleItem = async (menu: MenuItem) => {
     try {
       const groups = await fetchItemOptions(menu.id)
-      // 若 groups 為空，走原本「直接 +1」邏輯
       if (!groups || groups.length === 0) {
         const exists = selectedItems.find((i) => i.id === menu.id)
         if (exists) {
@@ -602,13 +608,11 @@ function OrderPage() {
         }
         return
       }
-      // 有選項：開啟彈窗
       setOptionGroups(groups)
       setChosenOptions({})
       setActiveMenu(menu)
     } catch (e) {
       console.error('fetchItemOptions error:', e)
-      // fallback：若讀取失敗，仍允許直接加入
       const exists = selectedItems.find((i) => i.id === menu.id)
       if (exists) {
         setSelectedItems(
@@ -631,7 +635,7 @@ function OrderPage() {
     )
   }
 
-  // 新增：在彈窗中按「加入」後，把選項加價計入單價並加入購物車
+  // 新增：在彈窗中按「加入」後，把選項加價計入單價並加入購物車（含 options）
   const addToCart = () => {
     if (!activeMenu) return
     // 必填檢查
@@ -656,9 +660,23 @@ function OrderPage() {
       }
     })
     const finalPrice = activeMenu.price + delta
+
+    // 正規化空字串／空陣列 → 移除
+    const normalizedOptions: OptionsMap = {}
+    Object.entries(chosenOptions).forEach(([k, v]) => {
+      if (Array.isArray(v)) {
+        const arr = v.map((x) => String(x)).map((s) => s.trim()).filter(Boolean)
+        if (arr.length) normalizedOptions[k] = arr
+      } else {
+        const s = String(v).trim()
+        if (s) normalizedOptions[k] = s
+      }
+    })
+    const optionsToSave = Object.keys(normalizedOptions).length ? normalizedOptions : undefined
+
     setSelectedItems((prev) => [
       ...prev,
-      { id: activeMenu.id, name: activeMenu.name, price: finalPrice, quantity: 1 }
+      { id: activeMenu.id, name: activeMenu.name, price: finalPrice, quantity: 1, ...(optionsToSave ? { options: optionsToSave } : {}) }
     ])
     setActiveMenu(null)
   }
@@ -669,7 +687,6 @@ function OrderPage() {
       if (!customerName.trim()) return setErrorMsg(t.errorName)
       if (!/^09\d{8}$/.test(customerPhone.trim())) return setErrorMsg(t.errorPhone)
     }
-    // 內用被封鎖禁止進入確認
     if (!isTakeout && flagLoaded && !dineInEnabled) {
       setErrorMsg(t.dineInBlocked)
       return
@@ -706,15 +723,11 @@ function OrderPage() {
         return
       }
 
-      // 一次性許可：只有按鈕觸發時才允許 liff.login()
       try {
         w.sessionStorage.setItem('ALLOW_LIFF_LOGIN', '1')
       } catch {}
 
-      // 登入回跳 → /line-success（由該頁清參數後再回 /order）
       const successUrl = buildSuccessRedirectUrl(w, router.query)
-
-      // 若當前已帶 code/state，先導去 /line-success
       const sp = new URLSearchParams(w.location.search || '')
       if (sp.get('code') || sp.get('state')) {
         await router.replace(successUrl)
@@ -733,7 +746,7 @@ function OrderPage() {
     }
   }
 
-  // === 已改為呼叫 /api/orders/create（移除 display_name） ===
+  // === 呼叫 /api/orders/create（含 options） ===
   const submitOrder = async () => {
     if (submitting) return
     setSubmitting(true)
@@ -747,7 +760,6 @@ function OrderPage() {
         return
       }
 
-      // 內用封鎖保護（維持你的原邏輯；送單前再次確認）
       if (!isTakeout) {
         const { data: flag, error: flagErr } = await supabase
           .from('store_feature_flags')
@@ -780,13 +792,13 @@ function OrderPage() {
         body: JSON.stringify({
           store_id: storeId,
           table_number: effectiveTable || (isTakeout ? 'takeout' : ''),
-          items: selectedItems,
+          items: selectedItems, // 內含 options
           note: noteText,
           status: 'pending',
           total: totalAmount,
           line_user_id: isTakeout ? lineUserId : null,
           spicy_level: spicyLevel || null
-          // display_name: 已移除，避免 500（schema 無此欄位）
+          // display_name: 移除
         })
       })
 
@@ -797,7 +809,6 @@ function OrderPage() {
         return
       }
 
-      // 成功：清空，刷新
       setSuccess(true)
       void fetchOrders()
       setSelectedItems([])
@@ -916,6 +927,21 @@ function OrderPage() {
     )
   }
 
+  const renderOptions = (opts?: OptionsMap | null) => {
+    if (!opts || typeof opts !== 'object') return null
+    const entries = Object.entries(opts)
+    if (!entries.length) return null
+    return (
+      <ul className="ml-4 text-sm text-gray-600 list-disc">
+        {entries.map(([group, val]) => (
+          <li key={group}>
+            {group}：{Array.isArray(val) ? val.join('、') : val}
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
   const content = !confirming ? (
     <>
       {orderHistory.length > 0 && (
@@ -941,8 +967,9 @@ function OrderPage() {
               </h2>
               <ul className="list-disc pl-5 text-sm mb-2">
                 {order.items.map((item, i) => (
-                  <li key={i}>
+                  <li key={i} className="mb-1">
                     {item.name} × {item.quantity}（NT$ {item.price * item.quantity}）
+                    {renderOptions(item.options)}
                   </li>
                 ))}
               </ul>
@@ -1082,8 +1109,9 @@ function OrderPage() {
       )}
       <ul className="list-disc pl-5 text-sm mb-3">
         {selectedItems.map((item, idx) => (
-          <li key={idx}>
+          <li key={idx} className="mb-1">
             {item.name} × {item.quantity}（NT$ {item.price}）
+            {renderOptions(item.options)}
           </li>
         ))}
       </ul>
