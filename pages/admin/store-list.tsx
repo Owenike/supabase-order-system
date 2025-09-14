@@ -15,20 +15,47 @@ type Store = {
 };
 
 type StoreRow = Store & {
-  // 內用旗標（無紀錄視為 true）
-  dine_in_enabled: boolean;
+  dine_in_enabled: boolean; // 無紀錄視為 true
 };
 
-/** 取得帶 Authorization 的 headers；沒有 token 時就不帶 Authorization */
+/** 取得最新 access token（必要時 refresh）並組 headers */
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  // 先拿現有 session
+  let { data: sess } = await supabase.auth.getSession();
+  // 沒有就 refresh 一次
+  if (!sess.session?.access_token) {
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    sess = refreshed;
+  }
+  const token = sess.session?.access_token || '';
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
 }
 
-/** 前端的彈性 admin 判斷，避免誤判導回 login（API 端仍會再次嚴格驗證） */
+/** 包一層 POST，若 401 會自動 refresh 後重試一次 */
+async function apiPost(url: string, body: unknown) {
+  let headers = await getAuthHeaders();
+  let resp = await fetch(url, {
+    method: 'POST',
+    headers,
+    credentials: 'include',
+    body: JSON.stringify(body),
+  });
+  if (resp.status === 401) {
+    await supabase.auth.refreshSession();
+    headers = await getAuthHeaders();
+    resp = await fetch(url, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: JSON.stringify(body),
+    });
+  }
+  return resp;
+}
+
+/** 前端 admin 判斷（避免誤判導回 login；API 端仍會再驗一次） */
 function sessionIsAdmin(session: any): boolean {
   const u = session?.user;
   if (!u) return false;
@@ -40,10 +67,7 @@ function sessionIsAdmin(session: any): boolean {
     if (Array.isArray(v)) v.forEach((x) => x && roles.add(String(x)));
     else roles.add(String(v));
   };
-  push(um.role);
-  push(um.roles);
-  push(am.role);
-  push(am.roles);
+  push(um.role); push(um.roles); push(am.role); push(am.roles);
   return roles.has('admin');
 }
 
@@ -51,7 +75,7 @@ export default function StoreListPage() {
   const [stores, setStores] = useState<StoreRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState<string | null>(null); // 正在切換的 store_id
+  const [busy, setBusy] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -86,10 +110,10 @@ export default function StoreListPage() {
           ...s,
           email: s.email ?? null,
           phone: s.phone ?? null,
-          dine_in_enabled: true, // 預設啟用，後面旗標覆蓋
+          dine_in_enabled: true, // 預設 true，下面旗標覆蓋
         })) ?? [];
 
-      // 2) 一次抓回所有店家的 dine_in 旗標
+      // 2) 讀 dine_in 旗標
       const ids = baseRows.map((s) => s.id);
       if (ids.length > 0) {
         const { data: flags, error: flagsErr } = await supabase
@@ -98,9 +122,7 @@ export default function StoreListPage() {
           .in('store_id', ids)
           .eq('feature_key', 'dine_in');
 
-        if (flagsErr) {
-          console.warn('fetch dine_in flags failed:', flagsErr.message);
-        } else if (flags && flags.length > 0) {
+        if (!flagsErr && flags) {
           const map = new Map<string, boolean>();
           (flags as any[]).forEach((f) => map.set(f.store_id as string, !!f.enabled));
           baseRows.forEach((row) => {
@@ -136,19 +158,13 @@ export default function StoreListPage() {
   };
 
   const handleDelete = async (email: string, store_id: string) => {
-    const confirmDel = window.confirm(
-      `你確定要刪除 ${email} 的帳號嗎？此操作無法還原`
-    );
+    const confirmDel = window.confirm(`你確定要刪除 ${email} 的帳號嗎？此操作無法還原`);
     if (!confirmDel) return;
 
     const password = prompt('請輸入管理員密碼確認刪除：');
     if (!password) return;
 
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
-
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session?.user) {
       alert('登入狀態失效，請重新登入');
       return;
@@ -168,18 +184,14 @@ export default function StoreListPage() {
 
     const bcrypt = await import('bcryptjs');
     const match = await bcrypt.compare(password, adminAccount.password_hash);
-
-    if (!match) {
-      alert('❌ 密碼錯誤，無法刪除');
-      return;
-    }
+    if (!match) return alert('❌ 密碼錯誤，無法刪除');
 
     const headers = await getAuthHeaders();
     const res = await fetch('/api/delete-store', {
       method: 'DELETE',
       headers,
       body: JSON.stringify({ email, store_id }),
-      credentials: 'include', // 帶 Supabase Cookie
+      credentials: 'include',
     });
 
     const result = await res.json();
@@ -191,81 +203,58 @@ export default function StoreListPage() {
     }
   };
 
-  // === 改用 Server API：不要在前端 upsert store_feature_flags ===
+  // 後台「暫停/啟用」→ Server API 同步前台旗標（附自動 refresh）
   async function cascadeOrderingFlags(store_id: string, enabled: boolean) {
-    const headers = await getAuthHeaders();
-    const resp = await fetch('/api/admin/set-ordering-flags', {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: JSON.stringify({ store_id, enabled }),
-    });
-    const json = await resp.json();
+    const resp = await apiPost('/api/admin/set-ordering-flags', { store_id, enabled });
+    const json = await resp.json().catch(() => ({} as any));
     if (!resp.ok) throw new Error(json?.error || 'set-ordering-flags failed');
   }
 
-  const handleToggleActive = async (
-    email: string,
-    store_id: string,
-    isActive: boolean
-  ) => {
+  const handleToggleActive = async (email: string, store_id: string, isActive: boolean) => {
     try {
-      const headers = await getAuthHeaders();
-      const res = await fetch('/api/toggle-store-active', {
+      let headers = await getAuthHeaders();
+      let res = await fetch('/api/toggle-store-active', {
         method: 'PATCH',
         headers,
-        body: JSON.stringify({ email, store_id, is_active: isActive }),
         credentials: 'include',
+        body: JSON.stringify({ email, store_id, is_active: isActive }),
       });
-
+      if (res.status === 401) {
+        await supabase.auth.refreshSession();
+        headers = await getAuthHeaders();
+        res = await fetch('/api/toggle-store-active', {
+          method: 'PATCH',
+          headers,
+          credentials: 'include',
+          body: JSON.stringify({ email, store_id, is_active: isActive }),
+        });
+      }
       const result = await res.json();
-      if (!res.ok) {
-        throw new Error(result?.error || 'toggle-store-active failed');
-      }
+      if (!res.ok) throw new Error(result?.error || 'toggle-store-active failed');
 
-      // 更新列表狀態
-      setStores((prev) =>
-        prev.map((s) => (s.id === store_id ? { ...s, is_active: isActive } : s))
-      );
+      setStores((prev) => prev.map((s) => (s.id === store_id ? { ...s, is_active: isActive } : s)));
 
-      // ★ 這裡只呼叫 Server API，同步關閉/開啟前台內用/外帶旗標
-      try {
-        await cascadeOrderingFlags(store_id, isActive);
-      } catch (e: any) {
-        console.warn('cascadeOrderingFlags failed:', e?.message || e);
-        alert('⚠️ 已切換帳號狀態，但同步前台旗標時發生異常，請稍後重試。');
-      }
+      await cascadeOrderingFlags(store_id, isActive);
     } catch (e: any) {
       alert('❌ 操作失敗：' + (e?.message || 'Unknown error'));
     }
   };
 
-  // 單獨切換「內用」：呼叫 Server 端 /api/admin/toggle-dinein（service_role）
+  // 單獨切換「內用」
   const handleToggleDineIn = async (store_id: string) => {
     try {
       setBusy(store_id);
-
-      // 樂觀更新：先反轉
+      // 樂觀更新
       setStores((prev) =>
         prev.map((s) =>
           s.id === store_id ? { ...s, dine_in_enabled: !s.dine_in_enabled } : s
         )
       );
 
-      const headers = await getAuthHeaders();
-      const res = await fetch('/api/admin/toggle-dinein', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ store_id }),
-        credentials: 'include', // 帶 Supabase Cookie
-      });
+      const resp = await apiPost('/api/admin/toggle-dinein', { store_id });
+      const json = await resp.json().catch(() => ({} as any));
+      if (!resp.ok) throw new Error(json?.error || '切換失敗');
 
-      const json = await res.json();
-      if (!res.ok) {
-        throw new Error(json?.error || '切換失敗');
-      }
-
-      // 以後端值校正
       setStores((prev) =>
         prev.map((s) =>
           s.id === store_id ? { ...s, dine_in_enabled: !!json.dine_in_enabled } : s
@@ -291,62 +280,23 @@ export default function StoreListPage() {
         <td className="p-2">{store.email || '—'}</td>
         <td className="p-2">{store.phone || '—'}</td>
         <td className="p-2 space-x-2 text-center">
-          {/* 編輯 */}
-          <button
-            onClick={() => handleEditName(store.id, store.name)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded"
-          >
-            編輯
-          </button>
-
-          {/* 內用開關：dine_in_enabled=true → 顯示「封鎖內用」 */}
+          <button onClick={() => handleEditName(store.id, store.name)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">編輯</button>
           <button
             onClick={() => handleToggleDineIn(store.id)}
             disabled={busy === store.id}
-            className={`px-3 py-1 rounded font-medium ${
-              store.dine_in_enabled
-                ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-            }`}
-            title={
-              store.dine_in_enabled
-                ? '目前允許內用，點擊後將封鎖內用'
-                : '目前已封鎖內用，點擊後將啟動內用'
-            }
+            className={`px-3 py-1 rounded font-medium ${store.dine_in_enabled ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
+            title={store.dine_in_enabled ? '目前允許內用，點擊後將封鎖內用' : '目前已封鎖內用，點擊後將啟動內用'}
           >
-            {busy === store.id
-              ? '…處理中'
-              : store.dine_in_enabled
-              ? '封鎖內用'
-              : '啟動內用'}
+            {busy === store.id ? '…處理中' : store.dine_in_enabled ? '封鎖內用' : '啟動內用'}
           </button>
-
-          {/* 啟用/暫停（你原有的 is_active） */}
           <button
-            onClick={() =>
-              handleToggleActive(store.email || '', store.id, !store.is_active)
-            }
-            className={`px-3 py-1 rounded font-medium ${
-              store.is_active
-                ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
-                : 'bg-green-600 hover:bg-green-700 text-white'
-            }`}
-            title={
-              store.is_active
-                ? '暫停帳號（並同步關閉前台內用/外帶）'
-                : '啟用帳號（並同步開啟前台內用/外帶）'
-            }
+            onClick={() => handleToggleActive(store.email || '', store.id, !store.is_active)}
+            className={`px-3 py-1 rounded font-medium ${store.is_active ? 'bg-yellow-500 hover:bg-yellow-600 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}`}
+            title={store.is_active ? '暫停帳號（並同步關閉前台內用/外帶）' : '啟用帳號（並同步開啟前台內用/外帶）'}
           >
             {store.is_active ? '暫停' : '啟用'}
           </button>
-
-          {/* 刪除 */}
-          <button
-            onClick={() => handleDelete(store.email || '', store.id)}
-            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded"
-          >
-            刪除
-          </button>
+          <button onClick={() => handleDelete(store.email || '', store.id)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded">刪除</button>
         </td>
       </tr>
     ));

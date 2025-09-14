@@ -1,3 +1,4 @@
+// /pages/api/admin/set-ordering-flags.ts
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { createClient, type User } from '@supabase/supabase-js'
 
@@ -20,6 +21,7 @@ async function isAdmin(user: User): Promise<boolean> {
   push(um.role); push(um.roles); push(am.role); push(am.roles)
   if (roles.has('admin')) return true
 
+  // 從資料表補判斷（有就判，沒有欄位會被忽略）
   try {
     const { data } = await admin
       .from('store_accounts')
@@ -39,21 +41,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    // 1) 取 Bearer token
     const authz = req.headers.authorization || ''
     const token = authz.startsWith('Bearer ') ? authz.slice(7) : null
     if (!token) return res.status(401).json({ error: 'Missing bearer token' })
 
+    // 2) 解析 user
     const { data: userRes, error: userErr } = await admin.auth.getUser(token)
     if (userErr || !userRes?.user) return res.status(401).json({ error: 'Invalid token' })
 
+    // 3) 判斷 admin
     const allowed = await isAdmin(userRes.user)
     if (!allowed) return res.status(403).json({ error: 'Forbidden: admin only' })
 
+    // 4) 參數
     const { store_id, enabled } = req.body as { store_id?: string; enabled?: boolean }
     if (!store_id || typeof enabled !== 'boolean') {
       return res.status(400).json({ error: 'store_id and enabled are required' })
     }
 
+    // 5) upsert 兩個旗標
     const payload = [
       { store_id, feature_key: 'dine_in', enabled },
       { store_id, feature_key: 'takeout', enabled },
@@ -61,8 +68,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { error: upErr } = await admin
       .from('store_feature_flags')
       .upsert(payload, { onConflict: 'store_id,feature_key' })
-    if (upErr) return res.status(500).json({ error: upErr.message })
 
+    if (upErr) return res.status(500).json({ error: upErr.message })
     return res.status(200).json({ ok: true, store_id, dine_in: enabled, takeout: enabled })
   } catch (e: any) {
     return res.status(500).json({ error: e?.message || 'Unexpected error' })
