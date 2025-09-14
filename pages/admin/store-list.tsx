@@ -1,4 +1,3 @@
-// pages/admin/store-list.tsx
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -15,14 +14,15 @@ type Store = {
 };
 
 type StoreRow = Store & {
-  dine_in_enabled: boolean; // 無紀錄視為 true
+  dine_in_enabled: boolean;   // 內用
+  takeout_enabled: boolean;   // 外帶
 };
 
 /** 取得最新 access token（必要時 refresh）並組 headers */
 async function getAuthHeaders(): Promise<Record<string, string>> {
   // 先拿現有 session
   let { data: sess } = await supabase.auth.getSession();
-  // 沒有就 refresh 一次
+  // 若沒有，refresh 一次
   if (!sess.session?.access_token) {
     const { data: refreshed } = await supabase.auth.refreshSession();
     sess = refreshed;
@@ -75,7 +75,7 @@ export default function StoreListPage() {
   const [stores, setStores] = useState<StoreRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null); // 正在切換的 store_id
   const router = useRouter();
 
   useEffect(() => {
@@ -110,23 +110,35 @@ export default function StoreListPage() {
           ...s,
           email: s.email ?? null,
           phone: s.phone ?? null,
-          dine_in_enabled: true, // 預設 true，下面旗標覆蓋
+          dine_in_enabled: true,
+          takeout_enabled: true,
         })) ?? [];
 
-      // 2) 讀 dine_in 旗標
+      // 2) 一次抓回所有店家的 dine_in / takeout 旗標
       const ids = baseRows.map((s) => s.id);
       if (ids.length > 0) {
         const { data: flags } = await supabase
           .from('store_feature_flags')
           .select('store_id, feature_key, enabled')
           .in('store_id', ids)
-          .eq('feature_key', 'dine_in');
+          .in('feature_key', ['dine_in', 'takeout']);
 
-        if (flags) {
-          const map = new Map<string, boolean>();
-          (flags as any[]).forEach((f) => map.set(f.store_id as string, !!f.enabled));
+        if (flags && flags.length > 0) {
+          const flagMap = new Map<string, Record<string, boolean>>();
+          (flags as any[]).forEach((f) => {
+            const sid = f.store_id as string;
+            const key = f.feature_key as string;
+            const enabled = !!f.enabled;
+            const obj = flagMap.get(sid) || {};
+            obj[key] = enabled;
+            flagMap.set(sid, obj);
+          });
           baseRows.forEach((row) => {
-            if (map.has(row.id)) row.dine_in_enabled = !!map.get(row.id);
+            const obj = flagMap.get(row.id);
+            if (obj) {
+              if ('dine_in' in obj) row.dine_in_enabled = !!obj.dine_in;
+              if ('takeout' in obj) row.takeout_enabled = !!obj.takeout;
+            }
           });
         }
       }
@@ -147,10 +159,13 @@ export default function StoreListPage() {
       .update({ name: newName.trim() })
       .eq('id', storeId);
 
-    if (error) alert('❌ 修改失敗：' + error.message);
-    else {
+    if (error) {
+      alert('❌ 修改失敗：' + error.message);
+    } else {
       alert('✅ 店名已更新');
-      setStores((prev) => prev.map((s) => (s.id === storeId ? { ...s, name: newName.trim() } : s)));
+      setStores((prev) =>
+        prev.map((s) => (s.id === storeId ? { ...s, name: newName.trim() } : s))
+      );
     }
   };
 
@@ -194,44 +209,7 @@ export default function StoreListPage() {
     }
   };
 
-  // 後台「暫停/啟用」→ Server API 同步前台旗標（附自動 refresh）
-  async function cascadeOrderingFlags(store_id: string, enabled: boolean) {
-    const resp = await apiPost('/api/admin/set-ordering-flags', { store_id, enabled });
-    const json = await resp.json().catch(() => ({} as any));
-    if (!resp.ok) throw new Error(json?.error || 'set-ordering-flags failed');
-  }
-
-  const handleToggleActive = async (email: string, store_id: string, isActive: boolean) => {
-    try {
-      let headers = await getAuthHeaders();
-      let res = await fetch('/api/toggle-store-active', {
-        method: 'PATCH',
-        headers,
-        credentials: 'include',
-        body: JSON.stringify({ email, store_id, is_active: isActive }),
-      });
-      if (res.status === 401) {
-        await supabase.auth.refreshSession();
-        headers = await getAuthHeaders();
-        res = await fetch('/api/toggle-store-active', {
-          method: 'PATCH',
-          headers,
-          credentials: 'include',
-          body: JSON.stringify({ email, store_id, is_active: isActive }),
-        });
-      }
-      const result = await res.json();
-      if (!res.ok) throw new Error(result?.error || 'toggle-store-active failed');
-
-      setStores((prev) => prev.map((s) => (s.id === store_id ? { ...s, is_active: isActive } : s)));
-
-      await cascadeOrderingFlags(store_id, isActive);
-    } catch (e: any) {
-      alert('❌ 操作失敗：' + (e?.message || 'Unknown error'));
-    }
-  };
-
-  // 單獨切換「內用」
+  // === 單獨切換「內用 / 外帶」：呼叫 Server API ===
   const handleToggleDineIn = async (store_id: string) => {
     try {
       setBusy(store_id);
@@ -264,6 +242,69 @@ export default function StoreListPage() {
     }
   };
 
+  const handleToggleTakeout = async (store_id: string) => {
+    try {
+      setBusy(store_id);
+      // 樂觀更新
+      setStores((prev) =>
+        prev.map((s) =>
+          s.id === store_id ? { ...s, takeout_enabled: !s.takeout_enabled } : s
+        )
+      );
+
+      const resp = await apiPost('/api/admin/toggle-takeout', { store_id });
+      const json = await resp.json().catch(() => ({} as any));
+      if (!resp.ok) throw new Error(json?.error || '切換失敗');
+
+      setStores((prev) =>
+        prev.map((s) =>
+          s.id === store_id ? { ...s, takeout_enabled: !!json.takeout_enabled } : s
+        )
+      );
+    } catch (e: any) {
+      alert('❌ 外帶開關切換失敗：' + (e?.message || 'Unknown error'));
+      // 還原
+      setStores((prev) =>
+        prev.map((s) =>
+          s.id === store_id ? { ...s, takeout_enabled: !s.takeout_enabled } : s
+        )
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // === 啟用/暫停：只改 is_active，不再連動 flags（簡化你的流程） ===
+  const handleToggleActive = async (email: string, store_id: string, isActive: boolean) => {
+    try {
+      let headers = await getAuthHeaders();
+      let res = await fetch('/api/toggle-store-active', {
+        method: 'PATCH',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify({ email, store_id, is_active: isActive }),
+      });
+      if (res.status === 401) {
+        await supabase.auth.refreshSession();
+        headers = await getAuthHeaders();
+        res = await fetch('/api/toggle-store-active', {
+          method: 'PATCH',
+          headers,
+          credentials: 'include',
+          body: JSON.stringify({ email, store_id, is_active: isActive }),
+        });
+      }
+      const result = await res.json();
+      if (!res.ok) throw new Error(result?.error || 'toggle-store-active failed');
+
+      setStores((prev) =>
+        prev.map((s) => (s.id === store_id ? { ...s, is_active: isActive } : s))
+      );
+    } catch (e: any) {
+      alert('❌ 操作失敗：' + (e?.message || 'Unknown error'));
+    }
+  };
+
   const tableBody = useMemo(() => {
     return stores.map((store) => (
       <tr key={store.id} className="border-t">
@@ -271,30 +312,77 @@ export default function StoreListPage() {
         <td className="p-2">{store.email || '—'}</td>
         <td className="p-2">{store.phone || '—'}</td>
         <td className="p-2 space-x-2 text-center">
-          <button onClick={() => handleEditName(store.id, store.name)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded">編輯</button>
+          {/* 編輯 */}
+          <button
+            onClick={() => handleEditName(store.id, store.name)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded"
+          >
+            編輯
+          </button>
+
+          {/* 內用開關 */}
           <button
             onClick={() => handleToggleDineIn(store.id)}
             disabled={busy === store.id}
-            className={`px-3 py-1 rounded font-medium ${store.dine_in_enabled ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
-            title={store.dine_in_enabled ? '目前允許內用，點擊後將封鎖內用' : '目前已封鎖內用，點擊後將啟動內用'}
+            className={`px-3 py-1 rounded font-medium ${
+              store.dine_in_enabled
+                ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            }`}
+            title={
+              store.dine_in_enabled
+                ? '目前允許內用，點擊後將封鎖內用'
+                : '目前已封鎖內用，點擊後將啟動內用'
+            }
           >
             {busy === store.id ? '…處理中' : store.dine_in_enabled ? '封鎖內用' : '啟動內用'}
           </button>
+
+          {/* 外帶開關 */}
+          <button
+            onClick={() => handleToggleTakeout(store.id)}
+            disabled={busy === store.id}
+            className={`px-3 py-1 rounded font-medium ${
+              store.takeout_enabled
+                ? 'bg-sky-600 hover:bg-sky-700 text-white'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            }`}
+            title={
+              store.takeout_enabled
+                ? '目前允許外帶，點擊後將封鎖外帶'
+                : '目前已封鎖外帶，點擊後將啟動外帶'
+            }
+          >
+            {busy === store.id ? '…處理中' : store.takeout_enabled ? '封鎖外帶' : '啟動外帶'}
+          </button>
+
+          {/* 啟用/暫停（只改 is_active） */}
           <button
             onClick={() => handleToggleActive(store.email || '', store.id, !store.is_active)}
-            className={`px-3 py-1 rounded font-medium ${store.is_active ? 'bg-yellow-500 hover:bg-yellow-600 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}`}
-            title={store.is_active ? '暫停帳號（並同步關閉前台內用/外帶）' : '啟用帳號（並同步開啟前台內用/外帶）'}
+            className={`px-3 py-1 rounded font-medium ${
+              store.is_active
+                ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                : 'bg-green-600 hover:bg-green-700 text-white'
+            }`}
+            title={store.is_active ? '暫停帳號' : '啟用帳號'}
           >
             {store.is_active ? '暫停' : '啟用'}
           </button>
-          <button onClick={() => handleDelete(store.email || '', store.id)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded">刪除</button>
+
+          {/* 刪除 */}
+          <button
+            onClick={() => handleDelete(store.email || '', store.id)}
+            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded"
+          >
+            刪除
+          </button>
         </td>
       </tr>
     ));
   }, [stores, busy]);
 
   return (
-    <div className="max-w-4xl mx-auto mt-10 p-4">
+    <div className="max-w-5xl mx-auto mt-10 p-4">
       <h1 className="text-2xl font-bold mb-6">📋 店家清單</h1>
       {loading && <p>讀取中...</p>}
       {error && <p className="text-red-600">{error}</p>}
