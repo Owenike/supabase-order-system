@@ -1,10 +1,9 @@
-// /utils/fetchItemOptions.ts
 /* eslint-disable no-console */
 import { supabase } from '@/lib/supabaseClient'
 
 export type OptionValue = {
   label: string
-  value: string
+  value?: string           // ← 改為可選
   price_delta?: number
 }
 
@@ -68,7 +67,12 @@ async function getAddonsOption(storeId: string) {
     console.warn('[fetchItemOptions] getAddonsOption error:', error.message)
     return null
   }
-  return (data ?? null) as { id: string; name: string; input_type: 'single' | 'multi'; values: OptionValue[] } | null
+  return (data ?? null) as {
+    id: string
+    name: string
+    input_type: 'single' | 'multi'
+    values: OptionValue[]
+  } | null
 }
 
 /** 判斷「加料」是否對此商品啟用：單品覆蓋 > 分類綁定 > 預設關閉 */
@@ -94,6 +98,15 @@ async function isEnabledForItem(optionId: string, categoryId: string, itemId: st
     if (!error && data && data.length > 0) return true
   }
   return false
+}
+
+/** 將 values 做安全正規化（沒有 value 就用 label 代替） */
+function normalizeValues(values: OptionValue[]): OptionValue[] {
+  return (values || []).map((v) => ({
+    label: String(v.label ?? '').trim(),
+    value: (v.value && String(v.value).trim()) || String(v.label ?? '').trim(),
+    price_delta: Number.isFinite(Number(v.price_delta)) ? Number(v.price_delta) : 0
+  }))
 }
 
 /**
@@ -129,11 +142,7 @@ export async function fetchItemOptions(menuItemId: string): Promise<OptionGroup[
   const groups: OptionGroup[] = [...buildFixedGroups()]
 
   // 5) 附加「加料（多選）」群組（若有值）
-  const addonValues: OptionValue[] = (addonsOption.values || []).map((v) => ({
-    label: v.label,
-    value: v.value,
-    price_delta: typeof v.price_delta === 'number' ? v.price_delta : 0
-  }))
+  const addonValues: OptionValue[] = normalizeValues(addonsOption.values || [])
 
   if (addonValues.length > 0) {
     groups.push({
