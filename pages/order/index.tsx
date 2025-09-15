@@ -1,4 +1,6 @@
 /* eslint-disable no-console */
+'use client'
+
 import dynamic from 'next/dynamic'
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/router'
@@ -6,6 +8,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { getLiff } from '@/lib/liffClient'
 import { fetchItemOptions, type OptionGroup } from '@/utils/fetchItemOptions'
 import ItemOptionPicker from '@/components/ItemOptionPicker'
+import { Button } from '@/components/ui/button'
 
 // ---------- 常數與工具 ----------
 const SAVED_QS_KEY = 'order_return_qs'
@@ -16,7 +19,6 @@ const COOKIE_QS_KEY = 'order_qs_backup'
 const FLAG_RETURNED = 'liff_returned_once'
 const COOKIE_DOMAIN = '.olinex.app'
 
-// 可從 .env 帶入（避免沒有 query 時無處可還原）
 const FALLBACK_STORE_ID =
   process.env.NEXT_PUBLIC_FALLBACK_STORE_ID || '11b687d8-f529-4da0-b901-74d5e783e6f2'
 const FALLBACK_TABLE = process.env.NEXT_PUBLIC_FALLBACK_TABLE || '外帶'
@@ -50,7 +52,6 @@ function safeWindow(): Window | null {
   return typeof window !== 'undefined' ? window : null
 }
 
-// 從 router / 目前網址 / cookie / session / local / fallback 蒐集目標 store/table
 function resolveTarget(w: Window, q: Record<string, any>) {
   let store: string | undefined
   let table: string | undefined
@@ -130,7 +131,6 @@ function resolveTarget(w: Window, q: Record<string, any>) {
   return { store, table, src }
 }
 
-// 僅保留 store/table，清掉 code/state 等授權參數 → /order
 function buildCleanRedirectUrl(w: Window, q: Record<string, any>) {
   const { store, table, src } = resolveTarget(w, q)
   const sp = new URLSearchParams()
@@ -141,7 +141,6 @@ function buildCleanRedirectUrl(w: Window, q: Record<string, any>) {
   return url
 }
 
-// 登入回跳 → /line-success（由該頁清參數，再回 /order）
 function buildSuccessRedirectUrl(w: Window, q: Record<string, any>) {
   const { store, table } = resolveTarget(w, q)
   const sp = new URLSearchParams()
@@ -162,10 +161,7 @@ interface MenuItem {
   description?: string
   is_available?: boolean | null
 }
-interface Category {
-  id: string
-  name: string
-}
+interface Category { id: string; name: string }
 interface OrderItem {
   id?: string
   name: string
@@ -244,18 +240,16 @@ const langMap = {
   }
 }
 
-// ---------- 舊資料鍵值的中文對應（防呆用） ----------
+// ---------- 舊資料鍵值中文化 ----------
 function translateOptionPair(key: string, value: string | string[]): { k: string; v: string } {
   const toText = (x: any) => String(x ?? '').trim()
   const V = Array.isArray(value) ? value.map(toText) : [toText(value)]
   let k = key
-  // key 映射
   if (key === 'fixed_sweetness') k = '甜度'
   else if (key === 'fixed_ice') k = '冰塊'
   else if (key === 'fixed_size') k = '容量'
-  else if (/^[0-9a-f-]{24,}$/.test(key)) k = '加料' // 可能是選項組/值的 UUID，統一稱「加料」
+  else if (/^[0-9a-f-]{24,}$/.test(key)) k = '加料'
 
-  // value 映射（只針對舊資料常見值，新的會直接是中文）
   const mapSweet: Record<string, string> = { '0': '無糖', '30': '微糖', '50': '半糖', '70': '少糖', '100': '全糖' }
   const mapIce: Record<string, string> = { '0': '去冰', '30': '微冰', '50': '少冰', '100': '正常冰' }
   const mapSize: Record<string, string> = { S: '小杯', M: '中杯', L: '大杯' }
@@ -267,7 +261,6 @@ function translateOptionPair(key: string, value: string | string[]): { k: string
 
   return { k, v: vText }
 }
-
 function renderOptionsList(opts?: OptionsMap | null) {
   if (!opts || typeof opts !== 'object') return null
   const entries = Object.entries(opts)
@@ -276,11 +269,7 @@ function renderOptionsList(opts?: OptionsMap | null) {
     <ul className="ml-4 text-sm text-gray-600 list-disc">
       {entries.map(([rawK, rawV]) => {
         const { k, v } = translateOptionPair(rawK, rawV)
-        return (
-          <li key={rawK}>
-            {k}：{v}
-          </li>
-        )
+        return <li key={rawK}>{k}：{v}</li>
       })}
     </ul>
   )
@@ -384,16 +373,12 @@ function OrderPage() {
 
         const hasAuthParams = typeof code === 'string' && typeof state === 'string'
         if (hasAuthParams) {
-          try {
-            w.sessionStorage.setItem(FLAG_RETURNED, '1')
-          } catch {}
+          try { w.sessionStorage.setItem(FLAG_RETURNED, '1') } catch {}
         }
 
         const liff = await getLiff()
         setLiffRef(liff)
-        try {
-          await (liff as any).ready
-        } catch {}
+        try { await (liff as any).ready } catch {}
 
         if (liff.isLoggedIn()) {
           await ensureLineCookie()
@@ -416,9 +401,7 @@ function OrderPage() {
       }
     })()
 
-    return () => {
-      disposed = true
-    }
+    return () => { disposed = true }
   }, [routerReady, router.query, code, state, ensureLineCookie, router])
 
   // ---------- 回跳後：若缺 store/table 就還原 ----------
@@ -495,7 +478,7 @@ function OrderPage() {
     }
   }, [storeIdFromQuery])
 
-  // ---------- 讀取「內用/外帶 是否開放」旗標（透過 Server API，免 RLS） ----------
+  // ---------- 讀取「內用/外帶 是否開放」旗標 ----------
   const fetchFeatureFlags = useCallback(
     async (sid: string) => {
       try {
@@ -511,21 +494,15 @@ function OrderPage() {
           body: JSON.stringify({ store_id: sid }),
         })
         const json = await resp.json().catch(() => ({} as any))
-        if (!resp.ok) {
-          console.warn('get-flags failed:', json?.error)
-          setDineInEnabled(true)
-          setTakeoutEnabled(true)
-        } else {
+        if (resp.ok) {
           setDineInEnabled(json?.dine_in ?? true)
           setTakeoutEnabled(json?.takeout ?? true)
+        } else {
+          setDineInEnabled(true); setTakeoutEnabled(true)
         }
-      } catch (e: any) {
-        console.warn('fetchFeatureFlags error:', e?.message || e)
-        setDineInEnabled(true)
-        setTakeoutEnabled(true)
-      } finally {
-        setFlagsLoaded(true)
-      }
+      } catch {
+        setDineInEnabled(true); setTakeoutEnabled(true)
+      } finally { setFlagsLoaded(true) }
     },
     []
   )
@@ -560,7 +537,7 @@ function OrderPage() {
       q = q.eq('table_number', tableParam).limit(10)
     }
 
-    const { data, error } = await q
+  const { data, error } = await q
     if (error) {
       console.error('fetchOrders error:', error)
       return
@@ -576,10 +553,7 @@ function OrderPage() {
       .eq('store_id', sid)
       .or('is_available.eq.true,is_available.is.null')
       .order('created_at', { ascending: true })
-    if (error) {
-      console.error('fetchMenus error:', error.message)
-      return
-    }
+    if (error) return console.error('fetchMenus error:', error.message)
     if (data) setMenus(data as unknown as MenuItem[])
   }
 
@@ -590,48 +564,35 @@ function OrderPage() {
       .select('*')
       .eq('store_id', sid)
       .order('created_at', { ascending: true })
-    if (error) {
-      console.error('fetchCategories error:', error.message)
-      return
-    }
+    if (error) return console.error('fetchCategories error:', error.message)
     if (data) setCategories(data as unknown as Category[])
   }
 
   useEffect(() => {
     if (!storeId || !UUID_RE.test(storeId)) return
-    ;(async () => {
-      await fetchFeatureFlags(storeId)
-    })()
+    ;(async () => { await fetchFeatureFlags(storeId) })()
   }, [storeId, fetchFeatureFlags])
 
   useEffect(() => {
     if (!isLiffReady || !storeId || !UUID_RE.test(storeId) || !flagsLoaded) return
     ;(async () => {
-      if (liffRef?.isLoggedIn?.() && !getCookie('line_user_id')) {
-        await ensureLineCookie()
-      }
+      if (liffRef?.isLoggedIn?.() && !getCookie('line_user_id')) await ensureLineCookie()
       await fetchMenus(storeId)
       await fetchCategories(storeId)
       await fetchOrders()
     })()
   }, [isLiffReady, storeId, fetchOrders, ensureLineCookie, liffRef, flagsLoaded])
 
-  // ---------- UI 事件 ----------
-  // 點餐：先讀取商品選項（有選項→彈窗；沒選項→直接 +1）
+  // ---------- UI 行為 ----------
   const toggleItem = async (menu: MenuItem) => {
     try {
       const groups = await fetchItemOptions(menu.id)
       if (!groups || groups.length === 0) {
         const exists = selectedItems.find((i) => i.id === menu.id)
         if (exists) {
-          setSelectedItems(
-            selectedItems.map((i) => (i.id === menu.id ? { ...i, quantity: i.quantity + 1 } : i))
-          )
+          setSelectedItems(selectedItems.map((i) => (i.id === menu.id ? { ...i, quantity: i.quantity + 1 } : i)))
         } else {
-          setSelectedItems((prev) => [
-            ...prev,
-            { id: menu.id, name: menu.name, price: menu.price, quantity: 1 }
-          ])
+          setSelectedItems((prev) => [...prev, { id: menu.id, name: menu.name, price: menu.price, quantity: 1 }])
         }
         return
       }
@@ -642,36 +603,24 @@ function OrderPage() {
       console.error('fetchItemOptions error:', e)
       const exists = selectedItems.find((i) => i.id === menu.id)
       if (exists) {
-        setSelectedItems(
-          selectedItems.map((i) => (i.id === menu.id ? { ...i, quantity: i.quantity + 1 } : i))
-        )
+        setSelectedItems(selectedItems.map((i) => (i.id === menu.id ? { ...i, quantity: i.quantity + 1 } : i)))
       } else {
-        setSelectedItems((prev) => [
-          ...prev,
-          { id: menu.id, name: menu.name, price: menu.price, quantity: 1 }
-        ])
+        setSelectedItems((prev) => [...prev, { id: menu.id, name: menu.name, price: menu.price, quantity: 1 }])
       }
     }
   }
 
   const reduceItem = (id: string) => {
-    setSelectedItems(
-      selectedItems
-        .map((i) => (i.id === id ? { ...i, quantity: i.quantity - 1 } : i))
-        .filter((i) => i.quantity > 0)
-    )
+    setSelectedItems(selectedItems.map((i) => (i.id === id ? { ...i, quantity: i.quantity - 1 } : i)).filter((i) => i.quantity > 0))
   }
 
-  // 在彈窗中按「加入」：把中文群組名 + 中文選項標籤寫入 options
   const addToCart = () => {
     if (!activeMenu) return
     const missing = optionGroups.find((g) => g.required && !chosenOptions[g.id])
     if (missing) {
-      alert(`請選擇 ${missing.name}`)
-      return
+      alert(`請選擇 ${missing.name}`); return
     }
 
-    // 計算加價
     let delta = 0
     optionGroups.forEach((g) => {
       const val = chosenOptions[g.id]
@@ -688,7 +637,6 @@ function OrderPage() {
     })
     const finalPrice = activeMenu.price + delta
 
-    // 產生「中文友善」的 options
     const displayOptions: OptionsMap = {}
     optionGroups.forEach((g) => {
       const val = chosenOptions[g.id]
@@ -698,138 +646,81 @@ function OrderPage() {
         const label = (found?.label ?? found?.value ?? '').toString().trim()
         if (label) displayOptions[g.name] = label
       } else {
-        const labels = (val as string[])
-          .map((vv) => {
-            const f = g.values.find((x) => x.value === vv)
-            return (f?.label ?? f?.value ?? '').toString().trim()
-          })
-          .filter(Boolean)
+        const labels = (val as string[]).map((vv) => {
+          const f = g.values.find((x) => x.value === vv)
+          return (f?.label ?? f?.value ?? '').toString().trim()
+        }).filter(Boolean)
         if (labels.length) displayOptions[g.name] = labels
       }
     })
 
-    setSelectedItems((prev) => [
-      ...prev,
-      {
-        id: activeMenu.id,
-        name: activeMenu.name,
-        price: finalPrice,
-        quantity: 1,
-        ...(Object.keys(displayOptions).length ? { options: displayOptions } : {})
-      }
-    ])
+    setSelectedItems((prev) => [...prev, { id: activeMenu.id, name: activeMenu.name, price: finalPrice, quantity: 1, ...(Object.keys(displayOptions).length ? { options: displayOptions } : {}) }])
     setActiveMenu(null)
   }
 
   const handleConfirm = () => {
     if (selectedItems.length === 0) return setErrorMsg(t.errorNoItem)
     if (isTakeout) {
-      if (!takeoutEnabled && flagsLoaded) {
-        setErrorMsg(t.takeoutBlocked)
-        return
-      }
+      if (!takeoutEnabled && flagsLoaded) { setErrorMsg(t.takeoutBlocked); return }
       if (!customerName.trim()) return setErrorMsg(t.errorName)
       if (!/^09\d{8}$/.test(customerPhone.trim())) return setErrorMsg(t.errorPhone)
     } else {
-      if (flagsLoaded && !dineInEnabled) {
-        setErrorMsg(t.dineInBlocked)
-        return
-      }
+      if (flagsLoaded && !dineInEnabled) { setErrorMsg(t.dineInBlocked); return }
     }
-    setErrorMsg('')
-    setConfirming(true)
+    setErrorMsg(''); setConfirming(true)
   }
 
   const switchToTakeout = () => {
     const q = new URLSearchParams(router.asPath.split('?')[1] || '')
-    q.set('table', 'takeout')
-    if (storeId) q.set('store', storeId)
+    q.set('table', 'takeout'); if (storeId) q.set('store', storeId)
     router.replace(`/order?${q.toString()}`)
   }
 
   const handleManualLogin = async () => {
-    const w = safeWindow()
-    if (!w || loggingIn) return
+    const w = safeWindow(); if (!w || loggingIn) return
     setLoggingIn(true)
     try {
       let liff = liffRef
-      if (!liff) {
-        liff = await getLiff()
-        setLiffRef(liff)
-        try {
-          await (liff as any).ready
-        } catch {}
-      }
-      if (liff?.isLoggedIn?.()) {
-        await ensureLineCookie()
-        await fetchOrders()
-        return
-      }
+      if (!liff) { liff = await getLiff(); setLiffRef(liff); try { await (liff as any).ready } catch {} }
+      if (liff?.isLoggedIn?.()) { await ensureLineCookie(); await fetchOrders(); return }
 
-      try {
-        w.sessionStorage.setItem('ALLOW_LIFF_LOGIN', '1')
-      } catch {}
-
+      try { w.sessionStorage.setItem('ALLOW_LIFF_LOGIN', '1') } catch {}
       const successUrl = buildSuccessRedirectUrl(w, router.query)
       const sp = new URLSearchParams(w.location.search || '')
       if (sp.get('code') || sp.get('state')) {
         await router.replace(successUrl)
-        setTimeout(() => {
-          ;(liff as any)?.login?.({ redirectUri: successUrl, botPrompt: 'aggressive' })
-        }, 60)
+        setTimeout(() => { (liff as any)?.login?.({ redirectUri: successUrl, botPrompt: 'aggressive' }) }, 60)
         return
       }
-
       await (liff as any).login({ redirectUri: successUrl, botPrompt: 'aggressive' })
     } catch (err: any) {
       console.error('[LIFF] Manual login failed:', err?.message || err)
       setErrorMsg('LINE 登入失敗，請關閉分頁重開或改用 LINE 內建瀏覽器再試')
-    } finally {
-      setLoggingIn(false)
-    }
+    } finally { setLoggingIn(false) }
   }
 
-  // === 呼叫 /api/orders/create（含 options） ===
   const submitOrder = async () => {
     if (submitting) return
     setSubmitting(true)
     try {
-      if (!storeId || !UUID_RE.test(storeId)) {
-        setErrorMsg(t.invalidStore)
-        return
-      }
-      if (!effectiveTable && !isTakeout) {
-        setErrorMsg('桌號遺失，請返回上一頁重新選擇桌號')
-        return
-      }
+      if (!storeId || !UUID_RE.test(storeId)) { setErrorMsg(t.invalidStore); return }
+      if (!effectiveTable && !isTakeout) { setErrorMsg('桌號遺失，請返回上一頁重新選擇桌號'); return }
 
-      // 送單前，再向 Server API 取一次最新旗標，避免前端狀態不同步
       try {
         const resp = await fetch('/api/public/get-flags', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ store_id: storeId }),
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ store_id: storeId }),
         })
         const json = await resp.json().catch(() => ({} as any))
         if (resp.ok) {
           const latestDineIn = json?.dine_in ?? true
           const latestTakeout = json?.takeout ?? true
-          if (!isTakeout && !latestDineIn) {
-            setErrorMsg(t.dineInBlocked)
-            return
-          }
-          if (isTakeout && !latestTakeout) {
-            setErrorMsg(t.takeoutBlocked)
-            return
-          }
+          if (!isTakeout && !latestDineIn) { setErrorMsg(t.dineInBlocked); return }
+          if (isTakeout && !latestTakeout) { setErrorMsg(t.takeoutBlocked); return }
         }
       } catch {}
 
       const lineUserId = getCookie('line_user_id')
-      if (isTakeout && !lineUserId) {
-        setErrorMsg('❌ 尚未綁定 LINE，請先登入再送單')
-        return
-      }
+      if (isTakeout && !lineUserId) { setErrorMsg('❌ 尚未綁定 LINE，請先登入再送單'); return }
 
       const totalAmount = selectedItems.reduce((s, i) => s + i.price * i.quantity, 0)
       const noteText = isTakeout
@@ -843,7 +734,7 @@ function OrderPage() {
         body: JSON.stringify({
           store_id: storeId,
           table_number: effectiveTable || (isTakeout ? 'takeout' : ''),
-          items: selectedItems, // 含 options（中文）
+          items: selectedItems,
           note: noteText,
           status: 'pending',
           total: totalAmount,
@@ -855,90 +746,87 @@ function OrderPage() {
       const json = await resp.json().catch(() => ({} as any))
       if (!resp.ok) {
         console.error('submitOrder API error:', json?.error || json)
-        setErrorMsg(`${t.fail}（${json?.error || 'API error'}）`)
-        return
+        setErrorMsg(`${t.fail}（${json?.error || 'API error'}）`); return
       }
 
       setSuccess(true)
       void fetchOrders()
-      setSelectedItems([])
-      setNote('')
-      setSpicyLevel('')
-      setCustomerName('')
-      setCustomerPhone('')
-      setConfirming(false)
-      setErrorMsg('')
+      setSelectedItems([]); setNote(''); setSpicyLevel(''); setCustomerName(''); setCustomerPhone('')
+      setConfirming(false); setErrorMsg('')
     } catch (e: any) {
       console.error('submitOrder exception:', e?.message || e)
       setErrorMsg(`${t.fail}（${e?.message || 'Unexpected error'}）`)
-    } finally {
-      setSubmitting(false)
-    }
+    } finally { setSubmitting(false) }
   }
 
   // ---------- Render ----------
   if (invalidStore) {
     return (
-      <div className="p-4 max-w-2xl mx-auto">
-        <button
-          onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-          className="absolute top-4 right-4 text-sm border px-2 py-1 rounded"
-        >
-          {lang === 'zh' ? 'EN' : '中'}
-        </button>
-        <h1 className="text-2xl font-bold mb-4">🛍 {t.takeaway}</h1>
-        <div className="bg-red-100 text-red-700 p-3 rounded mb-4 shadow">❌ {t.invalidStore}</div>
-        <p className="text-sm text-gray-600">
-          範例：
-          <code className="px-1 py-0.5 bg-gray-100 rounded">
-            /order?store=fc4179f2-c89d-4f5d-a6a1-4a04a57a220b&table=takeout
-          </code>
-        </p>
+      <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
+        <div className="flex items-start justify-between pt-2 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="text-yellow-400 text-2xl">🛍</div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{t.takeaway}</h1>
+              <p className="text-white/70 text-sm mt-1">請確認網址參數是否正確</p>
+            </div>
+          </div>
+          <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>
+            {lang === 'zh' ? 'EN' : '中'}
+          </Button>
+        </div>
+
+        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
+          <div className="text-red-300">❌ {t.invalidStore}</div>
+          <p className="text-sm text-white/70 mt-2">
+            範例：
+            <code className="px-1 py-0.5 bg-white/10 rounded ml-1">/order?store=...&table=takeout</code>
+          </p>
+        </div>
       </div>
     )
   }
 
   if (!isLiffReady || !storeId || !flagsLoaded) {
-    return <p className="text-red-500 p-4">❗請稍候，頁面初始化中…</p>
+    return <p className="text-white/80 p-6">❗請稍候，頁面初始化中…</p>
   }
 
-  // 內用被封鎖：提供一鍵切換到外帶
   if (!isTakeout && !dineInEnabled) {
     return (
-      <div className="p-4 max-w-2xl mx-auto relative">
-        <button
-          onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-          className="absolute top-4 right-4 text-sm border px-2 py-1 rounded"
-        >
-          {lang === 'zh' ? 'EN' : '中'}
-        </button>
-        <h1 className="text-2xl font-bold mb-4">📝 {t.title}</h1>
-        <div className="mb-4 p-3 rounded border border-amber-300 bg-amber-50 text-amber-800">
-          {t.dineInBlocked}
+      <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
+        <div className="flex items-start justify-between pt-2 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="text-yellow-400 text-2xl">📝</div>
+            <div><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{t.title}</h1></div>
+          </div>
+          <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'EN' : '中'}</Button>
         </div>
-        <button
-          onClick={switchToTakeout}
-          className="px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700"
-        >
-          切換為外帶
-        </button>
+
+        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
+          <div className="mb-4 p-3 rounded border border-amber-300/30 bg-amber-500/15 text-amber-200">
+            {t.dineInBlocked}
+          </div>
+          <Button variant="success" onClick={switchToTakeout}>切換為外帶</Button>
+        </div>
       </div>
     )
   }
 
-  // 外帶被封鎖：顯示封鎖訊息（不提供切換，因為沒有桌號）
   if (isTakeout && !takeoutEnabled) {
     return (
-      <div className="p-4 max-w-2xl mx-auto relative">
-        <button
-          onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-          className="absolute top-4 right-4 text-sm border px-2 py-1 rounded"
-        >
-          {lang === 'zh' ? 'EN' : '中'}
-        </button>
-        <h1 className="text-2xl font-bold mb-4">🛍 {t.takeaway}</h1>
-        <div className="mb-4 p-3 rounded border border-red-300 bg-red-50 text-red-700">
-          {t.takeoutBlocked}
+      <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
+        <div className="flex items-start justify-between pt-2 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="text-yellow-400 text-2xl">🛍</div>
+            <div><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{t.takeaway}</h1></div>
+          </div>
+          <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'EN' : '中'}</Button>
+        </div>
+
+        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
+          <div className="mb-4 p-3 rounded border border-red-300/30 bg-red-500/15 text-red-200">
+            {t.takeoutBlocked}
+          </div>
         </div>
       </div>
     )
@@ -946,32 +834,26 @@ function OrderPage() {
 
   if (!hasLineCookie) {
     return (
-      <div className="p-4 max-w-2xl mx-auto relative">
-        <button
-          onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-          className="absolute top-4 right-4 text-sm border px-2 py-1 rounded"
-        >
-          {lang === 'zh' ? 'EN' : '中'}
-        </button>
-        <h1 className="text-2xl font-bold mb-4">{isTakeout ? `🛍 ${t.takeaway}` : `📝 ${t.title}`}</h1>
+      <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
+        <div className="flex items-start justify-between pt-2 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="text-yellow-400 text-2xl">{isTakeout ? '🛍' : '📝'}</div>
+            <div><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{isTakeout ? t.takeaway : t.title}</h1></div>
+          </div>
+          <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'EN' : '中'}</Button>
+        </div>
 
-        <div className="mb-6 text-sm">
-          <div className="text-red-600 mb-2">此頁需要先完成 LINE 登入。</div>
+        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
+          <div className="text-red-200 mb-2">此頁需要先完成 LINE 登入。</div>
           {errorMsg && (
-            <div className="mb-2 p-2 rounded border border-red-300 bg-red-50 text-red-700">
+            <div className="mb-2 p-2 rounded border border-red-300/30 bg-red-500/15 text-red-200">
               {errorMsg}
               <button
                 onClick={() => {
-                  const w = safeWindow()
-                  if (!w) return
+                  const w = safeWindow(); if (!w) return
                   const cookieQs = getCookie(COOKIE_QS_KEY)
-                  if (cookieQs) {
-                    router.replace(`/order${cookieQs}`)
-                    delCookie(COOKIE_QS_KEY)
-                    return
-                  }
-                  const cleanUrl = buildCleanRedirectUrl(w, router.query)
-                  router.replace(cleanUrl)
+                  if (cookieQs) { router.replace(`/order${cookieQs}`); delCookie(COOKIE_QS_KEY); return }
+                  const cleanUrl = buildCleanRedirectUrl(w, router.query); router.replace(cleanUrl)
                 }}
                 className="ml-2 underline"
               >
@@ -979,14 +861,10 @@ function OrderPage() {
               </button>
             </div>
           )}
-          <button
-            onClick={handleManualLogin}
-            disabled={!isLiffReady || loggingIn}
-            className="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          <Button variant="success" onClick={handleManualLogin} disabled={!isLiffReady || loggingIn}>
             使用 LINE 登入
-          </button>
-          <p className="text-xs text-gray-500 mt-2">
+          </Button>
+          <p className="text-xs text-white/60 mt-2">
             若不是在 LINE App 內開啟，登入可能失敗，建議改用 LINE 內建瀏覽器開啟本頁。
           </p>
         </div>
@@ -996,40 +874,36 @@ function OrderPage() {
 
   const content = !confirming ? (
     <>
+      {/* 歷史訂單 */}
       {orderHistory.length > 0 && (
-        <button
+        <Button
           onClick={() => setShowPrevious(!showPrevious)}
-          className="mb-4 px-4 py-2 rounded bg-gray-200 text-gray-800 hover:bg-gray-300"
+          variant="soft"
+          className="mb-4"
         >
           📋 {t.viewLast}
-        </button>
+        </Button>
       )}
 
       {showPrevious && (
         <div className="mb-6 space-y-4">
           {orderHistory.map((order, idx) => (
-            <div key={idx} className="bg-gray-50 border border-gray-300 p-4 rounded">
+            <div key={idx} className="bg-white rounded-lg border shadow p-4">
               <h2 className="font-semibold mb-2">
                 {t.confirmTitle}（第 {idx + 1} 筆）
                 {order.created_at
-                  ? ` · ${new Date(order.created_at).toLocaleString('zh-TW', {
-                      timeZone: 'Asia/Taipei'
-                    })}`
+                  ? ` · ${new Date(order.created_at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}`
                   : ''}
               </h2>
               <ul className="list-disc pl-5 text-sm mb-2">
                 {order.items.map((item, i) => (
                   <li key={i} className="mb-1">
-                    {item.name} × {item.quantity}（NT$ {item.price * item.quantity}）
+                    {item.name} × {item.quantity}（NT$ {Number(item.price || 0) * Number(item.quantity || 0)}）
                     {renderOptionsList(item.options)}
                   </li>
                 ))}
               </ul>
-              {order.spicy_level && (
-                <p className="text-sm text-red-600 mb-1">
-                  {t.spicyPreview}：{order.spicy_level}
-                </p>
-              )}
+              {order.spicy_level && <p className="text-sm text-red-600 mb-1">{t.spicyPreview}：{order.spicy_level}</p>}
               {order.note && <p className="text-sm text-gray-700 mb-2">📝 {order.note}</p>}
               <p className="font-bold">總計：NT$ {order.total}</p>
             </div>
@@ -1037,40 +911,27 @@ function OrderPage() {
         </div>
       )}
 
+      {/* 分類與菜單 */}
       {categories.map((cat) => (
         <div key={cat.id} className="mb-6">
-          <h2 className="text-xl font-semibold mb-2 border-l-4 pl-2 border-yellow-400 text-yellow-700">
-            {cat.name}
-          </h2>
+          <h2 className="text-lg font-semibold mb-2 text-white">{cat.name}</h2>
           <ul className="grid gap-4">
             {menus
               .filter((m) => String(m.category_id) === String(cat.id))
               .map((menu) => (
-                <li key={menu.id} className="border rounded-lg p-4 shadow hover:shadow-md transition">
+                <li key={menu.id} className="bg-white text-gray-900 rounded-lg border shadow p-4">
                   <div className="flex justify-between items-start">
                     <div>
                       <div className="font-semibold text-lg mb-1">{menu.name}</div>
                       <div className="text-sm text-gray-600">NT$ {menu.price}</div>
-                      {menu.description && (
-                        <div className="text-xs text-gray-400 mt-1">{menu.description}</div>
-                      )}
+                      {menu.description && <div className="text-xs text-gray-400 mt-1">{menu.description}</div>}
                     </div>
                     <div className="flex gap-2 items-center">
-                      <button
-                        onClick={() => reduceItem(menu.id)}
-                        className="w-8 h-8 bg-red-500 text-white rounded-full hover:bg-red-600"
-                      >
-                        －
-                      </button>
+                      <Button size="sm" variant="destructive" onClick={() => reduceItem(menu.id)}>－</Button>
                       <span className="min-w-[20px] text-center">
                         {selectedItems.find((i) => i.id === menu.id)?.quantity || 0}
                       </span>
-                      <button
-                        onClick={() => toggleItem(menu)}
-                        className="w-8 h-8 bg-green-500 text-white rounded-full hover:bg-green-600"
-                      >
-                        ＋
-                      </button>
+                      <Button size="sm" variant="success" onClick={() => toggleItem(menu)}>＋</Button>
                     </div>
                   </div>
                 </li>
@@ -1079,8 +940,9 @@ function OrderPage() {
         </div>
       ))}
 
+      {/* 外帶表單 */}
       {isTakeout && (
-        <div className="mb-6 space-y-2">
+        <div className="bg-white rounded-lg border shadow p-4 mb-6 space-y-2">
           <input
             className="w-full border p-2 rounded"
             placeholder={t.name}
@@ -1099,14 +961,10 @@ function OrderPage() {
         </div>
       )}
 
-      {/* 辣度選擇（選填） */}
-      <div className="mb-4">
+      {/* 辣度選擇 */}
+      <div className="bg-white rounded-lg border shadow p-4 mb-6">
         <label className="block text-sm text-gray-700 mb-1">{t.spicyLabel}</label>
-        <select
-          className="w-full border p-2 rounded"
-          value={spicyLevel}
-          onChange={(e) => setSpicyLevel(e.target.value)}
-        >
+        <select className="w-full border p-2 rounded" value={spicyLevel} onChange={(e) => setSpicyLevel(e.target.value)}>
           <option value="">{t.spicyNone}</option>
           <option value={lang === 'zh' ? '不辣' : 'Mild / None'}>{t.spicyNo}</option>
           <option value={lang === 'zh' ? '小辣' : 'Light'}>{t.spicyLight}</option>
@@ -1115,7 +973,8 @@ function OrderPage() {
         </select>
       </div>
 
-      <div className="mb-6">
+      {/* 備註 */}
+      <div className="bg-white rounded-lg border shadow p-4 mb-24">
         <h2 className="font-semibold mb-2">{t.noteLabel}</h2>
         <textarea
           className="w-full border p-2 rounded"
@@ -1123,42 +982,33 @@ function OrderPage() {
           placeholder={t.notePlaceholder}
           value={note}
           onChange={(e) => {
-            const v = e.target.value
-            if (v.length <= 100) setNote(v)
+            const v = e.target.value; if (v.length <= 100) setNote(v)
           }}
           onInput={(e) => {
             const el = e.target as HTMLTextAreaElement
-            el.style.height = 'auto'
-            el.style.height = el.scrollHeight + 'px'
+            el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'
           }}
         />
         <p className="text-xs text-gray-400 text-right">{note.length}/100</p>
       </div>
 
-      {errorMsg && (
-        <div className="bg-red-100 text-red-700 p-3 rounded mb-4 shadow">❌ {errorMsg}</div>
-      )}
-
-      <div className="sticky bottom-4 bg-white pt-4 pb-2">
-        <div className="flex justify-between items-center">
-          <span className="text-xl font-bold">
+      {/* 底部固定結帳列（深色、全寬固定） */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#2B2B2B] text-white border-t border-white/10">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+          <span className="text-lg font-bold">
             {t.total}：NT$ {total}
           </span>
-          <button
-            onClick={handleConfirm}
-            className="bg-yellow-500 text-white px-6 py-2 rounded"
-          >
+          <Button variant="warning" onClick={handleConfirm}>
             {t.confirm}
-          </button>
+          </Button>
         </div>
       </div>
     </>
   ) : (
-    <div className="bg-white border rounded p-4 shadow">
+    // 確認頁（白底卡）
+    <div className="bg-white rounded-lg border shadow p-4">
       <h2 className="text-lg font-bold mb-2">{t.confirmTitle}</h2>
-      {errorMsg && (
-        <div className="bg-red-100 text-red-700 p-3 rounded mb-3 shadow">❌ {errorMsg}</div>
-      )}
+      {errorMsg && <div className="bg-red-100 text-red-700 p-3 rounded mb-3 shadow">❌ {errorMsg}</div>}
       <ul className="list-disc pl-5 text-sm mb-3">
         {selectedItems.map((item, idx) => (
           <li key={idx} className="mb-1">
@@ -1179,58 +1029,46 @@ function OrderPage() {
         {t.total}：NT$ {total}
       </p>
       <div className="flex gap-3">
-        <button onClick={() => setConfirming(false)} className="px-4 py-2 rounded border">
+        <Button variant="secondary" onClick={() => setConfirming(false)}>
           {t.back}
-        </button>
-        <button
-          onClick={submitOrder}
-          disabled={submitting}
-          className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-        >
+        </Button>
+        <Button variant="default" onClick={submitOrder} disabled={submitting}>
           {submitting ? '送出中…' : t.submit}
-        </button>
+        </Button>
       </div>
     </div>
   )
 
   return (
-    <div className="p-4 max-w-2xl mx-auto relative">
-      <button
-        onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-        className="absolute top-4 right-4 text-sm border px-2 py-1 rounded"
-      >
-        {lang === 'zh' ? 'EN' : '中'}
-      </button>
+    <div className="px-4 sm:px-6 md:px-10 pb-28 max-w-3xl mx-auto">
+      {/* 頁首：深色一致 */}
+      <div className="flex items-start justify-between pt-2 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="text-yellow-400 text-2xl">{isTakeout ? '🛍' : '📝'}</div>
+          <div><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{isTakeout ? t.takeaway : t.title}</h1></div>
+        </div>
+        <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>
+          {lang === 'zh' ? 'EN' : '中'}
+        </Button>
+      </div>
 
-      <h1 className="text-2xl font-bold mb-4">{isTakeout ? `🛍 ${t.takeaway}` : `📝 ${t.title}`}</h1>
-
-      {success && <div className="bg-green-100 text-green-700 p-3 rounded mb-4 shadow">{t.success}</div>}
+      {success && (
+        <div className="bg-emerald-500/15 text-emerald-200 border border-emerald-400/30 p-3 rounded mb-4">
+          {t.success}
+        </div>
+      )}
 
       {content}
 
-      {/* === 商品選項彈窗 === */}
+      {/* === 商品選項彈窗（深色卡） === */}
       {activeMenu && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded p-6 w-full max-w-md shadow-lg">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 p-6 w-full max-w-md shadow-lg">
             <h2 className="text-lg font-bold mb-4">{activeMenu.name}</h2>
-            <ItemOptionPicker
-              groups={optionGroups}
-              value={chosenOptions}
-              onChange={setChosenOptions}
-            />
-            <div className="mt-4 flex justify-end gap-3">
-              <button
-                onClick={() => setActiveMenu(null)}
-                className="px-4 py-2 border rounded"
-              >
-                取消
-              </button>
-              <button
-                onClick={addToCart}
-                className="px-4 py-2 bg-green-600 text-white rounded"
-              >
-                加入
-              </button>
+            <ItemOptionPicker groups={optionGroups} value={chosenOptions} onChange={setChosenOptions} />
+            <div className="mt-5 flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setActiveMenu(null)}>取消</Button>
+              <Button variant="success" onClick={addToCart}>加入</Button>
             </div>
           </div>
         </div>
