@@ -266,7 +266,7 @@ function renderOptionsList(opts?: OptionsMap | null) {
   const entries = Object.entries(opts)
   if (!entries.length) return null
   return (
-    <ul className="ml-4 text-sm text-gray-600 list-disc">
+    <ul className="ml-4 text-sm text-white/70 list-disc">
       {entries.map(([rawK, rawV]) => {
         const { k, v } = translateOptionPair(rawK, rawV)
         return <li key={rawK}>{k}：{v}</li>
@@ -537,7 +537,7 @@ function OrderPage() {
       q = q.eq('table_number', tableParam).limit(10)
     }
 
-  const { data, error } = await q
+    const { data, error } = await q
     if (error) {
       console.error('fetchOrders error:', error)
       return
@@ -880,6 +880,7 @@ function OrderPage() {
           onClick={() => setShowPrevious(!showPrevious)}
           variant="soft"
           className="mb-4"
+          size="sm"
         >
           📋 {t.viewLast}
         </Button>
@@ -888,14 +889,14 @@ function OrderPage() {
       {showPrevious && (
         <div className="mb-6 space-y-4">
           {orderHistory.map((order, idx) => (
-            <div key={idx} className="bg-white rounded-lg border shadow p-4">
+            <div key={idx} className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
               <h2 className="font-semibold mb-2">
                 {t.confirmTitle}（第 {idx + 1} 筆）
                 {order.created_at
                   ? ` · ${new Date(order.created_at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' })}`
                   : ''}
               </h2>
-              <ul className="list-disc pl-5 text-sm mb-2">
+              <ul className="list-disc pl-5 text-sm mb-2 text-white/80">
                 {order.items.map((item, i) => (
                   <li key={i} className="mb-1">
                     {item.name} × {item.quantity}（NT$ {Number(item.price || 0) * Number(item.quantity || 0)}）
@@ -903,8 +904,8 @@ function OrderPage() {
                   </li>
                 ))}
               </ul>
-              {order.spicy_level && <p className="text-sm text-red-600 mb-1">{t.spicyPreview}：{order.spicy_level}</p>}
-              {order.note && <p className="text-sm text-gray-700 mb-2">📝 {order.note}</p>}
+              {order.spicy_level && <p className="text-sm text-red-300 mb-1">{t.spicyPreview}：{order.spicy_level}</p>}
+              {order.note && <p className="text-sm text-white/70 mb-2">📝 {order.note}</p>}
               <p className="font-bold">總計：NT$ {order.total}</p>
             </div>
           ))}
@@ -919,12 +920,12 @@ function OrderPage() {
             {menus
               .filter((m) => String(m.category_id) === String(cat.id))
               .map((menu) => (
-                <li key={menu.id} className="bg-white text-gray-900 rounded-lg border shadow p-4">
+                <li key={menu.id} className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
                   <div className="flex justify-between items-start">
                     <div>
                       <div className="font-semibold text-lg mb-1">{menu.name}</div>
-                      <div className="text-sm text-gray-600">NT$ {menu.price}</div>
-                      {menu.description && <div className="text-xs text-gray-400 mt-1">{menu.description}</div>}
+                      <div className="text-sm text-white/70">NT$ {menu.price}</div>
+                      {menu.description && <div className="text-xs text-white/50 mt-1">{menu.description}</div>}
                     </div>
                     <div className="flex gap-2 items-center">
                       <Button size="sm" variant="destructive" onClick={() => reduceItem(menu.id)}>－</Button>
@@ -942,9 +943,9 @@ function OrderPage() {
 
       {/* 外帶表單 */}
       {isTakeout && (
-        <div className="bg-white rounded-lg border shadow p-4 mb-6 space-y-2">
+        <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4 mb-6 space-y-3">
           <input
-            className="w-full border p-2 rounded"
+            className="w-full border border-white/15 bg-[#1F1F1F] text-white placeholder:text-white/40 p-2 rounded outline-none focus:ring-1 focus:ring-white/30"
             placeholder={t.name}
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
@@ -953,7 +954,7 @@ function OrderPage() {
             type="tel"
             inputMode="numeric"
             pattern="[0-9]*"
-            className="w-full border p-2 rounded"
+            className="w-full border border-white/15 bg-[#1F1F1F] text-white placeholder:text-white/40 p-2 rounded outline-none focus:ring-1 focus:ring-white/30"
             placeholder={t.phone}
             value={customerPhone}
             onChange={(e) => setCustomerPhone(e.target.value)}
@@ -962,9 +963,13 @@ function OrderPage() {
       )}
 
       {/* 辣度選擇 */}
-      <div className="bg-white rounded-lg border shadow p-4 mb-6">
-        <label className="block text-sm text-gray-700 mb-1">{t.spicyLabel}</label>
-        <select className="w-full border p-2 rounded" value={spicyLevel} onChange={(e) => setSpicyLevel(e.target.value)}>
+      <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4 mb-6">
+        <label className="block text-sm text-white/80 mb-1">{t.spicyLabel}</label>
+        <select
+          className="w-full border border-white/15 bg-[#1F1F1F] text-white placeholder:text-white/40 p-2 rounded outline-none focus:ring-1 focus:ring-white/30"
+          value={spicyLevel}
+          onChange={(e) => setSpicyLevel(e.target.value)}
+        >
           <option value="">{t.spicyNone}</option>
           <option value={lang === 'zh' ? '不辣' : 'Mild / None'}>{t.spicyNo}</option>
           <option value={lang === 'zh' ? '小辣' : 'Light'}>{t.spicyLight}</option>
@@ -974,10 +979,10 @@ function OrderPage() {
       </div>
 
       {/* 備註 */}
-      <div className="bg-white rounded-lg border shadow p-4 mb-24">
+      <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4 mb-24">
         <h2 className="font-semibold mb-2">{t.noteLabel}</h2>
         <textarea
-          className="w-full border p-2 rounded"
+          className="w-full border border-white/15 bg-[#1F1F1F] text-white placeholder:text-white/40 p-2 rounded outline-none focus:ring-1 focus:ring-white/30"
           rows={1}
           placeholder={t.notePlaceholder}
           value={note}
@@ -989,7 +994,7 @@ function OrderPage() {
             el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'
           }}
         />
-        <p className="text-xs text-gray-400 text-right">{note.length}/100</p>
+        <p className="text-xs text-white/50 text-right">{note.length}/100</p>
       </div>
 
       {/* 底部固定結帳列（深色、全寬固定） */}
@@ -1005,11 +1010,11 @@ function OrderPage() {
       </div>
     </>
   ) : (
-    // 確認頁（白底卡）
-    <div className="bg-white rounded-lg border shadow p-4">
+    // 確認頁（深色卡）
+    <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
       <h2 className="text-lg font-bold mb-2">{t.confirmTitle}</h2>
-      {errorMsg && <div className="bg-red-100 text-red-700 p-3 rounded mb-3 shadow">❌ {errorMsg}</div>}
-      <ul className="list-disc pl-5 text-sm mb-3">
+      {errorMsg && <div className="border border-red-300/30 bg-red-500/15 text-red-200 p-3 rounded mb-3 shadow">❌ {errorMsg}</div>}
+      <ul className="list-disc pl-5 text-sm mb-3 text-white/80">
         {selectedItems.map((item, idx) => (
           <li key={idx} className="mb-1">
             {item.name} × {item.quantity}（NT$ {item.price}）
@@ -1017,14 +1022,14 @@ function OrderPage() {
           </li>
         ))}
       </ul>
-      {spicyLevel && <p className="text-sm text-red-600 mb-1">{t.spicyPreview}：{spicyLevel}</p>}
+      {spicyLevel && <p className="text-sm text-red-300 mb-1">{t.spicyPreview}：{spicyLevel}</p>}
       {isTakeout && (
         <>
-          <p className="text-sm text-gray-700 mb-1">👤 姓名：{customerName}</p>
-          <p className="text-sm text-gray-700 mb-1">📞 電話：{customerPhone}</p>
+          <p className="text-sm text-white/80 mb-1">👤 姓名：{customerName}</p>
+          <p className="text-sm text-white/80 mb-1">📞 電話：{customerPhone}</p>
         </>
       )}
-      {note && <p className="text-sm text-gray-700 mb-3">📝 備註：{note}</p>}
+      {note && <p className="text-sm text-white/80 mb-3">📝 備註：{note}</p>}
       <p className="font-bold mb-4">
         {t.total}：NT$ {total}
       </p>
@@ -1067,8 +1072,8 @@ function OrderPage() {
             <h2 className="text-lg font-bold mb-4">{activeMenu.name}</h2>
             <ItemOptionPicker groups={optionGroups} value={chosenOptions} onChange={setChosenOptions} />
             <div className="mt-5 flex justify-end gap-3">
-              <Button variant="secondary" onClick={() => setActiveMenu(null)}>取消</Button>
-              <Button variant="success" onClick={addToCart}>加入</Button>
+              <Button size="sm" variant="secondary" onClick={() => setActiveMenu(null)}>取消</Button>
+              <Button size="sm" variant="success" onClick={addToCart}>加入</Button>
             </div>
           </div>
         </div>
