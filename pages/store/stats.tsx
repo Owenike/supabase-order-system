@@ -19,7 +19,7 @@ const n = (v: any) => Number.isFinite(Number(v)) ? Number(v) : 0
 const lineTotal = (item: OrderItem) => n(item.price) * n(item.quantity)
 const fmt = (v: number) => `NT$ ${n(v).toLocaleString('zh-TW')}`
 
-// 膠囊按鈕樣式（選中黃底、未選白色半透明）
+// 膠囊按鈕（深色卡上選中黃底、未選白/10）
 const pill = (selected: boolean) =>
   selected
     ? 'bg-yellow-400 text-black border-yellow-400'
@@ -143,7 +143,7 @@ export default function StoreStatsPage() {
 
   return (
     <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
-      {/* 頁首（深色，與其它頁一致） */}
+      {/* 頁首（深色） */}
       <div className="flex items-start justify-between pt-2 pb-4">
         <div className="flex items-center gap-3">
           <div className="text-yellow-400 text-2xl">📊</div>
@@ -159,7 +159,7 @@ export default function StoreStatsPage() {
         </div>
       </div>
 
-      {/* 日期區間（深灰卡＋膠囊按鈕：選中黃底） */}
+      {/* 日期區間（深灰卡 + 膠囊） */}
       <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
         <div className="p-4 flex flex-wrap items-center gap-3">
           <div className="flex gap-2">
@@ -183,58 +183,63 @@ export default function StoreStatsPage() {
         </div>
       </div>
 
-      {/* KPI 卡片（白底） */}
+      {/* KPI（深灰卡） */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 p-4">
-          <div className="text-sm text-gray-500">總營收</div>
+        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
+          <div className="text-sm text-white/70">總營收</div>
           <div className="text-2xl font-bold mt-1">{fmt(totalRevenue)}</div>
-          <div className="text-xs text-gray-400 mt-1">內用 {fmt(inRevenue)}・外帶 {fmt(outRevenue)}</div>
+          <div className="text-xs text-white/60 mt-1">內用 {fmt(inRevenue)}・外帶 {fmt(outRevenue)}</div>
         </div>
-        <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 p-4">
-          <div className="text-sm text-gray-500">內用營收</div>
+        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
+          <div className="text-sm text-white/70">內用營收</div>
           <div className="text-2xl font-bold mt-1">{fmt(inRevenue)}</div>
         </div>
-        <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 p-4">
-          <div className="text-sm text-gray-500">訂單數</div>
+        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
+          <div className="text-sm text-white/70">訂單數</div>
           <div className="text-2xl font-bold mt-1">{totalOrders.toLocaleString('zh-TW')}</div>
         </div>
       </div>
 
-      {/* 趨勢圖（白底卡） */}
-      <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
-        <div className="px-4 py-3 border-b border-gray-200">
+      {/* 趨勢圖（深灰卡 + 深色 Tooltip / 座標軸） */}
+      <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
+        <div className="px-4 py-3 border-b border-white/10">
           <h2 className="text-lg font-semibold">📈 銷售趨勢圖</h2>
         </div>
         <div className="p-4">
           {dailyData.length === 0 ? (
-            <p className="text-gray-500">尚無資料</p>
+            <p className="text-white/70">尚無資料</p>
           ) : (
             <ResponsiveContainer width="100%" height={320}>
               <LineChart data={dailyData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip formatter={(value: any, name: any) => name === '營收' ? fmt(value as number) : value} />
-                <Line type="monotone" dataKey="orders"  stroke="#2563eb" name="訂單數" />
-                <Line type="monotone" dataKey="revenue" stroke="#059669" name="營收" />
+                <CartesianGrid stroke="rgba(255,255,255,0.1)" strokeDasharray="3 3" />
+                <XAxis dataKey="date" tick={{ fill: 'rgba(255,255,255,0.8)' }} axisLine={{ stroke: 'rgba(255,255,255,0.3)' }} />
+                <YAxis tick={{ fill: 'rgba(255,255,255,0.8)' }} axisLine={{ stroke: 'rgba(255,255,255,0.3)' }} />
+                <Tooltip
+                  contentStyle={{ background: '#1f1f1f', border: '1px solid rgba(255,255,255,0.15)', color: '#fff' }}
+                  labelStyle={{ color: '#fff' }}
+                  itemStyle={{ color: '#fff' }}
+                  formatter={(value: any, name: any) => (name === '營收' ? fmt(value as number) : value)}
+                />
+                <Line type="monotone" dataKey="orders"  stroke="#f59e0b" strokeWidth={2} dot={false} name="訂單數" />
+                <Line type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} dot={false} name="營收" />
               </LineChart>
             </ResponsiveContainer>
           )}
         </div>
       </div>
 
-      {/* 內用 / 外帶 排行（白底卡） */}
+      {/* 內用 / 外帶 排行（深灰卡 + 深色表頭） */}
       {[{ title: '內用訂單', stats: inStats, revenue: inRevenue },
         { title: '外帶訂單', stats: outStats, revenue: outRevenue }].map(section => (
-        <div key={section.title} className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
-          <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+        <div key={section.title} className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
+          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
             <h2 className="text-lg font-semibold">{section.title}</h2>
-            <div className="text-sm text-gray-600">💰 總營收：{fmt(section.revenue)}</div>
+            <div className="text-sm text-white/80">💰 總營收：{fmt(section.revenue)}</div>
           </div>
-          <div className="p-4">
-            <table className="w-full border rounded overflow-hidden">
-              <thead>
-                <tr className="bg-gray-100">
+          <div className="p-4 overflow-x-auto">
+            <table className="w-full border border-white/10 rounded">
+              <thead className="bg-white/10 text-white">
+                <tr>
                   <th className="text-left  px-4 py-2">品項</th>
                   <th className="text-right px-4 py-2">數量</th>
                   <th className="text-right px-4 py-2">總金額</th>
@@ -242,14 +247,14 @@ export default function StoreStatsPage() {
               </thead>
               <tbody>
                 {section.stats.map(item => (
-                  <tr key={item.name} className="border-t">
+                  <tr key={item.name} className="border-t border-white/10">
                     <td className="px-4 py-2">{item.name}</td>
                     <td className="px-4 py-2 text-right">{n(item.total)}</td>
                     <td className="px-4 py-2 text-right">{fmt(item.amount)}</td>
                   </tr>
                 ))}
                 {section.stats.length === 0 && (
-                  <tr><td className="px-4 py-2 text-gray-500" colSpan={3}>尚無資料</td></tr>
+                  <tr><td className="px-4 py-2 text-white/70" colSpan={3}>尚無資料</td></tr>
                 )}
               </tbody>
             </table>
@@ -257,23 +262,23 @@ export default function StoreStatsPage() {
         </div>
       ))}
 
-      {/* 訂單明細（白底卡） */}
-      <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200">
-        <div className="px-4 py-3 border-b border-gray-200">
+      {/* 訂單明細（深灰卡） */}
+      <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
+        <div className="px-4 py-3 border-b border-white/10">
           <h2 className="text-lg font-semibold">🧾 訂單明細</h2>
         </div>
         <div className="p-4">
           {orderList.length === 0 ? (
-            <p className="text-gray-500">尚無訂單</p>
+            <p className="text-white/70">尚無訂單</p>
           ) : (
             <ul className="text-sm space-y-3">
               {orderList.map(order => (
-                <li key={order.id} className="border rounded p-3">
-                  <div className="text-gray-500 mb-1">
+                <li key={order.id} className="border border-white/10 rounded p-3">
+                  <div className="text-white/60 mb-1">
                     {dayjs(order.created_at).format('YYYY-MM-DD HH:mm')}
                   </div>
                   <div className="mb-1">
-                    <span className="text-gray-600">桌號：</span>
+                    <span className="text-white/70">桌號：</span>
                     {order.table_number || '-'}
                   </div>
                   <ul className="list-disc pl-5">
@@ -283,7 +288,7 @@ export default function StoreStatsPage() {
                       </li>
                     ))}
                   </ul>
-                  {order.note && <div className="mt-1 text-gray-700">備註：{order.note}</div>}
+                  {order.note && <div className="mt-1 text-white/80">備註：{order.note}</div>}
                 </li>
               ))}
             </ul>
