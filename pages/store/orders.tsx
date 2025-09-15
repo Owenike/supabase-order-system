@@ -69,7 +69,7 @@ const isTakeoutStr = (t: string | null) => {
   return s === 'takeout' || s === '外帶' || s === '0'
 }
 
-// ---- 選項編輯器（深色版） ----
+// ---- 選項編輯器（深色版，一般 key/value 用，保留彈性） ----
 type OptionRow = { key: string; value: string; isArray: boolean }
 
 function mapOptionsToRows(opts?: OptionsMap | null): OptionRow[] {
@@ -113,9 +113,7 @@ function OptionEditor({
   return (
     <div className="bg-[#2B2B2B] text-white border border-white/10 rounded-lg p-3">
       {title && <h4 className="text-sm font-semibold mb-2">{title}</h4>}
-      {rows.length === 0 && (
-        <p className="text-sm text-white/60 mb-2">（目前沒有選項，可新增）</p>
-      )}
+      {rows.length === 0 && <p className="text-sm text-white/60 mb-2">（目前沒有選項，可新增）</p>}
       <div className="space-y-2">
         {rows.map((r, idx) => (
           <div key={idx} className="grid grid-cols-12 gap-2 items-center">
@@ -127,7 +125,7 @@ function OptionEditor({
             />
             <input
               className="col-span-7 rounded px-2 py-1 bg-[#1F1F1F] text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
-              placeholder={r.isArray ? '多值用逗號分隔，例如：珍珠,椰果' : '值，例如：半糖 / 去冰 / 大杯'}
+              placeholder={r.isArray ? '多值用逗號分隔：珍珠,椰果' : '值：半糖 / 去冰 / 大杯'}
               value={r.value}
               onChange={(e) => update(idx, { value: e.target.value })}
             />
@@ -139,12 +137,7 @@ function OptionEditor({
               />
               多值
             </label>
-            <Button
-              size="sm"
-              variant="destructive"
-              className="col-span-1"
-              onClick={() => removeRow(idx)}
-            >
+            <Button size="sm" variant="destructive" className="col-span-1" onClick={() => removeRow(idx)}>
               刪除
             </Button>
           </div>
@@ -154,6 +147,116 @@ function OptionEditor({
         <Button size="sm" variant="soft" onClick={addRow}>
           新增選項
         </Button>
+      </div>
+    </div>
+  )
+}
+
+// ---- 固定選項（甜度/冰塊/容量/加料）操作：直接改 rows 內容 ----
+const SWEET_VALUES = ['無糖','微糖','半糖','少糖','全糖']
+const ICE_VALUES   = ['去冰','微冰','少冰','正常冰']
+const SIZE_VALUES  = ['小杯','中杯','大杯']
+const FIXED_KEYS   = ['甜度','冰塊','容量','加料'] as const
+type FixedKey = typeof FIXED_KEYS[number]
+
+function getRow(rows: OptionRow[], key: FixedKey) {
+  const i = rows.findIndex(r => r.key === key)
+  return { idx: i, row: i >= 0 ? rows[i] : undefined }
+}
+function setRow(rows: OptionRow[], key: FixedKey, value: string | string[]) {
+  const { idx } = getRow(rows, key)
+  const isArray = Array.isArray(value)
+  const text = isArray ? (value as string[]).join(',') : (value as string)
+  if (idx >= 0) rows[idx] = { key, value: text, isArray }
+  else rows.push({ key, value: text, isArray })
+}
+function FixedOptionsEditor({
+  rows,
+  onChange
+}: {
+  rows: OptionRow[]
+  onChange: (next: OptionRow[]) => void
+}) {
+  const clone = () => rows.map(r => ({ ...r }))
+  const { row: sweet } = getRow(rows, '甜度')
+  const { row: ice }   = getRow(rows, '冰塊')
+  const { row: size }  = getRow(rows, '容量')
+  const { row: addon } = getRow(rows, '加料')
+
+  return (
+    <div className="bg-[#2B2B2B] text-white border border-white/10 rounded-lg p-3">
+      <h4 className="text-sm font-semibold mb-2">固定選項</h4>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-white/80 mb-1">甜度</label>
+          <select
+            value={(sweet?.value ?? '').trim()}
+            onChange={(e) => {
+              const next = clone()
+              const v = e.target.value
+              if (v) setRow(next, '甜度', v)
+              onChange(next)
+            }}
+            className="w-full rounded px-2 py-1 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
+          >
+            <option value="">（不修改）</option>
+            {SWEET_VALUES.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs text-white/80 mb-1">冰塊</label>
+          <select
+            value={(ice?.value ?? '').trim()}
+            onChange={(e) => {
+              const next = clone()
+              const v = e.target.value
+              if (v) setRow(next, '冰塊', v)
+              onChange(next)
+            }}
+            className="w-full rounded px-2 py-1 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
+          >
+            <option value="">（不修改）</option>
+            {ICE_VALUES.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs text-white/80 mb-1">容量</label>
+          <select
+            value={(size?.value ?? '').trim()}
+            onChange={(e) => {
+              const next = clone()
+              const v = e.target.value
+              if (v) setRow(next, '容量', v)
+              onChange(next)
+            }}
+            className="w-full rounded px-2 py-1 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
+          >
+            <option value="">（不修改）</option>
+            {SIZE_VALUES.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs text-white/80 mb-1">加料（多值用逗號分隔）</label>
+          <input
+            value={addon?.value ?? ''}
+            onChange={(e) => {
+              const next = clone()
+              const raw = e.target.value
+              if (raw.trim()) setRow(next, '加料', raw.split(',').map(s => s.trim()).filter(Boolean))
+              else {
+                // 清空就移除該 row
+                const i = next.findIndex(r => r.key === '加料')
+                if (i >= 0) next.splice(i, 1)
+              }
+              onChange(next)
+            }}
+            className="w-full rounded px-2 py-1 bg-[#1F1F1F] text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
+            placeholder="珍珠,椰果"
+          />
+        </div>
       </div>
     </div>
   )
@@ -226,7 +329,6 @@ export default function StoreOrdersPage() {
           addItem: '新增品項',
           itemName: '品名',
           itemQty: '數量',
-          itemPrice: '單價',
           confirmDeleteTitle: '確認刪除',
           confirmDeleteText: '此操作將刪除此筆訂單，且無法復原。確定要刪除嗎？',
           confirm: '確認',
@@ -272,7 +374,6 @@ export default function StoreOrdersPage() {
           addItem: 'Add Item',
           itemName: 'Name',
           itemQty: 'Qty',
-          itemPrice: 'Price',
           confirmDeleteTitle: 'Confirm Delete',
           confirmDeleteText: 'This will permanently delete the order. Continue?',
           confirm: 'Confirm',
@@ -301,16 +402,7 @@ export default function StoreOrdersPage() {
     else if (key === 'fixed_ice') k = '冰塊'
     else if (key === 'fixed_size') k = '容量'
     else if (/^[0-9a-f-]{24,}$/.test(key)) k = '加料'
-
-    const mapSweet: Record<string, string> = { '0': '無糖', '30': '微糖', '50': '半糖', '70': '少糖', '100': '全糖' }
-    const mapIce: Record<string, string> = { '0': '去冰', '30': '微冰', '50': '少冰', '100': '正常冰' }
-    const mapSize: Record<string, string> = { S: '小杯', M: '中杯', L: '大杯' }
-
-    let vText = V.join('、')
-    if (key === 'fixed_sweetness') vText = V.map((x) => mapSweet[x] || x).join('、')
-    if (key === 'fixed_ice') vText = V.map((x) => mapIce[x] || x).join('、')
-    if (key === 'fixed_size') vText = V.map((x) => mapSize[x] || x).join('、')
-    return { k, v: vText }
+    return { k, v: V.join('、') }
   }
 
   const renderOptions = (opts?: OptionsMap | null) => {
@@ -320,12 +412,8 @@ export default function StoreOrdersPage() {
     return (
       <ul className="ml-4 list-disc text-white/70">
         {entries.map(([rawK, rawV]) => {
-          const { k, v } = translateOptionPair(rawK, rawV)
-          return (
-            <li key={rawK} className="text-sm">
-              {k}：{v}
-            </li>
-          )
+          const { k, v } = translateOptionPair(rawK, rawV as any)
+          return <li key={rawK} className="text-sm">{k}：{v}</li>
         })}
       </ul>
     )
@@ -380,22 +468,15 @@ export default function StoreOrdersPage() {
     if (autoRefresh) {
       if (pollRef.current) clearInterval(pollRef.current)
       pollRef.current = setInterval(doFetch, 3000)
-      return () => {
-        if (pollRef.current) clearInterval(pollRef.current)
-        pollRef.current = null
-      }
+      return () => { if (pollRef.current) clearInterval(pollRef.current); pollRef.current = null }
     } else {
-      if (pollRef.current) {
-        clearInterval(pollRef.current)
-        pollRef.current = null
-      }
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     }
   }, [storeId, range, startDate, endDate, autoRefresh])
 
   // 查詢
   const fetchOrders = async (sid: string, fromIso: string, toIso: string) => {
-    setLoading(true)
-    setErrorMsg('')
+    setLoading(true); setErrorMsg('')
     const { data, error } = await supabase
       .from('orders')
       .select('*')
@@ -403,14 +484,8 @@ export default function StoreOrdersPage() {
       .gte('created_at', fromIso)
       .lte('created_at', toIso)
       .order('created_at', { ascending: false })
-
     setLoading(false)
-    if (error) {
-      console.error('❌ 查詢失敗：', error.message)
-      setErrorMsg(error.message)
-      return
-    }
-
+    if (error) { setErrorMsg(error.message); return }
     const list = (data || []) as Order[]
     if (lastOrderCount.current !== null && list.length > (lastOrderCount.current ?? 0)) {
       audioRef.current?.play().catch(() => {})
@@ -421,25 +496,20 @@ export default function StoreOrdersPage() {
 
   const manualRefresh = async () => {
     if (!storeId) return
-    const win = calcRange()
-    if (!win) return
+    const win = calcRange(); if (!win) return
     await fetchOrders(storeId, win.fromIso, win.toIso)
   }
 
   // 完成訂單
   const handleComplete = async (id: string) => {
     const { error } = await supabase.from('orders').update({ status: 'completed' }).eq('id', id)
-    if (error) {
-      alert('訂單更新失敗，請稍後再試')
-      return
-    }
+    if (error) { alert('訂單更新失敗，請稍後再試'); return }
     manualRefresh()
   }
 
   // 編輯（開啟）
   const openEdit = (order: Order) => {
     setEditingOrder({ ...order })
-
     const localItems = (order.items ?? []).map((i: any) => ({
       name: String(i?.name ?? ''),
       quantity: Number.isFinite(Number(i?.quantity)) ? Math.max(0, Math.floor(Number(i.quantity))) : 0,
@@ -447,61 +517,53 @@ export default function StoreOrdersPage() {
       options: i?.options ?? null,
     }))
     setEditItems(localItems)
-
     const rows: Record<number, OptionRow[]> = {}
     localItems.forEach((it, idx) => { rows[idx] = mapOptionsToRows(it.options ?? null) })
     setEditOptionRows(rows)
   }
 
-  const updateItem = (idx: number, key: 'name' | 'quantity' | 'price', value: string | number) => {
-    setEditItems((prev) => {
-      const next = [...prev]
-      const t = { ...next[idx] }
+  const updateItem = (idx: number, key: 'name' | 'quantity', value: string | number) => {
+    setEditItems(prev => {
+      const next = [...prev]; const t = { ...next[idx] }
       if (key === 'name') t.name = String(value)
       if (key === 'quantity') { const n = Number(value); t.quantity = Number.isNaN(n) || n < 0 ? 0 : Math.floor(n) }
-      if (key === 'price') { const p = Number(value); t.price = Number.isNaN(p) || p < 0 ? 0 : p }
-      next[idx] = t
-      return next
+      next[idx] = t; return next
     })
   }
 
-  const addItem = () =>
-    setEditItems((prev) => [...prev, { name: '', quantity: 1, price: 0, options: null } as OrderItem])
+  const addItem = () => setEditItems(prev => [...prev, { name: '', quantity: 1, price: 0, options: null } as OrderItem])
 
   const removeItem = (idx: number) => {
-    setEditItems((prev) => prev.filter((_, i) => i !== idx))
-    setEditOptionRows((prev) => {
-      const next = { ...prev }
-      delete next[idx]
-      const rebuilt: Record<number, OptionRow[]> = {}
-      const keys = Object.keys(prev).map(Number).sort((a, b) => a - b)
-      let j = 0
-      keys.forEach((k) => { if (k !== idx) rebuilt[j++] = prev[k] })
+    setEditItems(prev => prev.filter((_, i) => i !== idx))
+    setEditOptionRows(prev => {
+      const next = { ...prev }; delete next[idx]
+      const rebuilt: Record<number, OptionRow[]> = {}; let j = 0
+      Object.keys(prev).map(Number).sort((a,b)=>a-b).forEach(k => { if (k !== idx) rebuilt[j++] = prev[k] })
       return rebuilt
     })
   }
 
-  const setRowsForIndex = (idx: number, rows: OptionRow[]) =>
-    setEditOptionRows((prev) => ({ ...prev, [idx]: rows }))
+  const setRowsForIndex = (idx: number, rows: OptionRow[]) => setEditOptionRows(prev => ({ ...prev, [idx]: rows }))
 
   const saveEdit = async () => {
     if (!editingOrder) return
     if (!editingOrder.table_number || !String(editingOrder.table_number).trim()) {
-      alert(lang === 'zh' ? '請輸入桌號（或外帶）' : 'Please input table number or takeout.')
-      return
+      alert('請輸入桌號（或外帶）'); return
     }
 
     const cleanedItems = editItems
       .map((i, idx) => {
+        // 沿用原本 price，不提供 UI 修改（你要求移除單價欄位）
+        const originalPrice = (editingOrder.items?.[idx]?.price ?? i.price) || 0
         const options = rowsToOptions(editOptionRows[idx] || [])
         return {
           name: String(i.name || '').trim(),
           quantity: Number.isFinite(Number(i.quantity)) ? Math.max(0, Math.floor(Number(i.quantity))) : 0,
-          price: Number.isFinite(Number(i.price)) ? Math.max(0, Number(i.price)) : 0,
+          price: originalPrice,
           ...(options ? { options } : {}),
         }
       })
-      .filter((i) => i.name && i.quantity > 0)
+      .filter(i => i.name && i.quantity > 0)
 
     const payload: Record<string, any> = {
       table_number: String(editingOrder.table_number).trim(),
@@ -516,17 +578,9 @@ export default function StoreOrdersPage() {
     setIsSaving(true)
     const { error } = await supabase.from('orders').update(payload).eq('id', editingOrder.id)
     setIsSaving(false)
+    if (error) { alert(`儲存失敗：${error.message}`); return }
 
-    if (error) {
-      console.error('更新失敗', error)
-      alert(`儲存失敗：${error.message}`)
-      return
-    }
-
-    setEditingOrder(null)
-    setEditItems([])
-    setEditOptionRows({})
-    manualRefresh()
+    setEditingOrder(null); setEditItems([]); setEditOptionRows({}); manualRefresh()
   }
 
   // 刪除
@@ -534,32 +588,27 @@ export default function StoreOrdersPage() {
   const confirmDelete = async () => {
     if (!deletingId) return
     const { error } = await supabase.from('orders').delete().eq('id', deletingId)
-    if (error) {
-      alert('刪除失敗，請稍後再試')
-      return
-    }
-    setDeletingId(null)
-    manualRefresh()
+    if (error) { alert('刪除失敗，請稍後再試'); return }
+    setDeletingId(null); manualRefresh()
   }
-  const cancelDelete = () => setDeletingId(null)
 
   // 桌號清單（目前查詢結果內）
   const tableOptions = useMemo(() => {
     const map = new Map<string, { key: TableFilter; label: string }>()
-    map.set('ALL', { key: 'ALL', label: lang === 'zh' ? '全部桌號' : 'All Tables' })
-    map.set('TAKEOUT', { key: 'TAKEOUT', label: dict.takeout as string })
-    orders.forEach((o) => {
+    map.set('ALL', { key: 'ALL', label: '全部桌號' })
+    map.set('TAKEOUT', { key: 'TAKEOUT', label: '外帶' })
+    orders.forEach(o => {
       if (isTakeoutStr(o.table_number)) return
       const raw = String(o.table_number ?? '').trim()
       if (!raw) return
       if (!map.has(raw)) map.set(raw, { key: raw, label: raw })
     })
     return Array.from(map.values())
-  }, [orders, dict.takeout, lang])
+  }, [orders])
 
   // 最終篩選
   const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
+    return orders.filter(order => {
       if (filter === 'pending' && order.status === 'completed') return false
       if (filter === 'completed' && order.status !== 'completed') return false
       if (tableFilter === 'ALL') return true
@@ -576,13 +625,13 @@ export default function StoreOrdersPage() {
   const displayTable = (t: string | null) => {
     if (!t) return '-'
     const s = String(t).trim().toLowerCase()
-    if (s === 'takeout' || s === '外帶' || s === '0') return dict.takeout
+    if (s === 'takeout' || s === '外帶' || s === '0') return '外帶'
     return t
   }
 
   return (
     <main className="bg-background min-h-screen">
-      {/* Autofill 白字補丁（避免 Edge/Chrome 自動填入變成深灰字或黃底） */}
+      {/* Autofill 白字補丁 */}
       <style jsx global>{`
         input:-webkit-autofill,
         textarea:-webkit-autofill,
@@ -603,7 +652,7 @@ export default function StoreOrdersPage() {
             <div className="text-yellow-400 text-2xl">📦</div>
             <div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-                {dict.title}
+                訂單管理
               </h1>
               <p className="text-muted-foreground text-sm mt-1">即時查看與處理訂單</p>
             </div>
@@ -611,7 +660,7 @@ export default function StoreOrdersPage() {
           <div className="flex items-center gap-2">
             <label className="text-sm flex items-center gap-2 text-foreground/80">
               <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
-              {dict.autoRefresh}
+              自動刷新
             </label>
             <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>
               {lang === 'zh' ? 'EN' : '中'}
@@ -619,24 +668,24 @@ export default function StoreOrdersPage() {
           </div>
         </div>
 
-        {/* 日期段 —— 改為 manage-menus 深色卡 */}
+        {/* 日期段 —— 深色卡 */}
         <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
           <div className="p-4 flex flex-wrap items-center gap-3">
             <div className="flex gap-2">
-              <button className={`px-4 py-2 rounded-full ${pill(range === 'today','yellow')}`} onClick={() => setRange('today')}>{dict.today}</button>
-              <button className={`px-4 py-2 rounded-full ${pill(range === 'week','yellow')}`} onClick={() => setRange('week')}>{dict.week}</button>
-              <button className={`px-4 py-2 rounded-full ${pill(range === 'custom','yellow')}`} onClick={() => setRange('custom')}>{dict.custom}</button>
+              <button className={`px-4 py-2 rounded-full ${pill(range === 'today','yellow')}`} onClick={() => setRange('today')}>今日</button>
+              <button className={`px-4 py-2 rounded-full ${pill(range === 'week','yellow')}`} onClick={() => setRange('week')}>本週</button>
+              <button className={`px-4 py-2 rounded-full ${pill(range === 'custom','yellow')}`} onClick={() => setRange('custom')}>自訂</button>
             </div>
 
             {range === 'custom' && (
               <>
-                <input aria-label={dict.from} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-white/20 p-2 rounded bg-[#1F1F1F] text-white placeholder:text-white/40" />
-                <input aria-label={dict.to} type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-white/20 p-2 rounded bg-[#1F1F1F] text-white placeholder:text-white/40" />
+                <input aria-label="起始日" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-white/20 p-2 rounded bg-[#1F1F1F] text-white placeholder:text-white/40" />
+                <input aria-label="結束日" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-white/20 p-2 rounded bg-[#1F1F1F] text-white placeholder:text-white/40" />
               </>
             )}
 
-            <Button className="ml-auto" variant="soft" size="sm" onClick={manualRefresh} startIcon={<RefreshIcon />} aria-label={dict.refresh}>
-              {dict.refresh}
+            <Button className="ml-auto" variant="soft" size="sm" onClick={manualRefresh} startIcon={<RefreshIcon />} aria-label="重新整理">
+              重新整理
             </Button>
           </div>
         </div>
@@ -644,25 +693,19 @@ export default function StoreOrdersPage() {
         {/* 狀態 Tab —— 深色卡 */}
         <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-4">
           <div className="p-3 flex items-center gap-2">
-            <button className={`px-4 py-2 rounded-full ${pill(filter === 'all','white')}`} onClick={() => setFilter('all')}>{dict.all}</button>
-            <button className={`px-4 py-2 rounded-full ${pill(filter === 'pending','yellow')}`} onClick={() => setFilter('pending')}>{dict.pending}</button>
-            <button className={`px-4 py-2 rounded-full ${pill(filter === 'completed','green')}`} onClick={() => setFilter('completed')}>{dict.completed}</button>
+            <button className={`px-4 py-2 rounded-full ${pill(filter === 'all','white')}`} onClick={() => setFilter('all')}>全部</button>
+            <button className={`px-4 py-2 rounded-full ${pill(filter === 'pending','yellow')}`} onClick={() => setFilter('pending')}>未處理</button>
+            <button className={`px-4 py-2 rounded-full ${pill(filter === 'completed','green')}`} onClick={() => setFilter('completed')}>已完成</button>
           </div>
         </div>
 
         {/* 快速篩選 —— 深色卡 */}
         <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
-          <div className="px-4 py-3 border-b border-white/10">
-            <h3 className="text-sm font-semibold">快速篩選</h3>
-          </div>
+          <div className="px-4 py-3 border-b border-white/10"><h3 className="text-sm font-semibold">快速篩選</h3></div>
           <div className="p-3 overflow-x-auto">
             <div className="flex items-center gap-2 min-w-max">
               {tableOptions.map(opt => (
-                <button
-                  key={`${opt.key}`}
-                  onClick={() => setTableFilter(opt.key)}
-                  className={`px-3 py-1.5 rounded-full ${pill(tableFilter === opt.key,'yellow')}`}
-                >
+                <button key={`${opt.key}`} onClick={() => setTableFilter(opt.key)} className={`px-3 py-1.5 rounded-full ${pill(tableFilter === opt.key,'yellow')}`}>
                   {opt.label}
                 </button>
               ))}
@@ -671,36 +714,26 @@ export default function StoreOrdersPage() {
         </div>
 
         {/* 錯誤 / 讀取 */}
-        {loading && <p className="text-white/80 mb-2">{dict.loading}</p>}
-        {errorMsg && <p className="text-red-300 mb-2">❌ {dict.error}（{errorMsg}）</p>}
+        {loading && <p className="text-white/80 mb-2">讀取中…</p>}
+        {errorMsg && <p className="text-red-300 mb-2">❌ 讀取失敗（{errorMsg}）</p>}
 
-        {/* 訂單清單 —— 深色卡（與 manage-menus 一致） */}
+        {/* 訂單清單 —— 深色卡 */}
         {filteredOrders.length === 0 ? (
           <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
-            <p className="text-white/70">
-              {filter === 'pending' ? dict.noPending : dict.noOrders}
-            </p>
+            <p className="text-white/70">{filter === 'pending' ? '🔔 無未處理訂單' : '目前沒有訂單'}</p>
           </div>
         ) : (
           <div className="grid gap-4">
             {filteredOrders.map(order => (
               <div key={order.id} className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
                 <div className="flex justify-between items-center mb-2">
-                  <h2 className="font-semibold">
-                    桌號：{String(displayTable(order.table_number))}
-                  </h2>
+                  <h2 className="font-semibold">桌號：{String(displayTable(order.table_number))}</h2>
                   <div className="flex items-center gap-2">
                     {order.status === 'completed' && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-200 border border-emerald-400/30">
-                        {dict.done}
-                      </span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-200 border border-emerald-400/30">✅ 已完成</span>
                     )}
-                    <Button size="sm" variant="soft" startIcon={<EditIcon />} onClick={() => openEdit(order)} aria-label={dict.edit}>
-                      {dict.edit}
-                    </Button>
-                    <Button size="sm" variant="destructive" startIcon={<TrashIcon />} onClick={() => setDeletingId(order.id)} aria-label={dict.delete}>
-                      {dict.delete}
-                    </Button>
+                    <Button size="sm" variant="soft" startIcon={<EditIcon />} onClick={() => openEdit(order)}>修改</Button>
+                    <Button size="sm" variant="destructive" startIcon={<TrashIcon />} onClick={() => setDeletingId(order.id)}>刪除</Button>
                   </div>
                 </div>
 
@@ -714,25 +747,13 @@ export default function StoreOrdersPage() {
                   ))}
                 </div>
 
-                <div className="text-sm">
-                  <strong>總金額：</strong> NT$ {calcTotal(order).toLocaleString('zh-TW')}
-                </div>
-
-                {order.spicy_level && (
-                  <div className="text-sm text-red-300">
-                    <strong>辣度：</strong> {order.spicy_level}
-                  </div>
-                )}
-
-                {order.note && (
-                  <div className="text-sm text-white/70">
-                    <strong>備註：</strong> {order.note}
-                  </div>
-                )}
+                <div className="text-sm"><strong>總金額：</strong> NT$ {calcTotal(order).toLocaleString('zh-TW')}</div>
+                {order.spicy_level && <div className="text-sm text-red-300"><strong>辣度：</strong> {order.spicy_level}</div>}
+                {order.note && <div className="text-sm text-white/70"><strong>備註：</strong> {order.note}</div>}
 
                 {order.status !== 'completed' && (
                   <Button className="mt-3" variant="success" startIcon={<CheckIcon />} onClick={() => handleComplete(order.id)}>
-                    {dict.complete}
+                    完成訂單
                   </Button>
                 )}
               </div>
@@ -740,7 +761,7 @@ export default function StoreOrdersPage() {
           </div>
         )}
 
-        {/* 編輯面板 —— 深色卡 + 白字 + Autofill 補丁 + 內部滾動 */}
+        {/* 編輯面板 —— 深色卡 + 白字 + 內部滾動 */}
         {editingOrder && (
           <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center">
             <div className="w-[min(100%-2rem,56rem)] max-w-3xl max-h-[85vh] overflow-y-auto rounded-lg shadow-lg border border-white/10 bg-[#2B2B2B] text-white">
@@ -748,9 +769,7 @@ export default function StoreOrdersPage() {
               <div className="px-6 pt-5 pb-3 border-b border-white/10">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">修改訂單</h3>
-                  <button className="text-sm text-white/80 hover:text-white" onClick={() => setEditingOrder(null)}>
-                    返回
-                  </button>
+                  <button className="text-sm text-white/80 hover:text-white" onClick={() => setEditingOrder(null)}>返回</button>
                 </div>
               </div>
 
@@ -811,15 +830,13 @@ export default function StoreOrdersPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-semibold text-white">品項</h4>
-                    <Button size="sm" variant="soft" onClick={addItem}>
-                      新增品項
-                    </Button>
+                    <Button size="sm" variant="soft" onClick={addItem}>新增品項</Button>
                   </div>
 
                   {editItems.map((it, idx) => (
                     <div key={idx} className="rounded-lg border border-white/10 p-3 bg-[#2B2B2B]">
                       <div className="grid grid-cols-12 gap-2">
-                        <div className="col-span-5">
+                        <div className="col-span-6 md:col-span-6">
                           <label className="block text-xs text-white/80 mb-1">品名</label>
                           <input
                             value={it.name}
@@ -828,7 +845,7 @@ export default function StoreOrdersPage() {
                             placeholder="品名"
                           />
                         </div>
-                        <div className="col-span-3">
+                        <div className="col-span-4 md:col-span-3">
                           <label className="block text-xs text-white/80 mb-1">數量</label>
                           <input
                             type="number"
@@ -838,29 +855,29 @@ export default function StoreOrdersPage() {
                             min={0}
                           />
                         </div>
-                        <div className="col-span-3">
-                          <label className="block text-xs text-white/80 mb-1">單價</label>
-                          <input
-                            type="number"
-                            value={it.price}
-                            onChange={(e) => updateItem(idx, 'price', e.target.value)}
-                            className="w-full rounded px-2 py-1 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
-                            min={0}
-                          />
-                        </div>
-                        <div className="col-span-1 flex items-end">
-                          <Button size="sm" variant="destructive" onClick={() => removeItem(idx)}>
-                            刪
-                          </Button>
+                        <div className="col-span-2 md:col-span-3 flex items-end">
+                          <Button size="sm" variant="destructive" onClick={() => removeItem(idx)}>刪</Button>
                         </div>
                       </div>
 
-                      {/* 選項編輯器（深色） */}
+                      {/* 固定選項（甜度/冰塊/容量/加料） */}
                       <div className="mt-3">
-                        <OptionEditor
-                          title={dict.options as string}
+                        <FixedOptionsEditor
                           rows={editOptionRows[idx] || []}
                           onChange={(rows) => setRowsForIndex(idx, rows)}
+                        />
+                      </div>
+
+                      {/* 其他自定義選項（保留彈性） */}
+                      <div className="mt-3">
+                        <OptionEditor
+                          title="其他選項"
+                          rows={(editOptionRows[idx] || []).filter(r => !['甜度','冰塊','容量','加料'].includes(r.key))}
+                          onChange={(rows) => {
+                            // 只替換非固定 keys；固定 keys 保留
+                            const fixed = (editOptionRows[idx] || []).filter(r => ['甜度','冰塊','容量','加料'].includes(r.key as FixedKey))
+                            setRowsForIndex(idx, [...fixed, ...rows])
+                          }}
                         />
                       </div>
                     </div>
@@ -869,12 +886,8 @@ export default function StoreOrdersPage() {
 
                 {/* 底部按鈕列（黏底） */}
                 <div className="flex justify-end gap-3 sticky bottom-0 pt-3 bg-[#2B2B2B]">
-                  <Button variant="secondary" onClick={() => setEditingOrder(null)} disabled={isSaving}>
-                    {dict.cancel}
-                  </Button>
-                  <Button variant="default" onClick={saveEdit} disabled={isSaving}>
-                    {isSaving ? dict.saving : dict.save}
-                  </Button>
+                  <Button variant="secondary" onClick={() => setEditingOrder(null)} disabled={isSaving}>取消</Button>
+                  <Button variant="default" onClick={saveEdit} disabled={isSaving}>{isSaving ? '儲存中…' : '儲存變更'}</Button>
                 </div>
               </div>
             </div>
@@ -885,15 +898,11 @@ export default function StoreOrdersPage() {
         {deletingId && (
           <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center">
             <div className="w-[min(100%-2rem,32rem)] max-w-md max-h-[85vh] overflow-y-auto rounded-lg shadow-lg border border-white/10 bg-[#2B2B2B] text-white p-6">
-              <h3 className="text-lg font-semibold mb-2">{dict.confirmDeleteTitle}</h3>
-              <p className="text-sm text-white/80">{dict.confirmDeleteText}</p>
+              <h3 className="text-lg font-semibold mb-2">確認刪除</h3>
+              <p className="text-sm text-white/80">此操作將刪除此筆訂單，且無法復原。確定要刪除嗎？</p>
               <div className="mt-6 flex justify-end gap-3">
-                <Button variant="secondary" onClick={() => setDeletingId(null)}>
-                  {dict.cancel}
-                </Button>
-                <Button variant="destructive" onClick={confirmDelete}>
-                  {dict.confirm}
-                </Button>
+                <Button variant="secondary" onClick={() => setDeletingId(null)}>取消</Button>
+                <Button variant="destructive" onClick={confirmDelete}>確認</Button>
               </div>
             </div>
           </div>
