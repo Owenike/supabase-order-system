@@ -1,3 +1,4 @@
+// /pages/qrcode.tsx
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
@@ -7,10 +8,17 @@ import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import { Button } from '@/components/ui/button'
 
-// 小圖示（給 Button 使用）
+// 圖示（給 Button 使用）
 const DownloadIcon = () => (
   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" />
+  </svg>
+)
+
+const CopyIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <rect x="4" y="4" width="11" height="11" rx="2" />
   </svg>
 )
 
@@ -132,6 +140,7 @@ export default function QRCodePage() {
                   size="sm"
                   variant="secondary"
                   className="mt-2 hide-in-pdf"
+                  startIcon={<CopyIcon />}
                 >
                   複製連結
                 </Button>
