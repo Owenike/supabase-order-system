@@ -2,42 +2,35 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { Button } from '@/components/ui/button'
 import dayjs from 'dayjs'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   CartesianGrid, ResponsiveContainer
 } from 'recharts'
 
-interface MenuItemStat {
-  name: string
-  total: number
-  amount: number
-}
-interface DailyStat {
-  date: string
-  orders: number
-  revenue: number
-}
-interface OrderItem {
-  name: string
-  quantity: number
-  price?: number
-}
-interface Order {
-  id: string
-  created_at: string
-  table_number: string | null
-  items: OrderItem[]
-  note?: string
-}
+interface MenuItemStat { name: string; total: number; amount: number }
+interface DailyStat    { date: string; orders: number; revenue: number }
+interface OrderItem    { name: string; quantity: number; price?: number }
+interface Order        { id: string; created_at: string; table_number: string | null; items: OrderItem[]; note?: string }
 
-/** --------- 安全數值工具，避免 NaN ---------- */
-const n = (v: any) => {
-  const num = Number(v)
-  return Number.isFinite(num) ? num : 0
-}
+/** --------- 安全數值工具 ---------- */
+const n = (v: any) => Number.isFinite(Number(v)) ? Number(v) : 0
 const lineTotal = (item: OrderItem) => n(item.price) * n(item.quantity)
 const fmt = (v: number) => `NT$ ${n(v).toLocaleString('zh-TW')}`
+
+// 膠囊按鈕樣式（選中黃底、未選白色半透明）
+const pill = (selected: boolean) =>
+  selected
+    ? 'bg-yellow-400 text-black border-yellow-400'
+    : 'bg-white/10 text-white border border-white/15 hover:bg-white/15 transition'
+
+// 重新整理圖示
+const RefreshIcon = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M20 12a8 8 0 10-2.34 5.66M20 12v5h-5" />
+  </svg>
+)
 
 export default function StoreStatsPage() {
   const [storeId, setStoreId] = useState<string | null>(null)
@@ -55,7 +48,7 @@ export default function StoreStatsPage() {
 
   // KPI
   const totalRevenue = useMemo(() => inRevenue + outRevenue, [inRevenue, outRevenue])
-  const totalOrders = useMemo(() => dailyData.reduce((s, d) => s + n(d.orders), 0), [dailyData])
+  const totalOrders  = useMemo(() => dailyData.reduce((s, d) => s + n(d.orders), 0), [dailyData])
 
   const fetchStats = useCallback(async (sid: string) => {
     setLoading(true)
@@ -67,7 +60,7 @@ export default function StoreStatsPage() {
       if (filterType === 'today') {
         fromISO = dayjs().startOf('day').toISOString()
       } else if (filterType === 'week') {
-        // 以週一為一週起始
+        // 週一為起始
         const now = dayjs()
         const day = now.day() === 0 ? 7 : now.day()
         fromISO = now.subtract(day - 1, 'day').startOf('day').toISOString()
@@ -86,15 +79,14 @@ export default function StoreStatsPage() {
 
       if (error || !data) throw new Error(error?.message || '查詢失敗')
 
-      const inMap: Record<string, { quantity: number; amount: number }> = {}
+      const inMap:  Record<string, { quantity: number; amount: number }> = {}
       const outMap: Record<string, { quantity: number; amount: number }> = {}
-      let inRev = 0
-      let outRev = 0
+      let inRev = 0, outRev = 0
       const dailyMap: Record<string, { orders: number; revenue: number }> = {}
 
       ;(data as Order[]).forEach((order) => {
-        const t = String(order.table_number ?? '').trim().toLowerCase()
-        const isTakeout = t === '外帶' || t === 'takeout' || t === '0'
+        const s = String(order.table_number ?? '').trim().toLowerCase()
+        const isTakeout = s === '外帶' || s === 'takeout' || s === '0'
         const date = dayjs(order.created_at).format('YYYY-MM-DD')
         if (!dailyMap[date]) dailyMap[date] = { orders: 0, revenue: 0 }
         dailyMap[date].orders++
@@ -105,9 +97,8 @@ export default function StoreStatsPage() {
 
           const qty = n(item.quantity)
           const amount = lineTotal(item)
-
           target[item.name].quantity += qty
-          target[item.name].amount += amount
+          target[item.name].amount   += amount
 
           if (isTakeout) outRev += amount
           else inRev += amount
@@ -117,19 +108,11 @@ export default function StoreStatsPage() {
 
       const format = (map: typeof inMap) =>
         Object.entries(map)
-          .map(([name, stat]) => ({
-            name,
-            total: n(stat.quantity),
-            amount: n(stat.amount)
-          }))
+          .map(([name, stat]) => ({ name, total: n(stat.quantity), amount: n(stat.amount) }))
           .sort((a, b) => b.amount - a.amount)
 
       const dailyStatArr: DailyStat[] = Object.entries(dailyMap)
-        .map(([date, stat]) => ({
-          date,
-          orders: n(stat.orders),
-          revenue: n(stat.revenue)
-        }))
+        .map(([date, stat]) => ({ date, orders: n(stat.orders), revenue: n(stat.revenue) }))
         .sort((a, b) => a.date.localeCompare(b.date))
 
       setInStats(format(inMap))
@@ -156,13 +139,11 @@ export default function StoreStatsPage() {
     void fetchStats(storeId)
   }, [storeId, filterType, startDate, endDate, fetchStats])
 
-  const manualRefresh = () => {
-    if (storeId) void fetchStats(storeId)
-  }
+  const manualRefresh = () => { if (storeId) void fetchStats(storeId) }
 
   return (
     <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
-      {/* 頁首 */}
+      {/* 頁首（深色，與其它頁一致） */}
       <div className="flex items-start justify-between pt-2 pb-4">
         <div className="flex items-center gap-3">
           <div className="text-yellow-400 text-2xl">📊</div>
@@ -172,66 +153,37 @@ export default function StoreStatsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={manualRefresh}
-            className="inline-flex h-9 px-3 items-center rounded-md bg-white/10 text-white hover:bg-white/15 border border-white/15"
-          >
+          <Button variant="soft" size="sm" onClick={manualRefresh} startIcon={<RefreshIcon />}>
             重新整理
-          </button>
+          </Button>
         </div>
       </div>
 
-      {/* 區間選擇 */}
-      <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
+      {/* 日期區間（深灰卡＋膠囊按鈕：選中黃底） */}
+      <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
         <div className="p-4 flex flex-wrap items-center gap-3">
-          <div className="inline-flex rounded-md overflow-hidden shadow">
-            <button
-              onClick={() => setFilterType('today')}
-              className={`px-4 py-2 ${filterType === 'today' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'}`}
-            >
-              今日
-            </button>
-            <button
-              onClick={() => setFilterType('week')}
-              className={`px-4 py-2 ${filterType === 'week' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'}`}
-            >
-              本週
-            </button>
-            <button
-              onClick={() => setFilterType('custom')}
-              className={`px-4 py-2 ${filterType === 'custom' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'}`}
-            >
-              自訂日期
-            </button>
+          <div className="flex gap-2">
+            <button className={`px-4 py-2 rounded-full ${pill(filterType === 'today')}`} onClick={() => setFilterType('today')}>今日</button>
+            <button className={`px-4 py-2 rounded-full ${pill(filterType === 'week')}`}  onClick={() => setFilterType('week')}>本週</button>
+            <button className={`px-4 py-2 rounded-full ${pill(filterType === 'custom')}`} onClick={() => setFilterType('custom')}>自訂日期</button>
           </div>
 
           {filterType === 'custom' && (
             <>
-              <input
-                type="date"
-                value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-                className="border p-2 rounded"
-              />
-              <input
-                type="date"
-                value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-                className="border p-2 rounded"
-              />
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                     className="border p-2 rounded bg-white text-gray-900" />
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+                     className="border p-2 rounded bg-white text-gray-900" />
             </>
           )}
 
-          <button
-            onClick={manualRefresh}
-            className="ml-auto px-4 py-2 rounded border border-gray-300 hover:bg-gray-100"
-          >
+          <Button className="ml-auto" variant="soft" size="sm" onClick={manualRefresh} startIcon={<RefreshIcon />}>
             重新整理
-          </button>
+          </Button>
         </div>
       </div>
 
-      {/* KPI 卡片 */}
+      {/* KPI 卡片（白底） */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 p-4">
           <div className="text-sm text-gray-500">總營收</div>
@@ -248,7 +200,7 @@ export default function StoreStatsPage() {
         </div>
       </div>
 
-      {/* 趨勢圖 */}
+      {/* 趨勢圖（白底卡） */}
       <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
         <div className="px-4 py-3 border-b border-gray-200">
           <h2 className="text-lg font-semibold">📈 銷售趨勢圖</h2>
@@ -262,12 +214,8 @@ export default function StoreStatsPage() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
                 <YAxis />
-                <Tooltip
-                  formatter={(value: any, name: any) =>
-                    name === '營收' ? fmt(value as number) : value
-                  }
-                />
-                <Line type="monotone" dataKey="orders" stroke="#2563eb" name="訂單數" />
+                <Tooltip formatter={(value: any, name: any) => name === '營收' ? fmt(value as number) : value} />
+                <Line type="monotone" dataKey="orders"  stroke="#2563eb" name="訂單數" />
                 <Line type="monotone" dataKey="revenue" stroke="#059669" name="營收" />
               </LineChart>
             </ResponsiveContainer>
@@ -275,7 +223,7 @@ export default function StoreStatsPage() {
         </div>
       </div>
 
-      {/* 內用 / 外帶 排行 */}
+      {/* 內用 / 外帶 排行（白底卡） */}
       {[{ title: '內用訂單', stats: inStats, revenue: inRevenue },
         { title: '外帶訂單', stats: outStats, revenue: outRevenue }].map(section => (
         <div key={section.title} className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
@@ -287,7 +235,7 @@ export default function StoreStatsPage() {
             <table className="w-full border rounded overflow-hidden">
               <thead>
                 <tr className="bg-gray-100">
-                  <th className="text-left px-4 py-2">品項</th>
+                  <th className="text-left  px-4 py-2">品項</th>
                   <th className="text-right px-4 py-2">數量</th>
                   <th className="text-right px-4 py-2">總金額</th>
                 </tr>
@@ -309,7 +257,7 @@ export default function StoreStatsPage() {
         </div>
       ))}
 
-      {/* 訂單明細 */}
+      {/* 訂單明細（白底卡） */}
       <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200">
         <div className="px-4 py-3 border-b border-gray-200">
           <h2 className="text-lg font-semibold">🧾 訂單明細</h2>
@@ -343,7 +291,7 @@ export default function StoreStatsPage() {
         </div>
       </div>
 
-      {/* 錯誤 / 載入 */}
+      {/* 載入／錯誤 */}
       {loading && <p className="text-white/80 mt-3">讀取中…</p>}
       {err && <p className="text-red-400 mt-2">❌ {err}</p>}
     </div>
