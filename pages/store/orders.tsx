@@ -1,4 +1,3 @@
-// /pages/store/orders.tsx
 'use client'
 
 import { useEffect, useRef, useState, useMemo } from 'react'
@@ -29,9 +28,9 @@ interface Order {
 type FilterKey = 'all' | 'pending' | 'completed'
 type LangKey = 'zh' | 'en'
 type RangeKey = 'today' | 'week' | 'custom'
-type TableFilter = 'ALL' | 'TAKEOUT' | string // string = 具體桌號
+type TableFilter = 'ALL' | 'TAKEOUT' | string
 
-// ---------- Icons ----------
+// ---- 小圖示 ----
 const RefreshIcon = () => (
   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M20 12a8 8 0 10-2.34 5.66M20 12v5h-5" />
@@ -53,6 +52,23 @@ const CheckIcon = () => (
   </svg>
 )
 
+// ---- 共用：膠囊按鈕樣式 ----
+const pill = (selected: boolean, tone: 'yellow' | 'green' | 'white' | 'gray' = 'yellow') =>
+  selected
+    ? ({
+        yellow: 'bg-yellow-400 text-black border-yellow-400',
+        green:  'bg-emerald-600 text-white border-emerald-600',
+        white:  'bg-white text-gray-900 border-white',
+        gray:   'bg-gray-200 text-gray-900 border-gray-200',
+      }[tone])
+    : 'bg-white/10 text-white border border-white/15 hover:bg-white/15 transition'
+
+// ---- 工具 ----
+const isTakeoutStr = (t: string | null) => {
+  const s = String(t ?? '').trim().toLowerCase()
+  return s === 'takeout' || s === '外帶' || s === '0'
+}
+
 export default function StoreOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [filter, setFilter] = useState<FilterKey>('all')
@@ -69,13 +85,12 @@ export default function StoreOrdersPage() {
   const [loading, setLoading] = useState<boolean>(false)
   const [errorMsg, setErrorMsg] = useState<string>('')
 
-  // 編輯/刪除
   const [editingOrder, setEditingOrder] = useState<Order | null>(null)
   const [editItems, setEditItems] = useState<OrderItem[]>([])
   const [isSaving, setIsSaving] = useState<boolean>(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  // 新增：桌號/外帶 快速篩選
+  // 快速篩選：桌號/外帶
   const [tableFilter, setTableFilter] = useState<TableFilter>('ALL')
 
   const dict = useMemo(
@@ -177,7 +192,7 @@ export default function StoreOrdersPage() {
     [lang]
   )
 
-  // 舊資料鍵值中文化（與前台一致）
+  // 舊資料鍵值中文化
   const translateOptionPair = (key: string, value: string | string[]): { k: string; v: string } => {
     const toText = (x: any) => String(x ?? '').trim()
     const V = Array.isArray(value) ? value.map(toText) : [toText(value)]
@@ -216,7 +231,7 @@ export default function StoreOrdersPage() {
     )
   }
 
-  // 允許播放提示音（使用者互動後才可播）
+  // 允許播放提示音
   useEffect(() => {
     const enableAudio = () => {
       audioRef.current?.play().catch(() => {})
@@ -362,7 +377,6 @@ export default function StoreOrdersPage() {
       return
     }
 
-    // 保留每個品項原本的 options（不提供修改 UI）
     const cleanedItems = editItems
       .map((i, idx) => ({
         name: String(i.name || '').trim(),
@@ -411,13 +425,7 @@ export default function StoreOrdersPage() {
   }
   const cancelDelete = () => setDeletingId(null)
 
-  // ---- 快速篩選：桌號/外帶 ----
-  const isTakeoutStr = (t: string | null) => {
-    const s = String(t ?? '').trim().toLowerCase()
-    return s === 'takeout' || s === '外帶' || s === '0'
-  }
-
-  // 取得目前清單中的桌號（去重）
+  // ---- 取得桌號清單（目前查詢結果內） ----
   const tableOptions = useMemo(() => {
     const map = new Map<string, { key: TableFilter; label: string }>()
     map.set('ALL', { key: 'ALL', label: lang === 'zh' ? '全部桌號' : 'All Tables' })
@@ -459,7 +467,7 @@ export default function StoreOrdersPage() {
     <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
       <audio ref={audioRef} src="/ding.mp3" preload="auto" />
 
-      {/* 頁首 */}
+      {/* 頁首（深色） */}
       <div className="flex items-start justify-between pt-2 pb-4">
         <div className="flex items-center gap-3">
           <div className="text-yellow-400 text-2xl">📦</div>
@@ -470,11 +478,7 @@ export default function StoreOrdersPage() {
         </div>
         <div className="flex items-center gap-2">
           <label className="text-sm flex items-center gap-2 text-white/80">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-            />
+            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
             {dict.autoRefresh}
           </label>
           <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>
@@ -483,31 +487,19 @@ export default function StoreOrdersPage() {
         </div>
       </div>
 
-      {/* 區間與重整（Button 高亮） */}
-      <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
+      {/* 日期段：今日 / 本週 / 自訂（深色卡＋膠囊） */}
+      <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
         <div className="p-4 flex flex-wrap items-center gap-3">
           <div className="flex gap-2">
-            <Button variant={range === 'today' ? 'default' : 'secondary'} size="sm" onClick={() => setRange('today')}>{dict.today}</Button>
-            <Button variant={range === 'week' ? 'default' : 'secondary'} size="sm" onClick={() => setRange('week')}>{dict.week}</Button>
-            <Button variant={range === 'custom' ? 'default' : 'secondary'} size="sm" onClick={() => setRange('custom')}>{dict.custom}</Button>
+            <button className={`px-4 py-2 rounded-full ${pill(range === 'today','yellow')}`} onClick={() => setRange('today')}>{dict.today}</button>
+            <button className={`px-4 py-2 rounded-full ${pill(range === 'week','yellow')}`} onClick={() => setRange('week')}>{dict.week}</button>
+            <button className={`px-4 py-2 rounded-full ${pill(range === 'custom','yellow')}`} onClick={() => setRange('custom')}>{dict.custom}</button>
           </div>
 
           {range === 'custom' && (
             <>
-              <input
-                aria-label={dict.from}
-                type="date"
-                value={startDate}
-                onChange={e => setStartDate(e.target.value)}
-                className="border p-2 rounded"
-              />
-              <input
-                aria-label={dict.to}
-                type="date"
-                value={endDate}
-                onChange={e => setEndDate(e.target.value)}
-                className="border p-2 rounded"
-              />
+              <input aria-label={dict.from} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border p-2 rounded bg-white text-gray-900" />
+              <input aria-label={dict.to} type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border p-2 rounded bg-white text-gray-900" />
             </>
           )}
 
@@ -517,37 +509,30 @@ export default function StoreOrdersPage() {
         </div>
       </div>
 
-      {/* 狀態 Tab（使用 Button 風格一致） */}
-      <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-4">
+      {/* 狀態 Tab（全部 / 未處理 / 已完成） */}
+      <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-4">
         <div className="p-3 flex items-center gap-2">
-          <Button variant={filter === 'all' ? 'default' : 'secondary'} size="sm" onClick={() => setFilter('all')}>
-            {dict.all}
-          </Button>
-          <Button variant={filter === 'pending' ? 'warning' : 'secondary'} size="sm" onClick={() => setFilter('pending')}>
-            {dict.pending}
-          </Button>
-          <Button variant={filter === 'completed' ? 'success' : 'secondary'} size="sm" onClick={() => setFilter('completed')}>
-            {dict.completed}
-          </Button>
+          <button className={`px-4 py-2 rounded-full ${pill(filter === 'all','white')}`} onClick={() => setFilter('all')}>{dict.all}</button>
+          <button className={`px-4 py-2 rounded-full ${pill(filter === 'pending','yellow')}`} onClick={() => setFilter('pending')}>{dict.pending}</button>
+          <button className={`px-4 py-2 rounded-full ${pill(filter === 'completed','green')}`} onClick={() => setFilter('completed')}>{dict.completed}</button>
         </div>
       </div>
 
-      {/* 快速篩選：桌號 / 外帶（選中黃底） */}
-      <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
-        <div className="px-4 py-3 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700">{dict.quickFilter}</h3>
+      {/* 快速篩選：桌號 / 外帶 */}
+      <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
+        <div className="px-4 py-3 border-b border-white/10">
+          <h3 className="text-sm font-semibold text-white/90">{dict.quickFilter}</h3>
         </div>
         <div className="p-3 overflow-x-auto">
           <div className="flex items-center gap-2 min-w-max">
             {tableOptions.map(opt => (
-              <Button
+              <button
                 key={`${opt.key}`}
-                size="sm"
-                variant={tableFilter === opt.key ? 'default' : 'secondary'}
                 onClick={() => setTableFilter(opt.key)}
+                className={`px-3 py-1.5 rounded-full ${pill(tableFilter === opt.key,'yellow')}`}
               >
                 {opt.label}
-              </Button>
+              </button>
             ))}
           </div>
         </div>
@@ -557,7 +542,7 @@ export default function StoreOrdersPage() {
       {loading && <p className="text-white/80 mb-2">讀取中…</p>}
       {errorMsg && <p className="text-red-400 mb-2">❌ {dict.error}（{errorMsg}）</p>}
 
-      {/* 訂單清單 */}
+      {/* 訂單清單（白底卡，與其它頁一致） */}
       {filteredOrders.length === 0 ? (
         <div className="bg-white text-gray-900 rounded-lg border shadow p-4">
           <p className="text-gray-600">
@@ -570,7 +555,7 @@ export default function StoreOrdersPage() {
             <div key={order.id} className="bg-white text-gray-900 rounded-lg border shadow p-4">
               <div className="flex justify-between items-center mb-2">
                 <h2 className="font-semibold">
-                  {dict.table}：{displayTable(order.table_number)}
+                  {dict.table}：{String(displayTable(order.table_number))}
                 </h2>
                 <div className="flex items-center gap-2">
                   {order.status === 'completed' && (
@@ -581,7 +566,7 @@ export default function StoreOrdersPage() {
                   <Button size="sm" variant="soft" startIcon={<EditIcon />} onClick={() => openEdit(order)} aria-label={dict.edit}>
                     {dict.edit}
                   </Button>
-                  <Button size="sm" variant="destructive" startIcon={<TrashIcon />} onClick={() => deleteOrder(order.id)} aria-label={dict.delete}>
+                  <Button size="sm" variant="destructive" startIcon={<TrashIcon />} onClick={() => setDeletingId(order.id)} aria-label={dict.delete}>
                     {dict.delete}
                   </Button>
                 </div>
@@ -598,7 +583,9 @@ export default function StoreOrdersPage() {
               </div>
 
               <div className="text-sm text-gray-700">
-                <strong>{dict.total}：</strong> NT$ {calcTotal(order)}
+                <strong>{dict.total}：</strong>{' '}
+                NT$ {typeof order.total === 'number' ? order.total.toLocaleString('zh-TW') :
+                  (order.items || []).reduce((s, it) => s + Number(it.price || 0) * Number(it.quantity || 0), 0).toLocaleString('zh-TW')}
               </div>
 
               {order.spicy_level && (
@@ -681,57 +668,12 @@ export default function StoreOrdersPage() {
               </div>
             </div>
 
-            <div className="mt-4">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium">{dict.items}</h4>
-                <Button size="sm" variant="secondary" onClick={addItem}>
-                  + {dict.addItem}
-                </Button>
-              </div>
-
-              <div className="grid gap-2">
-                {editItems.map((it, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                    <input
-                      type="text"
-                      value={it.name}
-                      onChange={e => updateItem(idx, 'name', e.target.value)}
-                      className="col-span-6 border rounded px-3 py-2"
-                      placeholder={dict.itemName}
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      value={it.quantity}
-                      onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
-                      className="col-span-2 border rounded px-3 py-2"
-                      placeholder={dict.itemQty}
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      value={it.price}
-                      onChange={e => updateItem(idx, 'price', Number(e.target.value))}
-                      className="col-span-2 border rounded px-3 py-2"
-                      placeholder={dict.itemPrice}
-                    />
-                    <Button size="sm" variant="destructive" className="col-span-2" onClick={() => removeItem(idx)}>
-                      {dict.delete}
-                    </Button>
-                  </div>
-                ))}
-                {editItems.length === 0 && (
-                  <p className="text-sm text-gray-500">（尚無品項，請點「{dict.addItem}」）</p>
-                )}
-              </div>
-            </div>
-
             <div className="mt-6 flex justify-end gap-3">
               <Button variant="secondary" onClick={() => setEditingOrder(null)} disabled={isSaving}>
                 {dict.cancel}
               </Button>
               <Button variant="default" onClick={saveEdit} disabled={isSaving}>
-                {isSaving ? dict.saving : dict.save}
+                {isSaving ? '儲存中…' : '儲存變更'}
               </Button>
             </div>
           </div>
@@ -745,7 +687,7 @@ export default function StoreOrdersPage() {
             <h3 className="text-lg font-semibold mb-2">{dict.confirmDeleteTitle}</h3>
             <p className="text-sm text-gray-700">{dict.confirmDeleteText}</p>
             <div className="mt-6 flex justify-end gap-3">
-              <Button variant="secondary" onClick={cancelDelete}>
+              <Button variant="secondary" onClick={() => setDeletingId(null)}>
                 {dict.cancel}
               </Button>
               <Button variant="destructive" onClick={confirmDelete}>
