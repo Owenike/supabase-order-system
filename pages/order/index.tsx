@@ -207,7 +207,9 @@ const langMap = {
     spicyPreview: '🌶️ 辣度',
     invalidStore: '店家 ID 無效，請確認網址中的 store 參數是否為正確的 UUID。',
     dineInBlocked: '本店目前已暫停「內用」，僅提供外帶服務。你可以改為外帶繼續下單。',
-    takeoutBlocked: '本店目前已暫停「外帶」，暫不接受外帶點餐。'
+    takeoutBlocked: '本店目前已暫停「外帶」，暫不接受外帶點餐。',
+    // 新增：結帳提醒
+    payNotice: '⚠️ 下單後請至櫃台結帳才會出餐，謝謝。'
   },
   en: {
     title: 'Dine-in Order',
@@ -236,7 +238,9 @@ const langMap = {
     spicyPreview: '🌶️ Spicy',
     invalidStore: 'Invalid store ID. Please ensure the "store" query param is a valid UUID.',
     dineInBlocked: 'Dine-in is currently unavailable. Please switch to takeout to continue.',
-    takeoutBlocked: 'Takeout is currently unavailable. We are not accepting takeout orders now.'
+    takeoutBlocked: 'Takeout is currently unavailable. We are not accepting takeout orders now.',
+    // 新增：結帳提醒
+    payNotice: '⚠️ Please pay at the counter after placing your order; we will start preparing after payment. Thank you.'
   }
 }
 
@@ -987,7 +991,7 @@ function OrderPage() {
       </div>
 
       {/* 備註 */}
-      <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4 mb-24">
+      <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4 mb-6">
         <h2 className="font-semibold mb-2">{t.noteLabel}</h2>
         <textarea
           className="w-full border border-white/15 bg-[#1F1F1F] text-white placeholder:text-white/40 p-2 rounded outline-none focus:ring-1 focus:ring-white/30"
@@ -1003,6 +1007,11 @@ function OrderPage() {
           }}
         />
         <p className="text-xs text-white/50 text-right">{note.length}/100</p>
+      </div>
+
+      {/* 顯眼備註（未確認頁也顯示） */}
+      <div className="bg-amber-500/15 text-amber-200 border border-amber-300/30 rounded px-3 py-2 text-sm mb-24">
+        {t.payNotice}
       </div>
 
       {/* 底部固定結帳列（深色、全寬固定） */}
@@ -1048,6 +1057,10 @@ function OrderPage() {
         <Button variant="default" onClick={submitOrder} disabled={submitting}>
           {submitting ? '送出中…' : t.submit}
         </Button>
+      </div>
+      {/* 顯眼備註：下單後請至櫃台結帳 */}
+      <div className="mt-4 rounded-md border border-amber-300/30 bg-amber-500/15 text-amber-200 px-3 py-2 text-sm">
+        {t.payNotice}
       </div>
     </div>
   )
