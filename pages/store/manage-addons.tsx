@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
+import { Button } from '@/components/ui/button'
 
 type AddonDB = { label: string; value: string; price_delta?: number }
 type AddonUI = { label: string; price_delta?: number }
@@ -117,9 +118,7 @@ export default function StoreManageAddonsPage() {
       .limit(1)
       .maybeSingle()
 
-    if (findErr) {
-      console.error('ensureAddonsOption find error:', findErr.message)
-    }
+    if (findErr) console.error('ensureAddonsOption find error:', findErr.message)
     if (found?.id) return found.id as string
 
     // 2) 沒有就建立
@@ -130,9 +129,7 @@ export default function StoreManageAddonsPage() {
       values: [] as AddonDB[]
     }
     const { data: ins, error: insErr } = await supabase.from('options').insert(payload).select('id').single()
-    if (insErr || !ins?.id) {
-      throw new Error(insErr?.message || '建立「加料」選項失敗')
-    }
+    if (insErr || !ins?.id) throw new Error(insErr?.message || '建立「加料」選項失敗')
     return ins.id as string
   }
 
@@ -258,10 +255,7 @@ export default function StoreManageAddonsPage() {
     setAddons((prev) =>
       prev.map((row, i) =>
         i === idx
-          ? {
-              ...row,
-              [key]: key === 'price_delta' ? (Number(value || 0) as any) : (value as any)
-            }
+          ? { ...row, [key]: key === 'price_delta' ? (Number(value || 0) as any) : (value as any) }
           : row
       )
     )
@@ -273,73 +267,134 @@ export default function StoreManageAddonsPage() {
     return menus.filter((i) => i.category_id === filterCat)
   }, [menus, filterCat])
 
+  // ===== Icons for UI =====
+  const PlusIcon = () => (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+  const SaveIcon = () => (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M5 5h14v14H5z" />
+      <path d="M9 5v6h6V5" />
+    </svg>
+  )
+  const RefreshIcon = () => (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M20 12a8 8 0 10-2.34 5.66M20 12v5h-5" />
+    </svg>
+  )
+
+  const handleRefresh = () => {
+    if (storeId) void loadAll(storeId)
+  }
+
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      {/* 導覽按鈕 */}
-      <div className="flex gap-2 mb-6">
-        <Link href="/store/manage-addons" className="rounded-full px-6 py-2 bg-yellow-400 font-semibold">
-          加料管理
-        </Link>
-        <Link href="/store/manage-menus" className="rounded-full px-6 py-2 bg-gray-700 text-white">
-          新增分類與菜單
-        </Link>
+    <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
+      {/* 頁首（深色、與首頁一致） */}
+      <div className="flex items-start justify-between pt-2 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="text-yellow-400 text-2xl">🧂</div>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">加料管理</h1>
+            <p className="text-white/70 text-sm mt-1">設定多選加料與分類／單品開關</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="soft" size="sm" onClick={handleRefresh} startIcon={<RefreshIcon />}>
+            重新整理
+          </Button>
+        </div>
       </div>
 
-      <h1 className="text-2xl font-bold mb-4">🍽 加料管理</h1>
+      {/* 膠囊導覽（黃底高亮當前頁） */}
+      <div className="mb-6">
+        <div className="inline-flex overflow-hidden rounded-full shadow ring-1 ring-black/10">
+          <Link
+            href="/store/manage-addons"
+            className="px-6 py-2 bg-yellow-400 text-black font-semibold"
+          >
+            加料管理
+          </Link>
+          <Link
+            href="/store/manage-menus"
+            className="px-6 py-2 bg-white/10 text-white hover:bg-white/20 backdrop-blur transition"
+          >
+            新增分類與菜單
+          </Link>
+        </div>
+      </div>
 
-      {err && <div className="mb-3 rounded border bg-red-50 text-red-700 p-2">{err}</div>}
-      {loading && <div className="mb-3">讀取中…</div>}
+      {err && <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">❌ {err}</div>}
+      {loading && <div className="mb-4 text-white/80">讀取中…</div>}
 
       {/* ---- 加料管理 ---- */}
-      <section className="mb-8">
-        <h2 className="font-semibold text-lg mb-2">加料項目（多選 / 含價差）</h2>
-        <div className="rounded border p-3 mb-3">
-          <p className="text-sm text-gray-600 mb-3">
-            在這裡設定「加料」選項內容；<span className="font-medium">甜度 / 冰塊 / 容量</span> 由系統固定顯示，且不影響價格。
+      <section className="mb-6 bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
+        <div className="px-4 py-3 border-b border-white/10">
+          <h2 className="text-lg font-semibold">加料項目（多選 / 含價差）</h2>
+          <p className="text-sm text-white/60 mt-1">
+            在這裡設定「加料」選項內容；<span className="font-medium text-white/80">甜度 / 冰塊 / 容量</span> 由系統固定顯示，且不影響價格。
           </p>
+        </div>
 
-          <div className="text-sm font-medium mb-1">加料項目</div>
-          {addons.map((row, idx) => (
-            <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
-              <input
-                className="border px-2 py-1 rounded"
-                placeholder="顯示名稱（例：珍珠）"
-                value={row.label}
-                onChange={(e) => updateAddonRow(idx, 'label', e.target.value)}
-              />
-              <input
-                type="number"
-                className="border px-2 py-1 rounded"
-                placeholder="價差（例：10）"
-                value={String(row.price_delta ?? 0)}
-                onChange={(e) => updateAddonRow(idx, 'price_delta', e.target.value)}
-              />
-              <div className="flex items-center">
-                <button className="text-sm text-red-600" onClick={() => removeAddonRow(idx)}>
-                  刪除此列
-                </button>
+        <div className="p-4">
+          <div className="text-sm font-medium mb-2">加料項目</div>
+
+          <div className="space-y-2">
+            {addons.map((row, idx) => (
+              <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <input
+                  className="border px-2 py-2 rounded bg-white text-gray-900"
+                  placeholder="顯示名稱（例：珍珠）"
+                  value={row.label}
+                  onChange={(e) => updateAddonRow(idx, 'label', e.target.value)}
+                />
+                <input
+                  type="number"
+                  className="border px-2 py-2 rounded bg-white text-gray-900"
+                  placeholder="價差（例：10）"
+                  value={String(row.price_delta ?? 0)}
+                  onChange={(e) => updateAddonRow(idx, 'price_delta', e.target.value)}
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => removeAddonRow(idx)}
+                  >
+                    刪除此列
+                  </Button>
+                </div>
               </div>
-            </div>
-          ))}
-          <button className="text-sm bg-gray-100 px-2 py-1 rounded mr-2" onClick={addAddonRow}>
-            + 新增一列
-          </button>
-          <button
-            className="text-sm bg-green-600 text-white px-3 py-1 rounded"
-            onClick={upsertAddonsValues}
-            disabled={!addonsOptionId}
-          >
-            儲存加料
-          </button>
+            ))}
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <Button variant="soft" size="sm" onClick={addAddonRow} startIcon={<PlusIcon />}>
+              新增一列
+            </Button>
+            <Button
+              variant="success"
+              size="sm"
+              onClick={upsertAddonsValues}
+              disabled={!addonsOptionId}
+              startIcon={<SaveIcon />}
+            >
+              儲存加料
+            </Button>
+          </div>
         </div>
       </section>
 
       {/* ---- 分類層級：啟用/停用「加料」 ---- */}
-      <section className="mb-8">
-        <h2 className="font-semibold text-lg mb-2">分類：加料開關</h2>
-        <div className="rounded border overflow-hidden">
+      <section className="mb-6 bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
+        <div className="px-4 py-3 border-b border-white/10">
+          <h2 className="text-lg font-semibold">分類：加料開關</h2>
+        </div>
+
+        <div className="p-4 overflow-x-auto">
           <table className="w-full border-collapse">
-            <thead className="bg-gray-100">
+            <thead className="bg-white/10 text-white">
               <tr>
                 <th className="p-2 text-left w-48">分類</th>
                 <th className="p-2 text-left">是否啟用「加料」</th>
@@ -347,7 +402,7 @@ export default function StoreManageAddonsPage() {
             </thead>
             <tbody>
               {categories.map((cat) => (
-                <tr key={cat.id} className="border-t">
+                <tr key={cat.id} className="border-t border-white/10">
                   <td className="p-2 font-medium">{cat.name}</td>
                   <td className="p-2">
                     <label className="inline-flex items-center gap-2">
@@ -364,7 +419,7 @@ export default function StoreManageAddonsPage() {
               ))}
               {categories.length === 0 && (
                 <tr>
-                  <td className="p-2" colSpan={2}>
+                  <td className="p-2 text-white/70" colSpan={2}>
                     尚無分類
                   </td>
                 </tr>
@@ -375,12 +430,16 @@ export default function StoreManageAddonsPage() {
       </section>
 
       {/* ---- 單品覆蓋（特例） ---- */}
-      <section className="mb-8">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold text-lg">單品覆蓋（個別開關加料）</h2>
+      <section className="mb-6 bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
+        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">單品覆蓋（個別開關加料）</h2>
           <div className="flex items-center gap-2">
             <label className="text-sm">分類篩選</label>
-            <select className="border px-2 py-1 rounded" value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
+            <select
+              className="border px-2 py-1 rounded bg-white text-gray-900"
+              value={filterCat}
+              onChange={(e) => setFilterCat(e.target.value)}
+            >
               <option value="ALL">全部</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -391,9 +450,9 @@ export default function StoreManageAddonsPage() {
           </div>
         </div>
 
-        <div className="rounded border overflow-hidden">
+        <div className="p-4 overflow-x-auto">
           <table className="w-full border-collapse">
-            <thead className="bg-gray-100">
+            <thead className="bg-white/10 text-white">
               <tr>
                 <th className="p-2 text-left w-64">品名</th>
                 <th className="p-2 text-left">是否啟用「加料」</th>
@@ -401,10 +460,10 @@ export default function StoreManageAddonsPage() {
             </thead>
             <tbody>
               {filteredItems.map((item) => (
-                <tr key={item.id} className="border-t">
+                <tr key={item.id} className="border-t border-white/10">
                   <td className="p-2">
                     <div className="font-medium">{item.name}</div>
-                    <div className="text-xs text-gray-500">NT$ {item.price}</div>
+                    <div className="text-xs text-white/60">NT$ {item.price}</div>
                   </td>
                   <td className="p-2">
                     <label className="inline-flex items-center gap-2">
@@ -416,13 +475,13 @@ export default function StoreManageAddonsPage() {
                       />
                       <span>啟用加料（覆蓋分類設定）</span>
                     </label>
-                    <div className="text-xs text-gray-500 mt-1">※ 單品設定會覆蓋分類預設；未勾時，依分類設定為準。</div>
+                    <div className="text-xs text-white/60 mt-1">※ 單品設定會覆蓋分類預設；未勾時，依分類設定為準。</div>
                   </td>
                 </tr>
               ))}
               {filteredItems.length === 0 && (
                 <tr>
-                  <td className="p-2" colSpan={2}>
+                  <td className="p-2 text-white/70" colSpan={2}>
                     此分類尚無商品
                   </td>
                 </tr>
