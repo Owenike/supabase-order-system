@@ -10,7 +10,6 @@ interface OrderItem {
   name: string
   quantity: number
   price: number
-  // 新增：顯示用選項（可能是中文，也可能是舊資料的英文字鍵）
   options?: OptionsMap | null
 }
 interface Order {
@@ -188,7 +187,7 @@ export default function StoreOrdersPage() {
     )
   }
 
-  // 允許播放提示音
+  // 允許播放提示音（使用者互動後才可播）
   useEffect(() => {
     const enableAudio = () => {
       audioRef.current?.play().catch(() => {})
@@ -224,7 +223,7 @@ export default function StoreOrdersPage() {
     return { fromIso: start.toISOString(), toIso: end.toISOString() }
   }
 
-  // 啟動輪詢
+  // 輪詢
   useEffect(() => {
     if (!storeId) return
     const doFetch = async () => {
@@ -270,6 +269,7 @@ export default function StoreOrdersPage() {
 
     const list = (data || []) as Order[]
     if (lastOrderCount.current !== null && list.length > (lastOrderCount.current ?? 0)) {
+      // 有新訂單音效
       audioRef.current?.play().catch(() => {})
     }
     lastOrderCount.current = list.length
@@ -296,7 +296,6 @@ export default function StoreOrdersPage() {
   // 編輯
   const openEdit = (order: Order) => {
     setEditingOrder({ ...order })
-    // 編輯面板不改 options，但要保留
     setEditItems(
       (order.items ?? []).map((i: any) => ({
         name: String(i?.name ?? ''),
@@ -325,7 +324,7 @@ export default function StoreOrdersPage() {
     })
   }
 
-  const addItem = () => setEditItems(prev => [...prev, { name: '', quantity: 1, price: 0 }])
+  const addItem = () => setEditItems(prev => [...prev, { name: '', quantity: 1, price: 0 } as OrderItem])
   const removeItem = (idx: number) => setEditItems(prev => prev.filter((_, i) => i !== idx))
 
   const saveEdit = async () => {
@@ -406,12 +405,20 @@ export default function StoreOrdersPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
       <audio ref={audioRef} src="/ding.mp3" preload="auto" />
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">📦 {dict.title}</h1>
+
+      {/* 頁首 */}
+      <div className="flex items-start justify-between pt-2 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="text-yellow-400 text-2xl">📦</div>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{dict.title}</h1>
+            <p className="text-white/70 text-sm mt-1">即時查看與處理訂單</p>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
-          <label className="text-sm flex items-center gap-1">
+          <label className="text-sm flex items-center gap-2 text-white/80">
             <input
               type="checkbox"
               checked={autoRefresh}
@@ -421,89 +428,125 @@ export default function StoreOrdersPage() {
           </label>
           <button
             onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-            className="text-sm border px-2 py-1 rounded"
+            className="inline-flex h-9 px-3 items-center rounded-md bg-white/10 text-white hover:bg-white/15 border border-white/15"
           >
             {lang === 'zh' ? 'EN' : '中'}
           </button>
         </div>
       </div>
 
-      {!storeId && (
-        <div className="mb-3 rounded border bg-amber-50 text-amber-800 p-2">
-          {dict.noStore}
+      {/* 區間與重整 */}
+      <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
+        <div className="p-4 flex flex-wrap items-center gap-3">
+          <div className="inline-flex rounded-md overflow-hidden shadow">
+            <button
+              onClick={() => setRange('today')}
+              className={`px-4 py-2 ${range === 'today' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'}`}
+            >
+              {dict.today}
+            </button>
+            <button
+              onClick={() => setRange('week')}
+              className={`px-4 py-2 ${range === 'week' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'}`}
+            >
+              {dict.week}
+            </button>
+            <button
+              onClick={() => setRange('custom')}
+              className={`px-4 py-2 ${range === 'custom' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'}`}
+            >
+              {dict.custom}
+            </button>
+          </div>
+
+          {range === 'custom' && (
+            <>
+              <input
+                aria-label={dict.from}
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="border p-2 rounded"
+              />
+              <input
+                aria-label={dict.to}
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="border p-2 rounded"
+              />
+            </>
+          )}
+
+          <button
+            onClick={manualRefresh}
+            className="ml-auto px-4 py-2 rounded border border-gray-300 hover:bg-gray-100"
+            aria-label={dict.refresh}
+          >
+            {dict.refresh}
+          </button>
         </div>
-      )}
-
-      {/* 區間選擇 */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <button onClick={() => setRange('today')} className={`px-4 py-1 rounded ${range === 'today' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>{dict.today}</button>
-        <button onClick={() => setRange('week')} className={`px-4 py-1 rounded ${range === 'week' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>{dict.week}</button>
-        <button onClick={() => setRange('custom')} className={`px-4 py-1 rounded ${range === 'custom' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>{dict.custom}</button>
-
-        {range === 'custom' && (
-          <>
-            <input
-              aria-label={dict.from}
-              type="date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-              className="border p-1 rounded"
-            />
-            <input
-              aria-label={dict.to}
-              type="date"
-              value={endDate}
-              onChange={e => setEndDate(e.target.value)}
-              className="border p-1 rounded"
-            />
-          </>
-        )}
-
-        <button
-          onClick={manualRefresh}
-          className="ml-auto px-4 py-1 rounded border hover:bg-gray-100"
-          aria-label={dict.refresh}
-        >
-          {dict.refresh}
-        </button>
       </div>
 
       {/* 狀態篩選 */}
-      <div className="flex gap-3 mb-6">
-        <button onClick={() => setFilter('all')} className={`px-4 py-1 rounded ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>{dict.all}</button>
-        <button onClick={() => setFilter('pending')} className={`px-4 py-1 rounded ${filter === 'pending' ? 'bg-yellow-500 text-white' : 'bg-gray-200'}`}>{dict.pending}</button>
-        <button onClick={() => setFilter('completed')} className={`px-4 py-1 rounded ${filter === 'completed' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}>{dict.completed}</button>
+      <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
+        <div className="p-4 flex items-center gap-3">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 rounded ${filter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-900'}`}
+          >
+            {dict.all}
+          </button>
+          <button
+            onClick={() => setFilter('pending')}
+            className={`px-4 py-2 rounded ${filter === 'pending' ? 'bg-amber-500 text-white' : 'bg-gray-200 text-gray-900'}`}
+          >
+            {dict.pending}
+          </button>
+          <button
+            onClick={() => setFilter('completed')}
+            className={`px-4 py-2 rounded ${filter === 'completed' ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-900'}`}
+          >
+            {dict.completed}
+          </button>
+        </div>
       </div>
 
       {/* 錯誤 / 讀取 */}
-      {loading && <p className="text-gray-500 mb-2">{dict.loading}</p>}
-      {errorMsg && <p className="text-red-600 mb-2">❌ {dict.error}（{errorMsg}）</p>}
+      {loading && <p className="text-white/80 mb-2">{dict.loading}</p>}
+      {errorMsg && <p className="text-red-400 mb-2">❌ {dict.error}（{errorMsg}）</p>}
 
       {/* 訂單清單 */}
       {filteredOrders.length === 0 ? (
-        <p className="text-gray-500">
-          {filter === 'pending' ? dict.noPending : dict.noOrders}
-        </p>
+        <div className="bg-white text-gray-900 rounded-lg border shadow p-4">
+          <p className="text-gray-600">
+            {filter === 'pending' ? dict.noPending : dict.noOrders}
+          </p>
+        </div>
       ) : (
         <div className="grid gap-4">
           {filteredOrders.map(order => (
-            <div key={order.id} className="border rounded-lg p-4 shadow hover:shadow-md transition">
+            <div key={order.id} className="bg-white text-gray-900 rounded-lg border shadow p-4">
               <div className="flex justify-between items-center mb-2">
                 <h2 className="font-semibold">
                   {dict.table}：{displayTable(order.table_number)}
                 </h2>
                 <div className="flex items-center gap-2">
-                  {order.status === 'completed' && <span className="text-green-600 text-sm">{dict.done}</span>}
+                  {order.status === 'completed' && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-emerald-600/15 text-emerald-700 border border-emerald-600/20">
+                      {dict.done}
+                    </span>
+                  )}
                   <button
                     onClick={() => openEdit(order)}
-                    className="text-sm px-3 py-1 rounded border hover:bg-gray-100"
+                    className="text-sm px-3 py-1 rounded border border-gray-300 hover:bg-gray-100"
                     aria-label={dict.edit}
                   >
                     {dict.edit}
                   </button>
                   <button
                     onClick={() => deleteOrder(order.id)}
-                    className="text-sm px-3 py-1 rounded border hover:bg-red-50 text-red-600"
+                    className="text-sm px-3 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50"
                     aria-label={dict.delete}
                   >
                     {dict.delete}
@@ -526,7 +569,7 @@ export default function StoreOrdersPage() {
               </div>
 
               {order.spicy_level && (
-                <div className="text-sm text-red-500">
+                <div className="text-sm text-red-600">
                   <strong>{dict.spicy}：</strong> {order.spicy_level}
                 </div>
               )}
@@ -540,7 +583,7 @@ export default function StoreOrdersPage() {
               {order.status !== 'completed' && (
                 <button
                   onClick={() => handleComplete(order.id)}
-                  className="mt-3 bg-green-600 text-white px-4 py-1 rounded hover:bg-green-700 active:scale-95 transition"
+                  className="mt-3 bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700 active:scale-95 transition"
                 >
                   {dict.complete}
                 </button>
@@ -552,11 +595,13 @@ export default function StoreOrdersPage() {
 
       {/* 編輯面板 */}
       {editingOrder && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify中心 z-50">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white w-full max-w-2xl rounded-lg shadow-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">{dict.editOrder}</h3>
-              <button className="text-sm text-gray-500" onClick={() => setEditingOrder(null)}>{dict.back}</button>
+              <button className="text-sm text-gray-500" onClick={() => setEditingOrder(null)}>
+                {dict.back}
+              </button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -612,7 +657,7 @@ export default function StoreOrdersPage() {
                 <h4 className="font-medium">{dict.items}</h4>
                 <button
                   onClick={addItem}
-                  className="text-sm px-3 py-1 rounded border hover:bg-gray-100"
+                  className="text-sm px-3 py-1 rounded border border-gray-300 hover:bg-gray-100"
                 >
                   + {dict.addItem}
                 </button>
@@ -646,7 +691,7 @@ export default function StoreOrdersPage() {
                     />
                     <button
                       onClick={() => removeItem(idx)}
-                      className="col-span-2 text-sm px-3 py-2 rounded border hover:bg-red-50 text-red-600"
+                      className="col-span-2 text-sm px-3 py-2 rounded border border-red-300 text-red-600 hover:bg-red-50"
                     >
                       {dict.delete}
                     </button>
@@ -661,14 +706,14 @@ export default function StoreOrdersPage() {
             <div className="mt-6 flex justify-end gap-3">
               <button
                 onClick={() => setEditingOrder(null)}
-                className="px-4 py-2 rounded border"
+                className="px-4 py-2 rounded border border-gray-300"
                 disabled={isSaving}
               >
                 {dict.cancel}
               </button>
               <button
                 onClick={saveEdit}
-                className="px-4 py-2 rounded bg-blue-600 text白 hover:bg-blue-700 disabled:opacity-60"
+                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
                 disabled={isSaving}
               >
                 {isSaving ? dict.saving : dict.save}
@@ -680,15 +725,17 @@ export default function StoreOrdersPage() {
 
       {/* 刪除確認框 */}
       {deletingId && (
-        <div className="fixed inset-0 bg黑/40 flex items-center justify-center z-50">
-          <div className="bg白 w-full max-w-md rounded-lg shadow-lg p-6">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white w-full max-w-md rounded-lg shadow-lg p-6">
             <h3 className="text-lg font-semibold mb-2">{dict.confirmDeleteTitle}</h3>
             <p className="text-sm text-gray-700">{dict.confirmDeleteText}</p>
             <div className="mt-6 flex justify-end gap-3">
-              <button onClick={cancelDelete} className="px-4 py-2 rounded border">{dict.cancel}</button>
+              <button onClick={cancelDelete} className="px-4 py-2 rounded border border-gray-300">
+                {dict.cancel}
+              </button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 rounded bg-red-600 text白 hover:bg-red-700"
+                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
               >
                 {dict.confirm}
               </button>
