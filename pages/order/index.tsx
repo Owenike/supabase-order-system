@@ -762,113 +762,121 @@ function OrderPage() {
   // ---------- Render ----------
   if (invalidStore) {
     return (
-      <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
-        <div className="flex items-start justify-between pt-2 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="text-yellow-400 text-2xl">🛍</div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{t.takeaway}</h1>
-              <p className="text-white/70 text-sm mt-1">請確認網址參數是否正確</p>
+      <main className="bg-[#111] min-h-screen">
+        <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
+          <div className="flex items-start justify-between pt-2 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="text-yellow-400 text-2xl">🛍</div>
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{t.takeaway}</h1>
+                <p className="text-white/70 text-sm mt-1">請確認網址參數是否正確</p>
+              </div>
             </div>
+            <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>
+              {lang === 'zh' ? 'EN' : '中'}
+            </Button>
           </div>
-          <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>
-            {lang === 'zh' ? 'EN' : '中'}
-          </Button>
-        </div>
 
-        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
-          <div className="text-red-300">❌ {t.invalidStore}</div>
-          <p className="text-sm text-white/70 mt-2">
-            範例：
-            <code className="px-1 py-0.5 bg-white/10 rounded ml-1">/order?store=...&table=takeout</code>
-          </p>
+          <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
+            <div className="text-red-300">❌ {t.invalidStore}</div>
+            <p className="text-sm text-white/70 mt-2">
+              範例：
+              <code className="px-1 py-0.5 bg-white/10 rounded ml-1">/order?store=...&table=takeout</code>
+            </p>
+          </div>
         </div>
-      </div>
+      </main>
     )
   }
 
   if (!isLiffReady || !storeId || !flagsLoaded) {
-    return <p className="text-white/80 p-6">❗請稍候，頁面初始化中…</p>
+    return <main className="bg-[#111] min-h-screen"><p className="text-white/80 p-6">❗請稍候，頁面初始化中…</p></main>
   }
 
   if (!isTakeout && !dineInEnabled) {
     return (
-      <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
-        <div className="flex items-start justify-between pt-2 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="text-yellow-400 text-2xl">📝</div>
-            <div><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{t.title}</h1></div>
+      <main className="bg-[#111] min-h-screen">
+        <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
+          <div className="flex items-start justify-between pt-2 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="text-yellow-400 text-2xl">📝</div>
+              <div><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{t.title}</h1></div>
+            </div>
+            <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'EN' : '中'}</Button>
           </div>
-          <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'EN' : '中'}</Button>
-        </div>
 
-        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
-          <div className="mb-4 p-3 rounded border border-amber-300/30 bg-amber-500/15 text-amber-200">
-            {t.dineInBlocked}
+          <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
+            <div className="mb-4 p-3 rounded border border-amber-300/30 bg-amber-500/15 text-amber-200">
+              {t.dineInBlocked}
+            </div>
+            <Button variant="success" onClick={switchToTakeout}>切換為外帶</Button>
           </div>
-          <Button variant="success" onClick={switchToTakeout}>切換為外帶</Button>
         </div>
-      </div>
+      </main>
     )
   }
 
   if (isTakeout && !takeoutEnabled) {
     return (
-      <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
-        <div className="flex items-start justify-between pt-2 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="text-yellow-400 text-2xl">🛍</div>
-            <div><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{t.takeaway}</h1></div>
+      <main className="bg-[#111] min-h-screen">
+        <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
+          <div className="flex items-start justify-between pt-2 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="text-yellow-400 text-2xl">🛍</div>
+              <div><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{t.takeaway}</h1></div>
+            </div>
+            <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'EN' : '中'}</Button>
           </div>
-          <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'EN' : '中'}</Button>
-        </div>
 
-        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
-          <div className="mb-4 p-3 rounded border border-red-300/30 bg-red-500/15 text-red-200">
-            {t.takeoutBlocked}
+          <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
+            <div className="mb-4 p-3 rounded border border-red-300/30 bg-red-500/15 text-red-200">
+              {t.takeoutBlocked}
+            </div>
           </div>
         </div>
-      </div>
+      </main>
     )
   }
 
   if (!hasLineCookie) {
     return (
-      <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
-        <div className="flex items-start justify-between pt-2 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="text-yellow-400 text-2xl">{isTakeout ? '🛍' : '📝'}</div>
-            <div><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{isTakeout ? t.takeaway : t.title}</h1></div>
-          </div>
-          <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'EN' : '中'}</Button>
-        </div>
-
-        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
-          <div className="text-red-200 mb-2">此頁需要先完成 LINE 登入。</div>
-          {errorMsg && (
-            <div className="mb-2 p-2 rounded border border-red-300/30 bg-red-500/15 text-red-200">
-              {errorMsg}
-              <button
-                onClick={() => {
-                  const w = safeWindow(); if (!w) return
-                  const cookieQs = getCookie(COOKIE_QS_KEY)
-                  if (cookieQs) { router.replace(`/order${cookieQs}`); delCookie(COOKIE_QS_KEY); return }
-                  const cleanUrl = buildCleanRedirectUrl(w, router.query); router.replace(cleanUrl)
-                }}
-                className="ml-2 underline"
-              >
-                清除授權參數並重試
-              </button>
+      <main className="bg-[#111] min-h-screen">
+        <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
+          <div className="flex items-start justify-between pt-2 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="text-yellow-400 text-2xl">{isTakeout ? '🛍' : '📝'}</div>
+              <div><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{isTakeout ? t.takeaway : t.title}</h1></div>
             </div>
-          )}
-          <Button variant="success" onClick={handleManualLogin} disabled={!isLiffReady || loggingIn}>
-            使用 LINE 登入
-          </Button>
-          <p className="text-xs text-white/60 mt-2">
-            若不是在 LINE App 內開啟，登入可能失敗，建議改用 LINE 內建瀏覽器開啟本頁。
-          </p>
+            <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>{lang === 'zh' ? 'EN' : '中'}</Button>
+          </div>
+
+          <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 p-4">
+            <div className="text-red-200 mb-2">此頁需要先完成 LINE 登入。</div>
+            {errorMsg && (
+              <div className="mb-2 p-2 rounded border border-red-300/30 bg-red-500/15 text-red-200">
+                {errorMsg}
+                <button
+                  onClick={() => {
+                    const w = safeWindow(); if (!w) return
+                    const cookieQs = getCookie(COOKIE_QS_KEY)
+                    if (cookieQs) { router.replace(`/order${cookieQs}`); delCookie(COOKIE_QS_KEY); return }
+                    const cleanUrl = buildCleanRedirectUrl(w, router.query); router.replace(cleanUrl)
+                  }}
+                  className="ml-2 underline"
+                >
+                  清除授權參數並重試
+                </button>
+              </div>
+            )}
+            <Button variant="success" onClick={handleManualLogin} disabled={!isLiffReady || loggingIn}>
+              使用 LINE 登入
+            </Button>
+            <p className="text-xs text-white/60 mt-2">
+              若不是在 LINE App 內開啟，登入可能失敗，建議改用 LINE 內建瀏覽器開啟本頁。
+            </p>
+          </div>
         </div>
-      </div>
+      </main>
     )
   }
 
@@ -1045,40 +1053,42 @@ function OrderPage() {
   )
 
   return (
-    <div className="px-4 sm:px-6 md:px-10 pb-28 max-w-3xl mx-auto">
-      {/* 頁首：深色一致 */}
-      <div className="flex items-start justify-between pt-2 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="text-yellow-400 text-2xl">{isTakeout ? '🛍' : '📝'}</div>
-          <div><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{isTakeout ? t.takeaway : t.title}</h1></div>
+    <main className="bg-[#111] min-h-screen">
+      <div className="px-4 sm:px-6 md:px-10 pb-28 max-w-3xl mx-auto">
+        {/* 頁首：深色一致 */}
+        <div className="flex items-start justify-between pt-2 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="text-yellow-400 text-2xl">{isTakeout ? '🛍' : '📝'}</div>
+            <div><h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{isTakeout ? t.takeaway : t.title}</h1></div>
+          </div>
+          <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>
+            {lang === 'zh' ? 'EN' : '中'}
+          </Button>
         </div>
-        <Button variant="soft" size="sm" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>
-          {lang === 'zh' ? 'EN' : '中'}
-        </Button>
-      </div>
 
-      {success && (
-        <div className="bg-emerald-500/15 text-emerald-200 border border-emerald-400/30 p-3 rounded mb-4">
-          {t.success}
-        </div>
-      )}
+        {success && (
+          <div className="bg-emerald-500/15 text-emerald-200 border border-emerald-400/30 p-3 rounded mb-4">
+            {t.success}
+          </div>
+        )}
 
-      {content}
+        {content}
 
-      {/* === 商品選項彈窗（深色卡） === */}
-      {activeMenu && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 p-6 w-full max-w-md shadow-lg">
-            <h2 className="text-lg font-bold mb-4">{activeMenu.name}</h2>
-            <ItemOptionPicker groups={optionGroups} value={chosenOptions} onChange={setChosenOptions} />
-            <div className="mt-5 flex justify-end gap-3">
-              <Button size="sm" variant="secondary" onClick={() => setActiveMenu(null)}>取消</Button>
-              <Button size="sm" variant="success" onClick={addToCart}>加入</Button>
+        {/* === 商品選項彈窗（深色卡） === */}
+        {activeMenu && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 p-6 w-full max-w-md shadow-lg">
+              <h2 className="text-lg font-bold mb-4">{activeMenu.name}</h2>
+              <ItemOptionPicker groups={optionGroups} value={chosenOptions} onChange={setChosenOptions} />
+              <div className="mt-5 flex justify-end gap-3">
+                <Button size="sm" variant="secondary" onClick={() => setActiveMenu(null)}>取消</Button>
+                <Button size="sm" variant="success" onClick={addToCart}>加入</Button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </main>
   )
 }
 
