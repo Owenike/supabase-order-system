@@ -228,7 +228,7 @@ export default function StoreStatsPage() {
         </div>
       </div>
 
-      {/* 內用 / 外帶 排行（深灰卡 + 深色表頭） */}
+      {/* 內用 / 外帶 排行（深灰卡 + 白色表頭文字） */}
       {[{ title: '內用訂單', stats: inStats, revenue: inRevenue },
         { title: '外帶訂單', stats: outStats, revenue: outRevenue }].map(section => (
         <div key={section.title} className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
@@ -238,18 +238,18 @@ export default function StoreStatsPage() {
           </div>
           <div className="p-4 overflow-x-auto">
             <table className="w-full border border-white/10 rounded">
-              <thead className="bg-white/10 text-white">
+              <thead className="bg-white/10">
                 <tr>
-                  <th className="text-left  px-4 py-2">品項</th>
-                  <th className="text-right px-4 py-2">數量</th>
-                  <th className="text-right px-4 py-2">總金額</th>
+                  <th className="px-4 py-2 text-left  text-white">品項</th>
+                  <th className="px-4 py-2 text-right text-white">數量</th>
+                  <th className="px-4 py-2 text-right text-white">總金額</th>
                 </tr>
               </thead>
               <tbody>
                 {section.stats.map(item => (
                   <tr key={item.name} className="border-t border-white/10">
                     <td className="px-4 py-2">{item.name}</td>
-                    <td className="px-4 py-2 text-right">{n(item.total)}</td>
+                    <td className="px-4 py-2 text-right">{fmt(n(item.total))}</td>
                     <td className="px-4 py-2 text-right">{fmt(item.amount)}</td>
                   </tr>
                 ))}
