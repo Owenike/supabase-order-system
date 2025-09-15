@@ -331,7 +331,7 @@ export default function StoreManageAddonsPage() {
       {/* ---- 加料管理 ---- */}
       <section className="mb-6 bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
         <div className="px-4 py-3 border-b border-white/10">
-          <h2 className="text-lg font-semibold">加料項目（多選 / 含價差）</h2>
+          <h2 className="text-lg font-semibold">加料項目（例如:珍珠 / 5(元)）</h2>
           <p className="text-sm text-white/60 mt-1">
             在這裡設定「加料」選項內容；<span className="font-medium text-white/80">甜度 / 冰塊 / 容量</span> 由系統固定顯示，且不影響價格。
           </p>
