@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import ConfirmPasswordModal from '@/components/ui/ConfirmPasswordModal'
+import { Button } from '@/components/ui/button'
 
 interface Category {
   id: string
@@ -30,27 +31,17 @@ export default function StoreManageMenusPage() {
 
   // 新增用
   const [newCategory, setNewCategory] = useState('')
-  const [newMenu, setNewMenu] = useState<{
-    name: string
-    price: string
-    categoryId: string
-    description: string
-  }>({
-    name: '',
-    price: '',
-    categoryId: '',
-    description: ''
-  })
+  const [newMenu, setNewMenu] = useState<{ name: string; price: string; categoryId: string; description: string }>(
+    { name: '', price: '', categoryId: '', description: '' }
+  )
 
   // 編輯用
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [editingMenuId, setEditingMenuId] = useState<string | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState('')
-  const [editingMenu, setEditingMenu] = useState<{ name: string; price: string; description: string }>({
-    name: '',
-    price: '',
-    description: ''
-  })
+  const [editingMenu, setEditingMenu] = useState<{ name: string; price: string; description: string }>(
+    { name: '', price: '', description: '' }
+  )
 
   // 刪除保護
   const [showConfirmModal, setShowConfirmModal] = useState(false)
@@ -66,7 +57,7 @@ export default function StoreManageMenusPage() {
     setStoreId(storedId)
 
     void supabase.auth.getUser().then(({ data }) => {
-      if (data?.user?.email) setUserEmail(data.user.email)
+      if (data?.user?.email) setUserEmail(data.user.email!)
     })
 
     void loadAll(storedId)
@@ -90,10 +81,7 @@ export default function StoreManageMenusPage() {
       .select('*')
       .eq('store_id', sid)
       .order('created_at', { ascending: true })
-    if (error) {
-      console.error('fetchCategories error:', error)
-      return
-    }
+    if (error) return console.error('fetchCategories error:', error)
     if (data) setCategories(data as Category[])
   }
 
@@ -103,10 +91,7 @@ export default function StoreManageMenusPage() {
       .select('*')
       .eq('store_id', sid)
       .order('created_at', { ascending: true })
-    if (error) {
-      console.error('fetchMenus error:', error)
-      return
-    }
+    if (error) return console.error('fetchMenus error:', error)
     if (data) setMenus(data as MenuItem[])
   }
 
@@ -166,7 +151,6 @@ export default function StoreManageMenusPage() {
     setPendingDeleteId(id)
     setShowConfirmModal(true)
   }
-
   const handleDeleteCategory = (id: string) => {
     setPendingDeleteId(id)
     setShowConfirmModal(true)
@@ -212,11 +196,7 @@ export default function StoreManageMenusPage() {
 
   const handleEditMenu = (menu: MenuItem) => {
     setEditingMenuId(menu.id)
-    setEditingMenu({
-      name: menu.name,
-      price: String(menu.price),
-      description: menu.description || ''
-    })
+    setEditingMenu({ name: menu.name, price: String(menu.price), description: menu.description || '' })
   }
 
   const handleSaveMenu = async (id: string) => {
@@ -236,9 +216,31 @@ export default function StoreManageMenusPage() {
     if (storeId) void loadAll(storeId)
   }
 
+  // ====== Icons ======
+  const PlusIcon = () => (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  )
+  const EditIcon = () => (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 21h18M5 17l10-10 4 4-10 10H5z" />
+    </svg>
+  )
+  const TrashIcon = () => (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 6h18M8 6l1-2h6l1 2M6 6l1 14h10L18 6" />
+    </svg>
+  )
+  const RefreshIcon = () => (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M20 12a8 8 0 10-2.34 5.66M20 12v5h-5" />
+    </svg>
+  )
+
   return (
     <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
-      {/* 頁首 */}
+      {/* 頁首（深色、與首頁一致） */}
       <div className="flex items-start justify-between pt-2 pb-4">
         <div className="flex items-center gap-3">
           <div className="text-yellow-400 text-2xl">📋</div>
@@ -248,16 +250,13 @@ export default function StoreManageMenusPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleRefresh}
-            className="inline-flex h-9 px-3 items-center rounded-md bg-white/10 text-white hover:bg-white/15 border border-white/15"
-          >
+          <Button variant="soft" size="sm" onClick={handleRefresh} startIcon={<RefreshIcon />}>
             重新整理
-          </button>
+          </Button>
         </div>
       </div>
 
-      {/* 膠囊導覽 */}
+      {/* 膠囊導覽（黃底高亮當前頁） */}
       <div className="mb-6">
         <div className="inline-flex overflow-hidden rounded-full shadow ring-1 ring-black/10">
           <Link
@@ -276,63 +275,60 @@ export default function StoreManageMenusPage() {
       </div>
 
       {/* 錯誤 / 載入 */}
-      {err && <div className="mb-4 rounded border border-red-300 bg-red-50 text-red-700 p-3">❌ {err}</div>}
+      {err && <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">❌ {err}</div>}
       {loading && <div className="mb-4 text-white/80">讀取中…</div>}
 
       {/* ---- 新增分類 ---- */}
-      <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
-        <div className="px-4 py-3 border-b border-gray-200">
+      <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
+        <div className="px-4 py-3 border-b border-white/10">
           <h2 className="text-lg font-semibold">新增分類</h2>
         </div>
         <div className="p-4">
           <div className="flex gap-2">
             <input
               type="text"
-              className="border px-3 py-2 rounded w-full"
+              className="border px-3 py-2 rounded w-full bg-white text-gray-900"
               placeholder="分類名稱"
               value={newCategory}
               onChange={(e) => setNewCategory(e.target.value)}
             />
-            <button
-              onClick={handleAddCategory}
-              className="px-4 rounded bg-blue-600 text-white hover:bg-blue-700"
-            >
+            <Button onClick={handleAddCategory} startIcon={<PlusIcon />}>
               新增
-            </button>
+            </Button>
           </div>
         </div>
       </div>
 
       {/* ---- 新增菜單 ---- */}
-      <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
-        <div className="px-4 py-3 border-b border-gray-200">
+      <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
+        <div className="px-4 py-3 border-b border-white/10">
           <h2 className="text-lg font-semibold">新增菜單</h2>
         </div>
         <div className="p-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
             <input
               type="text"
-              className="border px-3 py-2 rounded"
+              className="border px-3 py-2 rounded bg-white text-gray-900"
               placeholder="菜名"
               value={newMenu.name}
               onChange={(e) => setNewMenu({ ...newMenu, name: e.target.value })}
             />
             <input
               type="number"
-              className="border px-3 py-2 rounded"
+              className="border px-3 py-2 rounded bg-white text-gray-900"
               placeholder="價格"
               value={newMenu.price}
               onChange={(e) => setNewMenu({ ...newMenu, price: e.target.value })}
             />
             <input
               type="text"
-              className="border px-3 py-2 rounded"
+              className="border px-3 py-2 rounded bg-white text-gray-900"
               placeholder="描述（選填）"
               value={newMenu.description}
               onChange={(e) => setNewMenu({ ...newMenu, description: e.target.value })}
             />
             <select
-              className="border px-3 py-2 rounded"
+              className="border px-3 py-2 rounded bg-white text-gray-900"
               value={newMenu.categoryId}
               onChange={(e) => setNewMenu({ ...newMenu, categoryId: e.target.value })}
             >
@@ -344,12 +340,9 @@ export default function StoreManageMenusPage() {
               ))}
             </select>
           </div>
-          <button
-            onClick={handleAddMenu}
-            className="mt-3 px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700"
-          >
+          <Button className="mt-3" variant="success" onClick={handleAddMenu} startIcon={<PlusIcon />}>
             新增菜單
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -358,45 +351,36 @@ export default function StoreManageMenusPage() {
         <h2 className="text-white font-semibold">現有分類與菜單</h2>
 
         {categories.length === 0 && !loading && (
-          <div className="bg-white text-gray-900 rounded-lg border shadow p-4">
-            <p className="text-gray-600">目前尚無分類，請先於上方新增分類。</p>
+          <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
+            <p className="text-white/70">目前尚無分類，請先於上方新增分類。</p>
           </div>
         )}
 
         {categories.map((cat) => (
-          <div key={cat.id} className="bg-white text-gray-900 rounded-lg shadow border border-gray-200">
+          <div key={cat.id} className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
             {/* 分類列 */}
-            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
               {editingCategoryId === cat.id ? (
                 <div className="flex gap-2 items-center w-full">
                   <input
-                    className="border px-2 py-1 rounded w-full"
+                    className="border px-2 py-1 rounded w-full bg-white text-gray-900"
                     value={editingCategoryName}
                     onChange={(e) => setEditingCategoryName(e.target.value)}
                   />
-                  <button
-                    onClick={() => handleSaveCategory(cat.id)}
-                    className="text-sm px-3 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700"
-                  >
+                  <Button size="sm" variant="success" onClick={() => handleSaveCategory(cat.id)}>
                     儲存
-                  </button>
+                  </Button>
                 </div>
               ) : (
                 <>
                   <h3 className="text-lg font-bold">{cat.name}</h3>
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => handleEditCategory(cat.id, cat.name)}
-                      className="text-sm text-blue-600 hover:underline"
-                    >
+                    <Button size="sm" variant="soft" startIcon={<EditIcon />} onClick={() => handleEditCategory(cat.id, cat.name)}>
                       編輯
-                    </button>
-                    <button
-                      onClick={() => handleDeleteCategory(cat.id)}
-                      className="text-sm text-red-600 hover:underline"
-                    >
+                    </Button>
+                    <Button size="sm" variant="destructive" startIcon={<TrashIcon />} onClick={() => handleDeleteCategory(cat.id)}>
                       刪除
-                    </button>
+                    </Button>
                   </div>
                 </>
               )}
@@ -405,39 +389,36 @@ export default function StoreManageMenusPage() {
             {/* 該分類的菜單列表 */}
             <ul className="p-4 space-y-2">
               {menus.filter((m) => m.category_id === cat.id).length === 0 && (
-                <li className="text-sm text-gray-500">此分類尚無菜單。</li>
+                <li className="text-sm text-white/70">此分類尚無菜單。</li>
               )}
 
               {menus
                 .filter((menu) => menu.category_id === cat.id)
                 .map((menu) => (
-                  <li key={menu.id} className="border rounded-lg p-3">
+                  <li key={menu.id} className="border border-white/10 rounded-lg p-3">
                     {editingMenuId === menu.id ? (
                       <div className="flex flex-col w-full gap-2">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                           <input
-                            className="border px-2 py-1 rounded"
+                            className="border px-2 py-1 rounded bg-white text-gray-900"
                             value={editingMenu.name}
                             onChange={(e) => setEditingMenu({ ...editingMenu, name: e.target.value })}
                           />
                           <input
-                            className="border px-2 py-1 rounded"
+                            className="border px-2 py-1 rounded bg-white text-gray-900"
                             value={editingMenu.price}
                             onChange={(e) => setEditingMenu({ ...editingMenu, price: e.target.value })}
                           />
                           <input
-                            className="border px-2 py-1 rounded"
+                            className="border px-2 py-1 rounded bg-white text-gray-900"
                             value={editingMenu.description}
                             onChange={(e) => setEditingMenu({ ...editingMenu, description: e.target.value })}
                           />
                         </div>
                         <div className="flex justify-end">
-                          <button
-                            onClick={() => handleSaveMenu(menu.id)}
-                            className="text-sm px-3 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700"
-                          >
+                          <Button size="sm" variant="success" onClick={() => handleSaveMenu(menu.id)}>
                             儲存
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     ) : (
@@ -445,44 +426,35 @@ export default function StoreManageMenusPage() {
                         <div>
                           <div className="font-semibold">
                             🍴 {menu.name}{' '}
-                            <span className="text-gray-500">（NT$ {menu.price}）</span>
+                            <span className="text-white/60">（NT$ {menu.price}）</span>
                           </div>
                           {menu.description && (
-                            <div className="text-xs text-gray-500 mt-0.5">{menu.description}</div>
+                            <div className="text-xs text-white/60 mt-0.5">{menu.description}</div>
                           )}
                           <span
-                            className={`inline-flex items-center mt-1 px-2 py-0.5 rounded text-xs ${
+                            className={`inline-flex items-center mt-1 px-2 py-0.5 rounded text-xs border ${
                               menu.is_available
-                                ? 'bg-emerald-600/15 text-emerald-600 border border-emerald-600/20'
-                                : 'bg-red-600/15 text-red-600 border border-red-600/20'
+                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
+                                : 'bg-red-500/15 text-red-300 border-red-400/20'
                             }`}
                           >
                             {menu.is_available ? '販售中' : '停售中'}
                           </span>
                         </div>
                         <div className="flex gap-2 items-center shrink-0">
-                          <button
-                            onClick={() => handleEditMenu(menu)}
-                            className="text-sm text-blue-600 hover:underline"
-                          >
+                          <Button size="sm" variant="soft" startIcon={<EditIcon />} onClick={() => handleEditMenu(menu)}>
                             編輯
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant={menu.is_available ? 'warning' : 'success'}
                             onClick={() => handleToggleAvailable(menu.id, menu.is_available)}
-                            className={`text-sm px-2 py-1 rounded text-white ${
-                              menu.is_available
-                                ? 'bg-amber-500 hover:bg-amber-600'
-                                : 'bg-emerald-600 hover:bg-emerald-700'
-                            }`}
                           >
                             {menu.is_available ? '停售' : '上架'}
-                          </button>
-                          <button
-                            onClick={() => handleDeleteMenu(menu.id)}
-                            className="text-sm text-red-600 hover:underline"
-                          >
+                          </Button>
+                          <Button size="sm" variant="destructive" startIcon={<TrashIcon />} onClick={() => handleDeleteMenu(menu.id)}>
                             刪除
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     )}
