@@ -57,9 +57,9 @@ const pill = (selected: boolean, tone: 'yellow' | 'green' | 'white' | 'gray' = '
   selected
     ? ({
         yellow: 'bg-yellow-400 text-black border-yellow-400',
-        green: 'bg-emerald-600 text-white border-emerald-600',
-        white: 'bg-white text-gray-900 border-white',
-        gray: 'bg-gray-200 text-gray-900 border-gray-200',
+        green:  'bg-emerald-600 text-white border-emerald-600',
+        white:  'bg-white text-gray-900 border-white',
+        gray:   'bg-gray-200 text-gray-900 border-gray-200',
       }[tone])
     : 'bg-white/10 text-white border border-white/15 hover:bg-white/15 transition'
 
@@ -113,8 +113,9 @@ function OptionEditor({
   return (
     <div className="bg-[#2B2B2B] text-white border border-white/10 rounded-lg p-3">
       {title && <h4 className="text-sm font-semibold mb-2">{title}</h4>}
-      {rows.length === 0 && <p className="text-sm text-white/60 mb-2">（目前沒有選項，可新增）</p>}
-
+      {rows.length === 0 && (
+        <p className="text-sm text-white/60 mb-2">（目前沒有選項，可新增）</p>
+      )}
       <div className="space-y-2">
         {rows.map((r, idx) => (
           <div key={idx} className="grid grid-cols-12 gap-2 items-center">
@@ -149,7 +150,6 @@ function OptionEditor({
           </div>
         ))}
       </div>
-
       <div className="mt-3">
         <Button size="sm" variant="soft" onClick={addRow}>
           新增選項
@@ -181,15 +181,13 @@ export default function StoreOrdersPage() {
   const [isSaving, setIsSaving] = useState<boolean>(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  // 鎖背景捲動
+  // 鎖背景捲動（開啟 modal 時）
   useEffect(() => {
     const lock = editingOrder || deletingId
     const prev = document.body.style.overflow
     if (lock) document.body.style.overflow = 'hidden'
     else document.body.style.overflow = prev || ''
-    return () => {
-      document.body.style.overflow = prev || ''
-    }
+    return () => { document.body.style.overflow = prev || '' }
   }, [editingOrder, deletingId])
 
   // 快速篩選：桌號/外帶
@@ -320,7 +318,7 @@ export default function StoreOrdersPage() {
     const entries = Object.entries(opts)
     if (!entries.length) return null
     return (
-      <ul className="ml-4 list-disc text-muted-foreground">
+      <ul className="ml-4 list-disc text-white/70">
         {entries.map(([rawK, rawV]) => {
           const { k, v } = translateOptionPair(rawK, rawV)
           return (
@@ -438,7 +436,7 @@ export default function StoreOrdersPage() {
     manualRefresh()
   }
 
-  // 編輯
+  // 編輯（開啟）
   const openEdit = (order: Order) => {
     setEditingOrder({ ...order })
 
@@ -451,9 +449,7 @@ export default function StoreOrdersPage() {
     setEditItems(localItems)
 
     const rows: Record<number, OptionRow[]> = {}
-    localItems.forEach((it, idx) => {
-      rows[idx] = mapOptionsToRows(it.options ?? null)
-    })
+    localItems.forEach((it, idx) => { rows[idx] = mapOptionsToRows(it.options ?? null) })
     setEditOptionRows(rows)
   }
 
@@ -462,14 +458,8 @@ export default function StoreOrdersPage() {
       const next = [...prev]
       const t = { ...next[idx] }
       if (key === 'name') t.name = String(value)
-      if (key === 'quantity') {
-        const n = Number(value)
-        t.quantity = Number.isNaN(n) || n < 0 ? 0 : Math.floor(n)
-      }
-      if (key === 'price') {
-        const p = Number(value)
-        t.price = Number.isNaN(p) || p < 0 ? 0 : p
-      }
+      if (key === 'quantity') { const n = Number(value); t.quantity = Number.isNaN(n) || n < 0 ? 0 : Math.floor(n) }
+      if (key === 'price') { const p = Number(value); t.price = Number.isNaN(p) || p < 0 ? 0 : p }
       next[idx] = t
       return next
     })
@@ -486,10 +476,7 @@ export default function StoreOrdersPage() {
       const rebuilt: Record<number, OptionRow[]> = {}
       const keys = Object.keys(prev).map(Number).sort((a, b) => a - b)
       let j = 0
-      keys.forEach((k) => {
-        if (k === idx) return
-        rebuilt[j++] = prev[k]
-      })
+      keys.forEach((k) => { if (k !== idx) rebuilt[j++] = prev[k] })
       return rebuilt
     })
   }
@@ -595,6 +582,18 @@ export default function StoreOrdersPage() {
 
   return (
     <main className="bg-background min-h-screen">
+      {/* Autofill 白字補丁（避免 Edge/Chrome 自動填入變成深灰字或黃底） */}
+      <style jsx global>{`
+        input:-webkit-autofill,
+        textarea:-webkit-autofill,
+        select:-webkit-autofill {
+          -webkit-text-fill-color: #fff !important;
+          caret-color: #fff !important;
+          box-shadow: 0 0 0px 1000px #1f1f1f inset !important;
+          transition: background-color 5000s ease-in-out 0s !important;
+        }
+      `}</style>
+
       <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
         <audio ref={audioRef} src="/ding.mp3" preload="auto" />
 
@@ -620,25 +619,19 @@ export default function StoreOrdersPage() {
           </div>
         </div>
 
-        {/* 日期段 */}
-        <div className="bg-card text-card-foreground rounded-lg shadow border border-border mb-6">
+        {/* 日期段 —— 改為 manage-menus 深色卡 */}
+        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
           <div className="p-4 flex flex-wrap items-center gap-3">
             <div className="flex gap-2">
-              <button className={`px-4 py-2 rounded-full ${pill(range === 'today', 'yellow')}`} onClick={() => setRange('today')}>
-                {dict.today}
-              </button>
-              <button className={`px-4 py-2 rounded-full ${pill(range === 'week', 'yellow')}`} onClick={() => setRange('week')}>
-                {dict.week}
-              </button>
-              <button className={`px-4 py-2 rounded-full ${pill(range === 'custom', 'yellow')}`} onClick={() => setRange('custom')}>
-                {dict.custom}
-              </button>
+              <button className={`px-4 py-2 rounded-full ${pill(range === 'today','yellow')}`} onClick={() => setRange('today')}>{dict.today}</button>
+              <button className={`px-4 py-2 rounded-full ${pill(range === 'week','yellow')}`} onClick={() => setRange('week')}>{dict.week}</button>
+              <button className={`px-4 py-2 rounded-full ${pill(range === 'custom','yellow')}`} onClick={() => setRange('custom')}>{dict.custom}</button>
             </div>
 
             {range === 'custom' && (
               <>
-                <input aria-label={dict.from} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="border border-input p-2 rounded bg-input text-foreground placeholder:text-muted-foreground" />
-                <input aria-label={dict.to} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="border border-input p-2 rounded bg-input text-foreground placeholder:text-muted-foreground" />
+                <input aria-label={dict.from} type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-white/20 p-2 rounded bg-[#1F1F1F] text-white placeholder:text-white/40" />
+                <input aria-label={dict.to} type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-white/20 p-2 rounded bg-[#1F1F1F] text-white placeholder:text-white/40" />
               </>
             )}
 
@@ -648,33 +641,27 @@ export default function StoreOrdersPage() {
           </div>
         </div>
 
-        {/* 狀態 Tab */}
-        <div className="bg-card text-card-foreground rounded-lg shadow border border-border mb-4">
+        {/* 狀態 Tab —— 深色卡 */}
+        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-4">
           <div className="p-3 flex items-center gap-2">
-            <button className={`px-4 py-2 rounded-full ${pill(filter === 'all', 'white')}`} onClick={() => setFilter('all')}>
-              {dict.all}
-            </button>
-            <button className={`px-4 py-2 rounded-full ${pill(filter === 'pending', 'yellow')}`} onClick={() => setFilter('pending')}>
-              {dict.pending}
-            </button>
-            <button className={`px-4 py-2 rounded-full ${pill(filter === 'completed', 'green')}`} onClick={() => setFilter('completed')}>
-              {dict.completed}
-            </button>
+            <button className={`px-4 py-2 rounded-full ${pill(filter === 'all','white')}`} onClick={() => setFilter('all')}>{dict.all}</button>
+            <button className={`px-4 py-2 rounded-full ${pill(filter === 'pending','yellow')}`} onClick={() => setFilter('pending')}>{dict.pending}</button>
+            <button className={`px-4 py-2 rounded-full ${pill(filter === 'completed','green')}`} onClick={() => setFilter('completed')}>{dict.completed}</button>
           </div>
         </div>
 
-        {/* 快速篩選 */}
-        <div className="bg-card text-card-foreground rounded-lg shadow border border-border mb-6">
-          <div className="px-4 py-3 border-b border-border">
-            <h3 className="text-sm font-semibold">{dict.quickFilter}</h3>
+        {/* 快速篩選 —— 深色卡 */}
+        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
+          <div className="px-4 py-3 border-b border-white/10">
+            <h3 className="text-sm font-semibold">快速篩選</h3>
           </div>
           <div className="p-3 overflow-x-auto">
             <div className="flex items-center gap-2 min-w-max">
-              {tableOptions.map((opt) => (
+              {tableOptions.map(opt => (
                 <button
                   key={`${opt.key}`}
                   onClick={() => setTableFilter(opt.key)}
-                  className={`px-3 py-1.5 rounded-full ${pill(tableFilter === opt.key, 'yellow')}`}
+                  className={`px-3 py-1.5 rounded-full ${pill(tableFilter === opt.key,'yellow')}`}
                 >
                   {opt.label}
                 </button>
@@ -684,23 +671,23 @@ export default function StoreOrdersPage() {
         </div>
 
         {/* 錯誤 / 讀取 */}
-        {loading && <p className="text-foreground/80 mb-2">{dict.loading}</p>}
-        {errorMsg && <p className="text-red-400 mb-2">❌ {dict.error}（{errorMsg}）</p>}
+        {loading && <p className="text-white/80 mb-2">{dict.loading}</p>}
+        {errorMsg && <p className="text-red-300 mb-2">❌ {dict.error}（{errorMsg}）</p>}
 
-        {/* 訂單清單 */}
+        {/* 訂單清單 —— 深色卡（與 manage-menus 一致） */}
         {filteredOrders.length === 0 ? (
-          <div className="bg-card text-card-foreground rounded-lg border border-border shadow p-4">
-            <p className="text-muted-foreground">
+          <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
+            <p className="text-white/70">
               {filter === 'pending' ? dict.noPending : dict.noOrders}
             </p>
           </div>
         ) : (
           <div className="grid gap-4">
-            {filteredOrders.map((order) => (
-              <div key={order.id} className="bg-card text-card-foreground rounded-lg border border-border shadow p-4">
+            {filteredOrders.map(order => (
+              <div key={order.id} className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
                 <div className="flex justify-between items-center mb-2">
                   <h2 className="font-semibold">
-                    {dict.table}：{String(displayTable(order.table_number))}
+                    桌號：{String(displayTable(order.table_number))}
                   </h2>
                   <div className="flex items-center gap-2">
                     {order.status === 'completed' && (
@@ -718,7 +705,7 @@ export default function StoreOrdersPage() {
                 </div>
 
                 <div className="text-sm mb-1">
-                  <strong>{dict.items}：</strong>
+                  <strong>品項：</strong>
                   {(order.items ?? []).map((item, idx) => (
                     <div key={idx} className="mb-1">
                       {item.name} ×{item.quantity}
@@ -728,18 +715,18 @@ export default function StoreOrdersPage() {
                 </div>
 
                 <div className="text-sm">
-                  <strong>{dict.total}：</strong> NT$ {calcTotal(order).toLocaleString('zh-TW')}
+                  <strong>總金額：</strong> NT$ {calcTotal(order).toLocaleString('zh-TW')}
                 </div>
 
                 {order.spicy_level && (
                   <div className="text-sm text-red-300">
-                    <strong>{dict.spicy}：</strong> {order.spicy_level}
+                    <strong>辣度：</strong> {order.spicy_level}
                   </div>
                 )}
 
                 {order.note && (
-                  <div className="text-sm text-muted-foreground">
-                    <strong>{dict.note}：</strong> {order.note}
+                  <div className="text-sm text-white/70">
+                    <strong>備註：</strong> {order.note}
                   </div>
                 )}
 
@@ -753,7 +740,7 @@ export default function StoreOrdersPage() {
           </div>
         )}
 
-        {/* 編輯面板 —— 深色卡 + 白字 + 淡白邊 + 內部滾動 */}
+        {/* 編輯面板 —— 深色卡 + 白字 + Autofill 補丁 + 內部滾動 */}
         {editingOrder && (
           <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center">
             <div className="w-[min(100%-2rem,56rem)] max-w-3xl max-h-[85vh] overflow-y-auto rounded-lg shadow-lg border border-white/10 bg-[#2B2B2B] text-white">
@@ -767,6 +754,7 @@ export default function StoreOrdersPage() {
                 </div>
               </div>
 
+              {/* 內容 */}
               <div className="px-6 py-5 space-y-6">
                 {/* 訂單層級欄位 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -774,8 +762,9 @@ export default function StoreOrdersPage() {
                     <label className="block text-sm text-white/90 mb-1">桌號</label>
                     <input
                       type="text"
+                      autoComplete="off"
                       value={editingOrder.table_number ?? ''}
-                      onChange={(e) => setEditingOrder((prev) => (prev ? { ...prev, table_number: e.target.value } : prev))}
+                      onChange={e => setEditingOrder(prev => prev ? { ...prev, table_number: e.target.value } : prev)}
                       className="w-full rounded px-3 py-2 bg-[#1F1F1F] text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
                       placeholder="外帶"
                     />
@@ -785,7 +774,7 @@ export default function StoreOrdersPage() {
                     <label className="block text-sm text-white/90 mb-1">狀態</label>
                     <select
                       value={editingOrder.status ?? 'pending'}
-                      onChange={(e) => setEditingOrder((prev) => (prev ? { ...prev, status: e.target.value as any } : prev))}
+                      onChange={e => setEditingOrder(prev => prev ? { ...prev, status: e.target.value as any } : prev)}
                       className="w-full rounded px-3 py-2 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
                     >
                       <option value="pending">未處理</option>
@@ -797,8 +786,9 @@ export default function StoreOrdersPage() {
                     <label className="block text-sm text-white/90 mb-1">辣度</label>
                     <input
                       type="text"
+                      autoComplete="off"
                       value={editingOrder.spicy_level ?? ''}
-                      onChange={(e) => setEditingOrder((prev) => (prev ? { ...prev, spicy_level: e.target.value } : prev))}
+                      onChange={e => setEditingOrder(prev => prev ? { ...prev, spicy_level: e.target.value } : prev)}
                       className="w-full rounded px-3 py-2 bg-[#1F1F1F] text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
                       placeholder="小辣/中辣/不辣…"
                     />
@@ -807,10 +797,11 @@ export default function StoreOrdersPage() {
                   <div className="md:col-span-2">
                     <label className="block text-sm text-white/90 mb-1">備註</label>
                     <textarea
+                      autoComplete="off"
                       value={editingOrder.note ?? ''}
-                      onChange={(e) => setEditingOrder((prev) => (prev ? { ...prev, note: e.target.value } : prev))}
-                      rows={3}
+                      onChange={e => setEditingOrder(prev => prev ? { ...prev, note: e.target.value } : prev)}
                       className="w-full rounded px-3 py-2 bg-[#1F1F1F] text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
+                      rows={3}
                       placeholder="備註內容…"
                     />
                   </div>
@@ -890,7 +881,7 @@ export default function StoreOrdersPage() {
           </div>
         )}
 
-        {/* 刪除確認框（深色風格一致） */}
+        {/* 刪除確認框 —— 深色一致 */}
         {deletingId && (
           <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center">
             <div className="w-[min(100%-2rem,32rem)] max-w-md max-h-[85vh] overflow-y-auto rounded-lg shadow-lg border border-white/10 bg-[#2B2B2B] text-white p-6">
