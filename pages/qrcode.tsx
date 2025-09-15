@@ -115,7 +115,14 @@ export default function QRCodePage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="soft" size="sm" onClick={handleDownloadPDF} startIcon={<DownloadIcon />}>
+          {/* 這裡加上「膠囊型外框」：rounded-full + 边框 + ring-inset */}
+          <Button
+            variant="soft"
+            size="sm"
+            onClick={handleDownloadPDF}
+            startIcon={<DownloadIcon />}
+            className="rounded-full border border-white/25 ring-1 ring-inset ring-white/10 px-4"
+          >
             下載 PDF
           </Button>
         </div>
@@ -139,7 +146,7 @@ export default function QRCodePage() {
                   onClick={() => handleCopy(item.url)}
                   size="sm"
                   variant="secondary"
-                  className="mt-2 hide-in-pdf"
+                  className="mt-2 hide-in-pdf rounded-full"
                   startIcon={<CopyIcon />}
                 >
                   複製連結
