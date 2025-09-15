@@ -31,7 +31,7 @@ type LangKey = 'zh' | 'en'
 type RangeKey = 'today' | 'week' | 'custom'
 type TableFilter = 'ALL' | 'TAKEOUT' | string // string = 具體桌號
 
-// ---------- 小圖示（與 Button startIcon 搭配） ----------
+// ---------- Icons ----------
 const RefreshIcon = () => (
   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M20 12a8 8 0 10-2.34 5.66M20 12v5h-5" />
@@ -298,7 +298,6 @@ export default function StoreOrdersPage() {
 
     const list = (data || []) as Order[]
     if (lastOrderCount.current !== null && list.length > (lastOrderCount.current ?? 0)) {
-      // 有新訂單音效
       audioRef.current?.play().catch(() => {})
     }
     lastOrderCount.current = list.length
@@ -418,11 +417,11 @@ export default function StoreOrdersPage() {
     return s === 'takeout' || s === '外帶' || s === '0'
   }
 
-  // 獲得目前時間窗內「可選桌號」清單（去重）
+  // 取得目前清單中的桌號（去重）
   const tableOptions = useMemo(() => {
     const map = new Map<string, { key: TableFilter; label: string }>()
     map.set('ALL', { key: 'ALL', label: lang === 'zh' ? '全部桌號' : 'All Tables' })
-    map.set('TAKEOUT', { key: 'TAKEOUT', label: (dict.takeout as string) })
+    map.set('TAKEOUT', { key: 'TAKEOUT', label: dict.takeout as string })
     orders.forEach((o) => {
       if (isTakeoutStr(o.table_number)) return
       const raw = String(o.table_number ?? '').trim()
@@ -432,14 +431,12 @@ export default function StoreOrdersPage() {
     return Array.from(map.values())
   }, [orders, dict.takeout, lang])
 
-  // ---- 最終篩選（狀態 Tab + 桌號/外帶 快速篩選）----
+  // ---- 最終篩選（狀態 Tab + 桌號/外帶）----
   const filteredOrders = useMemo(() => {
     return orders.filter(order => {
-      // 狀態篩選
       if (filter === 'pending' && order.status === 'completed') return false
       if (filter === 'completed' && order.status !== 'completed') return false
 
-      // 桌號篩選
       if (tableFilter === 'ALL') return true
       if (tableFilter === 'TAKEOUT') return isTakeoutStr(order.table_number)
       return String(order.table_number ?? '').trim() === tableFilter
@@ -486,19 +483,13 @@ export default function StoreOrdersPage() {
         </div>
       </div>
 
-      {/* 區間與重整 */}
+      {/* 區間與重整（Button 高亮） */}
       <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
         <div className="p-4 flex flex-wrap items-center gap-3">
-          <div className="inline-flex rounded-md overflow-hidden shadow">
-            <Button variant={range === 'today' ? 'default' : 'secondary'} onClick={() => setRange('today')}>
-              {dict.today}
-            </Button>
-            <Button variant={range === 'week' ? 'default' : 'secondary'} onClick={() => setRange('week')}>
-              {dict.week}
-            </Button>
-            <Button variant={range === 'custom' ? 'default' : 'secondary'} onClick={() => setRange('custom')}>
-              {dict.custom}
-            </Button>
+          <div className="flex gap-2">
+            <Button variant={range === 'today' ? 'default' : 'secondary'} size="sm" onClick={() => setRange('today')}>{dict.today}</Button>
+            <Button variant={range === 'week' ? 'default' : 'secondary'} size="sm" onClick={() => setRange('week')}>{dict.week}</Button>
+            <Button variant={range === 'custom' ? 'default' : 'secondary'} size="sm" onClick={() => setRange('custom')}>{dict.custom}</Button>
           </div>
 
           {range === 'custom' && (
@@ -526,33 +517,22 @@ export default function StoreOrdersPage() {
         </div>
       </div>
 
-      {/* 狀態 Tab（All / Pending / Completed） */}
+      {/* 狀態 Tab（使用 Button 風格一致） */}
       <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-4">
-        <div className="p-2">
-          <div className="flex gap-1 rounded-md bg-gray-100 p-1">
-            <button
-              onClick={() => setFilter('all')}
-              className={`px-4 py-2 rounded-md transition ${filter === 'all' ? 'bg-white shadow text-gray-900' : 'text-gray-700 hover:bg-white'}`}
-            >
-              {dict.all}
-            </button>
-            <button
-              onClick={() => setFilter('pending')}
-              className={`px-4 py-2 rounded-md transition ${filter === 'pending' ? 'bg-amber-500 text-white shadow' : 'text-gray-700 hover:bg-white'}`}
-            >
-              {dict.pending}
-            </button>
-            <button
-              onClick={() => setFilter('completed')}
-              className={`px-4 py-2 rounded-md transition ${filter === 'completed' ? 'bg-emerald-600 text-white shadow' : 'text-gray-700 hover:bg-white'}`}
-            >
-              {dict.completed}
-            </button>
-          </div>
+        <div className="p-3 flex items-center gap-2">
+          <Button variant={filter === 'all' ? 'default' : 'secondary'} size="sm" onClick={() => setFilter('all')}>
+            {dict.all}
+          </Button>
+          <Button variant={filter === 'pending' ? 'warning' : 'secondary'} size="sm" onClick={() => setFilter('pending')}>
+            {dict.pending}
+          </Button>
+          <Button variant={filter === 'completed' ? 'success' : 'secondary'} size="sm" onClick={() => setFilter('completed')}>
+            {dict.completed}
+          </Button>
         </div>
       </div>
 
-      {/* 快速篩選：桌號 / 外帶 */}
+      {/* 快速篩選：桌號 / 外帶（選中黃底） */}
       <div className="bg-white text-gray-900 rounded-lg shadow border border-gray-200 mb-6">
         <div className="px-4 py-3 border-b border-gray-200">
           <h3 className="text-sm font-semibold text-gray-700">{dict.quickFilter}</h3>
@@ -560,17 +540,14 @@ export default function StoreOrdersPage() {
         <div className="p-3 overflow-x-auto">
           <div className="flex items-center gap-2 min-w-max">
             {tableOptions.map(opt => (
-              <button
+              <Button
                 key={`${opt.key}`}
+                size="sm"
+                variant={tableFilter === opt.key ? 'default' : 'secondary'}
                 onClick={() => setTableFilter(opt.key)}
-                className={`px-3 py-1.5 rounded-full border text-sm transition ${
-                  tableFilter === opt.key
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-100'
-                }`}
               >
                 {opt.label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -704,7 +681,6 @@ export default function StoreOrdersPage() {
               </div>
             </div>
 
-            {/* 品項編輯（不動 options，但會保留） */}
             <div className="mt-4">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-medium">{dict.items}</h4>
