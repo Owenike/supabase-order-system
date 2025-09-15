@@ -389,7 +389,7 @@ export default function StoreManageAddonsPage() {
       {/* ---- 分類層級：啟用/停用「加料」 ---- */}
       <section className="mb-6 bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
         <div className="px-4 py-3 border-b border-white/10">
-          <h2 className="text-lg font-semibold">分類：加料開關</h2>
+          <h2 className="text-lg font-semibold">分類加料開關</h2>
         </div>
 
         <div className="p-4 overflow-x-auto">
@@ -432,7 +432,7 @@ export default function StoreManageAddonsPage() {
       {/* ---- 單品覆蓋（特例） ---- */}
       <section className="mb-6 bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
         <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">單品覆蓋（個別開關加料）</h2>
+          <h2 className="text-lg font-semibold">單品加料開關</h2>
           <div className="flex items-center gap-2">
             <label className="text-sm">分類篩選</label>
             <select
@@ -473,9 +473,9 @@ export default function StoreManageAddonsPage() {
                         onChange={(e) => toggleItemAddon(item.id, e.target.checked)}
                         disabled={!addonsOptionId}
                       />
-                      <span>啟用加料（覆蓋分類設定）</span>
+                      <span>啟用加料</span>
                     </label>
-                    <div className="text-xs text-white/60 mt-1">※ 單品設定會覆蓋分類預設；未勾時，依分類設定為準。</div>
+                    <div className="text-xs text-white/60 mt-1"></div>
                   </td>
                 </tr>
               ))}
