@@ -81,28 +81,28 @@ export default function LoginPage() {
 
   return (
     <main className="bg-[#0B0B0B] min-h-screen flex items-center justify-center px-4">
-      {/* 只作用於登入卡片的控件/Autofill 白字補丁 */}
+      {/* 只作用於登入卡片：白底控件 + 黑字的 autofill 補丁 */}
       <style jsx global>{`
         .auth-card input,
         .auth-card textarea,
         .auth-card select,
         .auth-card option {
-          color: #fff !important;
-          background-color: #1f1f1f !important;
-          -webkit-text-fill-color: #fff !important;
-          caret-color: #fff !important;
+          color: #111 !important;
+          background-color: #fff !important;
+          -webkit-text-fill-color: #111 !important;
+          caret-color: #111 !important;
         }
-        .auth-card ::placeholder { color: rgba(255,255,255,.4) !important; }
+        .auth-card ::placeholder { color: rgba(17,17,17,.45) !important; }
         .auth-card input:-webkit-autofill {
-          -webkit-text-fill-color:#fff !important;
-          box-shadow: 0 0 0px 1000px #1f1f1f inset !important;
+          -webkit-text-fill-color:#111 !important;
+          box-shadow: 0 0 0px 1000px #fff inset !important;
           transition: background-color 5000s ease-in-out 0s !important;
         }
       `}</style>
 
-      {/* 登入卡片：變淡（半透明+輕邊框） */}
-      <div className="auth-card w-full max-w-sm rounded-xl border border-white/8 bg-[#2B2B2B]/72 backdrop-blur-sm text-white shadow-[0_10px_30px_rgba(0,0,0,.35)] p-6">
-        {/* 純透明 Logo（移除所有底色/底框/漸層） */}
+      {/* 登入卡片：淺色卡＋黑字＋淡邊框＋淡陰影 */}
+      <div className="auth-card w-full max-w-sm rounded-2xl border border-black/10 bg-white text-gray-900 shadow-[0_6px_20px_rgba(0,0,0,.08)] p-6">
+        {/* 透明 Logo（無底） */}
         <div className="flex flex-col items-center gap-4 mb-6">
           <Image
             src="/login-logo.png"   // 建議 PNG 透明底
@@ -115,13 +115,13 @@ export default function LoginPage() {
           <h1 className="text-2xl font-extrabold tracking-wide">店家登入</h1>
         </div>
 
-        {/* 表單 */}
+        {/* 表單（白底控件 + 淺灰邊） */}
         <form className="space-y-3" onSubmit={onSubmit}>
           <div>
-            <label className="block text-sm text-white/80 mb-1">Email</label>
+            <label className="block text-sm text-gray-700 mb-1">Email</label>
             <input
               type="email"
-              className="w-full rounded px-3 py-2 bg-[#1F1F1F]/95 border border-white/12 focus:outline-none focus:ring-2 focus:ring-white/30"
+              className="w-full rounded px-3 py-2 bg-white border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black/10"
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -131,10 +131,10 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm text-white/80 mb-1">密碼</label>
+            <label className="block text-sm text-gray-700 mb-1">密碼</label>
             <input
               type="password"
-              className="w-full rounded px-3 py-2 bg-[#1F1F1F]/95 border border-white/12 focus:outline-none focus:ring-2 focus:ring-white/30"
+              className="w-full rounded px-3 py-2 bg-white border border-gray-300 focus:outline-none focus:ring-2 focus:ring-black/10"
               placeholder="密碼"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -144,7 +144,13 @@ export default function LoginPage() {
           </div>
 
           {msg && (
-            <div className={`text-sm text-center rounded px-3 py-2 border ${msg.startsWith('✅') ? 'text-emerald-200 bg-emerald-500/15 border-emerald-400/30' : 'text-red-200 bg-red-500/15 border-red-300/30'}`}>
+            <div
+              className={`text-sm text-center rounded px-3 py-2 border ${
+                msg.startsWith('✅')
+                  ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                  : 'text-red-700 bg-red-50 border-red-200'
+              }`}
+            >
               {msg}
             </div>
           )}
@@ -158,7 +164,7 @@ export default function LoginPage() {
           </button>
 
           <div className="text-center">
-            <a href="/store/forgot-password" className="text-sm text-white/70 hover:text-white">
+            <a href="/store/forgot-password" className="text-sm text-gray-600 hover:text-gray-800">
               忘記密碼？
             </a>
           </div>
