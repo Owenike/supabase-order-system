@@ -18,7 +18,7 @@ export default function LoginPage() {
     let allowRedirect = false;
 
     try {
-      // 清舊識別
+      // 清掉舊的本機識別
       try {
         localStorage.removeItem('store_id');
         localStorage.removeItem('store_account_id');
@@ -26,7 +26,7 @@ export default function LoginPage() {
 
       const cleanedEmail = email.trim().toLowerCase();
 
-      // 1) Supabase Auth
+      // 1) Supabase Auth 登入
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: cleanedEmail,
         password,
@@ -48,7 +48,7 @@ export default function LoginPage() {
       }
       try { localStorage.setItem('store_id', storeData.id); } catch {}
 
-      // 3) store_accounts 存在檢查
+      // 3) 檢查 store_accounts
       const { data: accountData, error: accountError } = await supabase
         .from('store_accounts')
         .select('id')
@@ -80,8 +80,8 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="bg-[#111] min-h-screen flex items-center justify-center px-4">
-      {/* 控件/Autofill 白字補丁（只作用於登入卡片） */}
+    <main className="bg-[#0B0B0B] min-h-screen flex items-center justify-center px-4">
+      {/* 只作用於登入卡片的控件/Autofill 白字補丁 */}
       <style jsx global>{`
         .auth-card input,
         .auth-card textarea,
@@ -102,34 +102,30 @@ export default function LoginPage() {
 
       {/* 登入卡片（深色一致） */}
       <div className="auth-card w-full max-w-sm bg-[#2B2B2B] text-white rounded-xl border border-white/10 shadow p-6">
-        {/* Logo：左側「提亮橢圓漸層」只強化文字區 + 輕微白色描邊式 shadow */}
-        <div className="flex flex-col items-center gap-3 mb-6">
-          <div className="relative inline-block">
-            {/* 左側提亮：白色橢圓漸層（僅覆蓋左 65% / 下 70%），提升黑字對比 */}
-            <span
-              aria-hidden
-              className="pointer-events-none absolute z-0 left-0 bottom-0 h-[70%] w-[65%] rounded-[18px]"
-              style={{
-                background:
-                  'radial-gradient(120% 95% at 35% 70%, rgba(255,255,255,.92) 0%, rgba(255,255,255,.58) 48%, rgba(255,255,255,0) 80%)',
-                filter: 'blur(2px)',
-              }}
-            />
+        {/* Logo：玻璃質感半透明徽章（讓黑字清楚、又不突兀） */}
+        <div className="flex flex-col items-center gap-4 mb-6">
+          <div className="
+              relative inline-flex items-center justify-center
+              rounded-2xl px-3 py-2
+              bg-white/8 backdrop-blur-md
+              ring-1 ring-white/15
+              shadow-[0_10px_30px_rgba(0,0,0,.45)]
+            ">
             <Image
-              src="/login-logo.png"   // 建議使用透明背景 PNG/SVG
+              src="/login-logo.png"   // 你的 Logo（建議 PNG 透明底）
               alt="品牌 Logo"
-              width={260}
-              height={104}
+              width={220}             // 放大；可 200~240 調整
+              height={88}
               priority
-              className="relative z-10 block h-auto w-auto select-none pointer-events-none rounded-[18px]"
+              className="h-auto w-auto select-none pointer-events-none"
               style={{
-                filter:
-                  // 輕微白描邊 + 底部立體陰影（讓黑字更聚焦）
-                  'drop-shadow(0 0.5px 0 rgba(255,255,255,.30)) drop-shadow(0 0 1px rgba(255,255,255,.25)) drop-shadow(0 10px 20px rgba(0,0,0,.45))',
+                // 極輕的白描邊 + 底部陰影，讓黑字更利落（不會糊成一片）
+                filter: 'drop-shadow(0 0 0.5px rgba(255,255,255,.25)) drop-shadow(0 12px 18px rgba(0,0,0,.35))'
               }}
             />
           </div>
-          <h1 className="text-xl font-bold text-white tracking-wide">店家登入</h1>
+
+          <h1 className="text-2xl font-extrabold tracking-wide">店家登入</h1>
         </div>
 
         <form className="space-y-3" onSubmit={onSubmit}>
