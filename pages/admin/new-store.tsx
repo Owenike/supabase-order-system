@@ -1,14 +1,14 @@
 // pages/admin/new-store.tsx（或你的原檔名）
-// ✅ 不再需要登入檢查（拿掉 supabase.session 與角色判斷）
-// ✅ UI 改為半透明灰框（Glass）＋黃色按鈕
+// 不需登入即可使用；Glass 風格＋黃色主按鈕
 'use client'
 
 import { useState, type FormEvent } from 'react'
 
 export default function NewStorePage() {
   const [storeName, setStoreName] = useState('')
-  const [email, setEmail] = useState('')
+  const [ownerName, setOwnerName] = useState('') // ✅ 新增：負責人姓名
   const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -25,8 +25,9 @@ export default function NewStorePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           storeName,
-          email,
+          ownerName, // ✅ 一併送到 API（若後端未接，會被忽略）
           phone,
+          email,
           password,
         }),
       })
@@ -36,8 +37,9 @@ export default function NewStorePage() {
 
       setMessage('✅ 店家帳號建立成功！')
       setStoreName('')
-      setEmail('')
+      setOwnerName('')
       setPhone('')
+      setEmail('')
       setPassword('')
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message)
@@ -82,6 +84,7 @@ export default function NewStorePage() {
         </h1>
 
         <form className="space-y-4" onSubmit={onSubmit}>
+          {/* 店名 */}
           <div>
             <label className="block text-sm text-gray-300 mb-1">店名</label>
             <input
@@ -91,6 +94,30 @@ export default function NewStorePage() {
               value={storeName}
               onChange={(e) => setStoreName(e.target.value)}
               required
+            />
+          </div>
+
+          {/* ✅ 新增：負責人姓名（置頂第二個） */}
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">負責人姓名</label>
+            <input
+              type="text"
+              placeholder="負責人姓名"
+              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
+              value={ownerName}
+              onChange={(e) => setOwnerName(e.target.value)}
+            />
+          </div>
+
+          {/* ✅ 交換順序：電話在前，Email 在後 */}
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">電話</label>
+            <input
+              type="tel"
+              placeholder="電話"
+              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
             />
           </div>
 
@@ -104,17 +131,6 @@ export default function NewStorePage() {
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm text-gray-300 mb-1">電話</label>
-            <input
-              type="tel"
-              placeholder="電話"
-              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
             />
           </div>
 
