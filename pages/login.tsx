@@ -110,20 +110,20 @@ export default function LoginPage() {
         }
       `}</style>
 
-      {/* 登入卡片（深色卡 + 白字 + 淡白邊，與後台一致） */}
+      {/* 登入卡片（深色） */}
       <div className="auth-card w-full max-w-sm bg-[#2B2B2B] text-white rounded-xl border border-white/10 shadow p-6">
-        {/* Logo：白底徽章承載黑字圖（貼紙感） */}
+        {/* Logo：去白底、放大；加一點柔和的淺色 drop-shadow 以提升可讀性（不會有白底塊） */}
         <div className="flex flex-col items-center gap-3 mb-6">
-          <div className="rounded-2xl bg-white px-4 py-2 ring-1 ring-black/10 shadow-[0_6px_20px_rgba(0,0,0,.35)]">
-            <Image
-              src="/login-logo.png"   // ← 放你的黑字/彩色 Logo
-              alt="品牌 Logo"
-              width={150}
-              height={54}
-              priority
-            />
-          </div>
-          <h1 className="text-sm font-semibold text-white/90">店家登入</h1>
+          <Image
+            src="/login-logo.png"   // ← 你的 Logo 圖（黑字/彩色）
+            alt="品牌 Logo"
+            width={220}             // 放大
+            height={88}
+            priority
+            className="h-auto w-auto select-none pointer-events-none"
+            style={{ filter: 'drop-shadow(0 1px 1px rgba(255,255,255,.12)) drop-shadow(0 6px 18px rgba(0,0,0,.35))' }}
+          />
+          <h1 className="text-xl font-bold text-white">店家登入</h1> {/* 字變大 */}
         </div>
 
         <form className="space-y-3" onSubmit={onSubmit}>
