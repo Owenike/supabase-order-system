@@ -18,7 +18,7 @@ export default function LoginPage() {
     let allowRedirect = false;
 
     try {
-      // 清掉舊的本機識別
+      // 清舊識別
       try {
         localStorage.removeItem('store_id');
         localStorage.removeItem('store_account_id');
@@ -26,47 +26,40 @@ export default function LoginPage() {
 
       const cleanedEmail = email.trim().toLowerCase();
 
-      // 1) Supabase Auth 登入
+      // 1) Supabase Auth
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: cleanedEmail,
         password,
       });
-
       if (loginError || !data?.user) {
         setMsg('登入失敗，請確認帳號與密碼');
         return;
       }
 
-      // 2) 依 Email 找對應店家
+      // 2) 由 Email 找店家
       const { data: storeData, error: storeError } = await supabase
         .from('stores')
         .select('id')
         .eq('email', cleanedEmail)
         .maybeSingle();
-
       if (storeError || !storeData?.id) {
         setMsg('此帳號尚未對應到任何店家');
         return;
       }
-      try {
-        localStorage.setItem('store_id', storeData.id);
-      } catch {}
+      try { localStorage.setItem('store_id', storeData.id); } catch {}
 
-      // 3) store_accounts 存在性檢查
+      // 3) store_accounts 存在檢查
       const { data: accountData, error: accountError } = await supabase
         .from('store_accounts')
         .select('id')
         .eq('store_id', storeData.id)
         .limit(1)
         .maybeSingle();
-
       if (accountError || !accountData?.id) {
         setMsg('此店家尚未啟用登入帳號');
         return;
       }
-      try {
-        localStorage.setItem('store_account_id', accountData.id);
-      } catch {}
+      try { localStorage.setItem('store_account_id', accountData.id); } catch {}
 
       setMsg('✅ 登入成功，正在導向後台…');
       allowRedirect = true;
@@ -76,14 +69,11 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
       if (allowRedirect) {
-        setTimeout(() => {
-          window.location.href = '/redirect';
-        }, 250);
+        setTimeout(() => { window.location.href = '/redirect'; }, 250);
       }
     }
   };
 
-  // 允許 Enter 提交
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     void handleLogin();
@@ -91,7 +81,7 @@ export default function LoginPage() {
 
   return (
     <main className="bg-[#111] min-h-screen flex items-center justify-center px-4">
-      {/* Autofill & 控件白字補丁（僅作用於登入卡片） */}
+      {/* 控件/Autofill 白字補丁（只作用於登入卡片） */}
       <style jsx global>{`
         .auth-card input,
         .auth-card textarea,
@@ -110,22 +100,33 @@ export default function LoginPage() {
         }
       `}</style>
 
-      {/* 登入卡片（深色） */}
+      {/* 登入卡片（深色一致） */}
       <div className="auth-card w-full max-w-sm bg-[#2B2B2B] text-white rounded-xl border border-white/10 shadow p-6">
-        {/* Logo：去白底 + 放大 + 底部暗漸層（只蓋下半部），讓「晨芯」更清楚 */}
+        {/* Logo：左側「提亮橢圓漸層」只強化文字區 + 輕微白色描邊式 shadow */}
         <div className="flex flex-col items-center gap-3 mb-6">
           <div className="relative inline-block">
-            {/* 漸層底：由下往上、透明深灰；只覆蓋下 58% */}
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-[58%] rounded-[16px] bg-gradient-to-t from-[#0c0c0c]/72 via-[#0c0c0c]/36 to-transparent"></span>
+            {/* 左側提亮：白色橢圓漸層（僅覆蓋左 65% / 下 70%），提升黑字對比 */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute z-0 left-0 bottom-0 h-[70%] w-[65%] rounded-[18px]"
+              style={{
+                background:
+                  'radial-gradient(120% 95% at 35% 70%, rgba(255,255,255,.92) 0%, rgba(255,255,255,.58) 48%, rgba(255,255,255,0) 80%)',
+                filter: 'blur(2px)',
+              }}
+            />
             <Image
-              src="/login-logo.png"   // ← 你的 Logo 圖（建議 PNG 透明底）
+              src="/login-logo.png"   // 建議使用透明背景 PNG/SVG
               alt="品牌 Logo"
-              width={260}             // 放大（調整到視覺平衡）
+              width={260}
               height={104}
               priority
-              className="relative z-10 block h-auto w-auto select-none pointer-events-none rounded-[16px]"
-              // 微量白色/黑色陰影，讓黑字在深色卡上更清楚但不突兀
-              style={{ filter: 'drop-shadow(0 0.5px 0 rgba(255,255,255,.35)) drop-shadow(0 8px 18px rgba(0,0,0,.45))' }}
+              className="relative z-10 block h-auto w-auto select-none pointer-events-none rounded-[18px]"
+              style={{
+                filter:
+                  // 輕微白描邊 + 底部立體陰影（讓黑字更聚焦）
+                  'drop-shadow(0 0.5px 0 rgba(255,255,255,.30)) drop-shadow(0 0 1px rgba(255,255,255,.25)) drop-shadow(0 10px 20px rgba(0,0,0,.45))',
+              }}
             />
           </div>
           <h1 className="text-xl font-bold text-white tracking-wide">店家登入</h1>
