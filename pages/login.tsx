@@ -101,24 +101,41 @@ export default function LoginPage() {
       `}</style>
 
       {/* 登入卡片（深色一致） */}
-      <div className="auth-card w-full max-w-sm bg-[#2B2B2B] text-white rounded-xl border border-white/10 shadow p-6">
-        {/* Logo：玻璃質感半透明徽章（讓黑字清楚、又不突兀） */}
-        <div className="flex flex-col items-center gap-4 mb-6">
-          <div className="relative inline-flex items-center justify-center rounded-2xl px-3 py-2 bg-white/8 backdrop-blur-md ring-1 ring-white/15 shadow-[0_10px_30px_rgba(0,0,0,.45)]">
+      <div className="auth-card w-full max-w-sm bg-[#2B2B2B] text-white rounded-xl border border-white/10 shadow p-6 overflow-hidden">
+        {/* 亮玻璃頂部區（與卡片一體，重疊到邊緣） */}
+        <div className="relative -m-6 mb-6 p-6">
+          <div className="relative rounded-t-xl bg-white/16 backdrop-blur-md ring-1 ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,.35),0_18px_36px_rgba(0,0,0,.45)] px-4 py-5">
+            {/* 只增亮左側文字區（不影響人物） */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute left-4 bottom-2 h-[64%] w-[56%] rounded-[18px]"
+              style={{
+                background:
+                  'radial-gradient(115% 100% at 35% 70%, rgba(255,255,255,.95) 0%, rgba(255,255,255,.65) 52%, rgba(255,255,255,0) 82%)',
+                filter: 'blur(1.5px)',
+              }}
+            />
             <Image
-              src="/login-logo.png"   // 你的 Logo（建議 PNG 透明底）
+              src="/login-logo.png"   // 建議 PNG 透明底
               alt="品牌 Logo"
-              width={220}             // 放大；可 200~240 調整
-              height={88}
+              width={260}
+              height={104}
               priority
-              className="h-auto w-auto select-none pointer-events-none"
-              style={{ filter: 'drop-shadow(0 0 0.5px rgba(255,255,255,.25)) drop-shadow(0 12px 18px rgba(0,0,0,.35))' }}
+              className="relative z-10 block h-auto w-auto select-none pointer-events-none"
+              style={{
+                // 極輕白描邊 + 底部陰影，讓黑字更利落
+                filter: 'drop-shadow(0 0 0.5px rgba(255,255,255,.28)) drop-shadow(0 12px 20px rgba(0,0,0,.45))',
+              }}
             />
           </div>
+        </div>
 
+        {/* 標題 */}
+        <div className="text-center mb-4">
           <h1 className="text-2xl font-extrabold tracking-wide">店家登入</h1>
         </div>
 
+        {/* 表單 */}
         <form className="space-y-3" onSubmit={onSubmit}>
           <div>
             <label className="block text-sm text-white/80 mb-1">Email</label>
