@@ -209,7 +209,7 @@ const langMap = {
     dineInBlocked: '本店目前已暫停「內用」，僅提供外帶服務。你可以改為外帶繼續下單。',
     takeoutBlocked: '本店目前已暫停「外帶」，暫不接受外帶點餐。',
     // 新增：結帳提醒
-    payNotice: '⚠️ 下單後請至櫃台結帳才會出餐，謝謝。'
+    payNotice: '⚠️ 麻煩先到櫃台結帳，謝謝。'
   },
   en: {
     title: 'Dine-in Order',
