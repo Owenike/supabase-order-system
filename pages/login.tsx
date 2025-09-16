@@ -112,18 +112,23 @@ export default function LoginPage() {
 
       {/* 登入卡片（深色） */}
       <div className="auth-card w-full max-w-sm bg-[#2B2B2B] text-white rounded-xl border border-white/10 shadow p-6">
-        {/* Logo：去白底、放大；加一點柔和的淺色 drop-shadow 以提升可讀性（不會有白底塊） */}
+        {/* Logo：去白底 + 放大 + 底部暗漸層（只蓋下半部），讓「晨芯」更清楚 */}
         <div className="flex flex-col items-center gap-3 mb-6">
-          <Image
-            src="/login-logo.png"   // ← 你的 Logo 圖（黑字/彩色）
-            alt="品牌 Logo"
-            width={220}             // 放大
-            height={88}
-            priority
-            className="h-auto w-auto select-none pointer-events-none"
-            style={{ filter: 'drop-shadow(0 1px 1px rgba(255,255,255,.12)) drop-shadow(0 6px 18px rgba(0,0,0,.35))' }}
-          />
-          <h1 className="text-xl font-bold text-white">店家登入</h1> {/* 字變大 */}
+          <div className="relative inline-block">
+            {/* 漸層底：由下往上、透明深灰；只覆蓋下 58% */}
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-[58%] rounded-[16px] bg-gradient-to-t from-[#0c0c0c]/72 via-[#0c0c0c]/36 to-transparent"></span>
+            <Image
+              src="/login-logo.png"   // ← 你的 Logo 圖（建議 PNG 透明底）
+              alt="品牌 Logo"
+              width={260}             // 放大（調整到視覺平衡）
+              height={104}
+              priority
+              className="relative z-10 block h-auto w-auto select-none pointer-events-none rounded-[16px]"
+              // 微量白色/黑色陰影，讓黑字在深色卡上更清楚但不突兀
+              style={{ filter: 'drop-shadow(0 0.5px 0 rgba(255,255,255,.35)) drop-shadow(0 8px 18px rgba(0,0,0,.45))' }}
+            />
+          </div>
+          <h1 className="text-xl font-bold text-white tracking-wide">店家登入</h1>
         </div>
 
         <form className="space-y-3" onSubmit={onSubmit}>
