@@ -1,17 +1,16 @@
 // pages/login.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [msg, setMsg] = useState('');      // 成功/錯誤訊息共用
+  const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // 登入流程
   const handleLogin = async () => {
     if (loading) return;
     setMsg('');
@@ -49,9 +48,11 @@ export default function LoginPage() {
         setMsg('此帳號尚未對應到任何店家');
         return;
       }
-      try { localStorage.setItem('store_id', storeData.id); } catch {}
+      try {
+        localStorage.setItem('store_id', storeData.id);
+      } catch {}
 
-      // 3) 找 store_account（可略作存在性檢查）
+      // 3) store_accounts 存在性檢查
       const { data: accountData, error: accountError } = await supabase
         .from('store_accounts')
         .select('id')
@@ -63,7 +64,9 @@ export default function LoginPage() {
         setMsg('此店家尚未啟用登入帳號');
         return;
       }
-      try { localStorage.setItem('store_account_id', accountData.id); } catch {}
+      try {
+        localStorage.setItem('store_account_id', accountData.id);
+      } catch {}
 
       setMsg('✅ 登入成功，正在導向後台…');
       allowRedirect = true;
@@ -81,14 +84,14 @@ export default function LoginPage() {
   };
 
   // 允許 Enter 提交
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     void handleLogin();
   };
 
   return (
     <main className="bg-[#111] min-h-screen flex items-center justify-center px-4">
-      {/* Autofill 白字補丁（只作用於登入卡片） */}
+      {/* Autofill & 控件白字補丁（僅作用於登入卡片） */}
       <style jsx global>{`
         .auth-card input,
         .auth-card textarea,
@@ -107,20 +110,20 @@ export default function LoginPage() {
         }
       `}</style>
 
-      {/* 登入卡片（深色） */}
+      {/* 登入卡片（深色卡 + 白字 + 淡白邊，與後台一致） */}
       <div className="auth-card w-full max-w-sm bg-[#2B2B2B] text-white rounded-xl border border-white/10 shadow p-6">
-        {/* Logo：白底徽章承載黑字圖（可換路徑） */}
+        {/* Logo：白底徽章承載黑字圖（貼紙感） */}
         <div className="flex flex-col items-center gap-3 mb-6">
-          <div className="bg-white rounded-xl px-4 py-2 border border-white/10 shadow-sm">
+          <div className="rounded-2xl bg-white px-4 py-2 ring-1 ring-black/10 shadow-[0_6px_20px_rgba(0,0,0,.35)]">
             <Image
-              src="/login-logo.png"     // ← 放你的黑字 Logo
+              src="/login-logo.png"   // ← 放你的黑字/彩色 Logo
               alt="品牌 Logo"
-              width={160}
+              width={150}
               height={54}
               priority
             />
           </div>
-          <h1 className="text-base font-semibold">店家登入</h1>
+          <h1 className="text-sm font-semibold text-white/90">店家登入</h1>
         </div>
 
         <form className="space-y-3" onSubmit={onSubmit}>
@@ -128,7 +131,7 @@ export default function LoginPage() {
             <label className="block text-sm text-white/80 mb-1">Email</label>
             <input
               type="email"
-              className="w-full rounded px-3 py-2 bg-[#1F1F1F] border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
+              className="w-full rounded px-3 py-2 bg-[#1F1F1F] border border-white/15 focus:outline-none focus:ring-2 focus:ring-white/30"
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -141,7 +144,7 @@ export default function LoginPage() {
             <label className="block text-sm text-white/80 mb-1">密碼</label>
             <input
               type="password"
-              className="w-full rounded px-3 py-2 bg-[#1F1F1F] border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
+              className="w-full rounded px-3 py-2 bg-[#1F1F1F] border border-white/15 focus:outline-none focus:ring-2 focus:ring-white/30"
               placeholder="密碼"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -164,13 +167,12 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 transition text-white py-2 rounded disabled:opacity-50"
+            className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 hover:ring-2 hover:ring-blue-400/40 transition disabled:opacity-50"
             disabled={loading}
           >
             {loading ? '登入中…' : '登入'}
           </button>
 
-          {/* 可選：忘記密碼連結 */}
           <div className="text-center">
             <a href="/store/forgot-password" className="text-sm text-white/70 hover:text-white">
               忘記密碼？
