@@ -1,11 +1,11 @@
+// pages/admin/new-store.tsx（或你的原檔名）
+// ✅ 不再需要登入檢查（拿掉 supabase.session 與角色判斷）
+// ✅ UI 改為半透明灰框（Glass）＋黃色按鈕
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/router'
-import { supabase } from '@/lib/supabaseClient'
+import { useState, type FormEvent } from 'react'
 
 export default function NewStorePage() {
-  const router = useRouter()
   const [storeName, setStoreName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -13,15 +13,6 @@ export default function NewStorePage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const role = session?.user?.user_metadata?.role
-      if (!session || role !== 'admin') {
-        router.replace('/admin/login')
-      }
-    })
-  }, [router])
 
   const handleCreate = async () => {
     setMessage('')
@@ -31,11 +22,9 @@ export default function NewStorePage() {
     try {
       const res = await fetch('/api/create-store', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          storeName, // ✅ 正確名稱
+          storeName,
           email,
           phone,
           password,
@@ -43,7 +32,6 @@ export default function NewStorePage() {
       })
 
       const result = await res.json()
-
       if (!res.ok) throw new Error(result.error || '建立失敗')
 
       setMessage('✅ 店家帳號建立成功！')
@@ -52,62 +40,119 @@ export default function NewStorePage() {
       setPhone('')
       setPassword('')
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message)
-      } else {
-        setError('建立失敗')
-      }
+      if (err instanceof Error) setError(err.message)
+      else setError('建立失敗')
     } finally {
       setLoading(false)
     }
   }
 
-  return (
-    <div className="max-w-lg mx-auto mt-20 bg-white p-6 shadow rounded">
-      <h1 className="text-2xl font-bold mb-6 text-center">新增店家帳號</h1>
-      <div className="space-y-4">
-        <input
-          type="text"
-          placeholder="店名"
-          className="w-full border p-2 rounded"
-          value={storeName}
-          onChange={(e) => setStoreName(e.target.value)}
-          required
-        />
-        <input
-          type="email"
-          placeholder="Email"
-          className="w-full border p-2 rounded"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          type="tel"
-          placeholder="電話"
-          className="w-full border p-2 rounded"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-        />
-        <input
-          type="password"
-          placeholder="密碼"
-          className="w-full border p-2 rounded"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button
-          onClick={handleCreate}
-          disabled={loading}
-          className="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700"
-        >
-          {loading ? '建立中...' : '建立帳號'}
-        </button>
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    void handleCreate()
+  }
 
-        {message && <p className="text-green-600 mt-4 text-center">{message}</p>}
-        {error && <p className="text-red-600 mt-4 text-center">{error}</p>}
+  return (
+    <main className="bg-[#0B0B0B] min-h-screen flex items-center justify-center px-4">
+      {/* 只作用於此卡片：深色半透明 + Autofill 修正 */}
+      <style jsx global>{`
+        .auth-card input,
+        .auth-card textarea,
+        .auth-card select,
+        .auth-card option {
+          color: #fff !important;
+          background-color: rgba(255, 255, 255, 0.06) !important;
+          -webkit-text-fill-color: #fff !important;
+          caret-color: #fff !important;
+        }
+        .auth-card ::placeholder {
+          color: rgba(255, 255, 255, 0.5) !important;
+        }
+        .auth-card input:-webkit-autofill {
+          -webkit-text-fill-color: #fff !important;
+          box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.06) inset !important;
+          transition: background-color 5000s ease-in-out 0s !important;
+          caret-color: #fff !important;
+        }
+      `}</style>
+
+      <div className="auth-card w-full max-w-lg rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl text-gray-100 shadow-[0_12px_40px_rgba(0,0,0,.35)] p-6">
+        <h1 className="text-2xl font-extrabold tracking-wide text-center mb-6">
+          新增店家帳號
+        </h1>
+
+        <form className="space-y-4" onSubmit={onSubmit}>
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">店名</label>
+            <input
+              type="text"
+              placeholder="店名"
+              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
+              value={storeName}
+              onChange={(e) => setStoreName(e.target.value)}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">Email</label>
+            <input
+              type="email"
+              placeholder="email@example.com"
+              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">電話</label>
+            <input
+              type="tel"
+              placeholder="電話"
+              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">密碼</label>
+            <input
+              type="password"
+              placeholder="設定初始密碼"
+              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              required
+            />
+          </div>
+
+          {/* 提示訊息 */}
+          {message && (
+            <div className="text-sm text-center rounded-lg px-3 py-2 border text-emerald-200 bg-emerald-600/20 border-emerald-400/30">
+              {message}
+            </div>
+          )}
+          {error && (
+            <div className="text-sm text-center rounded-lg px-3 py-2 border text-red-200 bg-red-600/20 border-red-400/30">
+              {error}
+            </div>
+          )}
+
+          {/* 黃色主按鈕 */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow-[0_6px_20px_rgba(255,193,7,.25)] hover:bg-amber-500 hover:shadow-[0_8px_24px_rgba(255,193,7,.35)] focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition"
+          >
+            {loading ? '建立中…' : '建立帳號'}
+          </button>
+        </form>
       </div>
-    </div>
+    </main>
   )
 }
