@@ -29,7 +29,7 @@ export default function LoginPage() {
       // 1) Supabase Auth 登入
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: cleanedEmail,
-        password,
+        password
       });
       if (loginError || !data?.user) {
         setMsg('登入失敗，請確認帳號與密碼');
@@ -100,38 +100,18 @@ export default function LoginPage() {
         }
       `}</style>
 
-      {/* 登入卡片（深色一致） */}
-      <div className="auth-card w-full max-w-sm bg-[#2B2B2B] text-white rounded-xl border border-white/10 shadow p-6 overflow-hidden">
-        {/* 亮玻璃頂部區（與卡片一體，重疊到邊緣） */}
-        <div className="relative -m-6 mb-6 p-6">
-          <div className="relative rounded-t-xl bg-white/16 backdrop-blur-md ring-1 ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,.35),0_18px_36px_rgba(0,0,0,.45)] px-4 py-5">
-            {/* 只增亮左側文字區（不影響人物） */}
-            <span
-              aria-hidden
-              className="pointer-events-none absolute left-4 bottom-2 h-[64%] w-[56%] rounded-[18px]"
-              style={{
-                background:
-                  'radial-gradient(115% 100% at 35% 70%, rgba(255,255,255,.95) 0%, rgba(255,255,255,.65) 52%, rgba(255,255,255,0) 82%)',
-                filter: 'blur(1.5px)',
-              }}
-            />
-            <Image
-              src="/login-logo.png"   // 建議 PNG 透明底
-              alt="品牌 Logo"
-              width={260}
-              height={104}
-              priority
-              className="relative z-10 block h-auto w-auto select-none pointer-events-none"
-              style={{
-                // 極輕白描邊 + 底部陰影，讓黑字更利落
-                filter: 'drop-shadow(0 0 0.5px rgba(255,255,255,.28)) drop-shadow(0 12px 20px rgba(0,0,0,.45))',
-              }}
-            />
-          </div>
-        </div>
-
-        {/* 標題 */}
-        <div className="text-center mb-4">
+      {/* 登入卡片：變淡（半透明+輕邊框） */}
+      <div className="auth-card w-full max-w-sm rounded-xl border border-white/8 bg-[#2B2B2B]/72 backdrop-blur-sm text-white shadow-[0_10px_30px_rgba(0,0,0,.35)] p-6">
+        {/* 純透明 Logo（移除所有底色/底框/漸層） */}
+        <div className="flex flex-col items-center gap-4 mb-6">
+          <Image
+            src="/login-logo.png"   // 建議 PNG 透明底
+            alt="品牌 Logo"
+            width={240}
+            height={96}
+            priority
+            className="h-auto w-auto select-none pointer-events-none"
+          />
           <h1 className="text-2xl font-extrabold tracking-wide">店家登入</h1>
         </div>
 
@@ -141,7 +121,7 @@ export default function LoginPage() {
             <label className="block text-sm text-white/80 mb-1">Email</label>
             <input
               type="email"
-              className="w-full rounded px-3 py-2 bg-[#1F1F1F] border border-white/15 focus:outline-none focus:ring-2 focus:ring-white/30"
+              className="w-full rounded px-3 py-2 bg-[#1F1F1F]/95 border border-white/12 focus:outline-none focus:ring-2 focus:ring-white/30"
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -154,7 +134,7 @@ export default function LoginPage() {
             <label className="block text-sm text-white/80 mb-1">密碼</label>
             <input
               type="password"
-              className="w-full rounded px-3 py-2 bg-[#1F1F1F] border border-white/15 focus:outline-none focus:ring-2 focus:ring-white/30"
+              className="w-full rounded px-3 py-2 bg-[#1F1F1F]/95 border border-white/12 focus:outline-none focus:ring-2 focus:ring-white/30"
               placeholder="密碼"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -164,13 +144,7 @@ export default function LoginPage() {
           </div>
 
           {msg && (
-            <div
-              className={`text-sm text-center rounded px-3 py-2 border ${
-                msg.startsWith('✅')
-                  ? 'text-emerald-200 bg-emerald-500/15 border-emerald-400/30'
-                  : 'text-red-200 bg-red-500/15 border-red-300/30'
-              }`}
-            >
+            <div className={`text-sm text-center rounded px-3 py-2 border ${msg.startsWith('✅') ? 'text-emerald-200 bg-emerald-500/15 border-emerald-400/30' : 'text-red-200 bg-red-500/15 border-red-300/30'}`}>
               {msg}
             </div>
           )}
