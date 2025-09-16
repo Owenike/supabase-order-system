@@ -104,13 +104,7 @@ export default function LoginPage() {
       <div className="auth-card w-full max-w-sm bg-[#2B2B2B] text-white rounded-xl border border-white/10 shadow p-6">
         {/* Logo：玻璃質感半透明徽章（讓黑字清楚、又不突兀） */}
         <div className="flex flex-col items-center gap-4 mb-6">
-          <div className="
-              relative inline-flex items-center justify-center
-              rounded-2xl px-3 py-2
-              bg-white/8 backdrop-blur-md
-              ring-1 ring-white/15
-              shadow-[0_10px_30px_rgba(0,0,0,.45)]
-            ">
+          <div className="relative inline-flex items-center justify-center rounded-2xl px-3 py-2 bg-white/8 backdrop-blur-md ring-1 ring-white/15 shadow-[0_10px_30px_rgba(0,0,0,.45)]">
             <Image
               src="/login-logo.png"   // 你的 Logo（建議 PNG 透明底）
               alt="品牌 Logo"
@@ -118,10 +112,7 @@ export default function LoginPage() {
               height={88}
               priority
               className="h-auto w-auto select-none pointer-events-none"
-              style={{
-                // 極輕的白描邊 + 底部陰影，讓黑字更利落（不會糊成一片）
-                filter: 'drop-shadow(0 0 0.5px rgba(255,255,255,.25)) drop-shadow(0 12px 18px rgba(0,0,0,.35))'
-              }}
+              style={{ filter: 'drop-shadow(0 0 0.5px rgba(255,255,255,.25)) drop-shadow(0 12px 18px rgba(0,0,0,.35))' }}
             />
           </div>
 
