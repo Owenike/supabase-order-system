@@ -300,7 +300,7 @@ export default function StoreOrdersPage() {
   const tableSelectOptions = useMemo(() => {
     const set = new Set<string>()
     set.add(TAKEOUT_VALUE)
-    for (let i = 1; i <= 20; i++) set.add(String(i))
+    for (let i = 1; i <= 30; i++) set.add(String(i))
     orders.forEach(o => {
       if (!isTakeoutStr(o.table_number)) {
         const t = String(o.table_number ?? '').trim()
