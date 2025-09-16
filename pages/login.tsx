@@ -164,7 +164,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* 按鈕改為黃色（Amber） */}
+          {/* 主要登入按鈕 */}
           <button
             type="submit"
             className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow-[0_6px_20px_rgba(255,193,7,.25)] hover:bg-amber-500 hover:shadow-[0_8px_24px_rgba(255,193,7,.35)] focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition"
@@ -173,9 +173,18 @@ export default function LoginPage() {
             {loading ? '登入中…' : '登入'}
           </button>
 
+          {/* 新增：創辦帳號（次要按鈕、全寬） */}
+          <a
+            href="https://www.olinex.app/admin/new-store"
+            className="block w-full text-center py-2.5 rounded-xl bg-white/10 text-white border border-white/20 hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-amber-300 transition"
+          >
+            創辦帳號
+          </a>
+
+          {/* 忘記密碼：已改為指定完整網址 */}
           <div className="text-center">
             <a
-              href="/store/forgot-password"
+              href="https://www.olinex.app/store/forgot-password"
               className="text-sm text-gray-400 hover:text-white"
             >
               忘記密碼？
