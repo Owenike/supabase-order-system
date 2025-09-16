@@ -8,57 +8,50 @@ import { supabase } from '@/lib/supabaseClient';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');      // 成功/錯誤訊息共用
   const [loading, setLoading] = useState(false);
 
-  let allowRedirect = false;
-
+  // 登入流程
   const handleLogin = async () => {
     if (loading) return;
-    setError('');
+    setMsg('');
     setLoading(true);
-    console.log('📥 點擊登入');
+    let allowRedirect = false;
 
     try {
       // 清掉舊的本機識別
-      localStorage.removeItem('store_id');
-      localStorage.removeItem('store_account_id');
+      try {
+        localStorage.removeItem('store_id');
+        localStorage.removeItem('store_account_id');
+      } catch {}
 
       const cleanedEmail = email.trim().toLowerCase();
-      console.log('🧹 清理並準備登入:', cleanedEmail);
 
-      // Supabase Auth 登入
+      // 1) Supabase Auth 登入
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: cleanedEmail,
         password,
       });
 
-      if (loginError || !data.user) {
-        console.warn('❌ 登入失敗:', loginError?.message);
-        setError('登入失敗，請確認帳號與密碼');
+      if (loginError || !data?.user) {
+        setMsg('登入失敗，請確認帳號與密碼');
         return;
       }
 
-      console.log('✅ Supabase 登入成功:', data.user.id);
-
-      // 查 stores 取得 store_id
+      // 2) 依 Email 找對應店家
       const { data: storeData, error: storeError } = await supabase
         .from('stores')
         .select('id')
         .eq('email', cleanedEmail)
         .maybeSingle();
 
-      console.log('🏪 查詢 stores 結果:', storeData);
       if (storeError || !storeData?.id) {
-        console.warn('❌ 查無對應店家');
-        setError('此帳號尚未對應到任何店家');
+        setMsg('此帳號尚未對應到任何店家');
         return;
       }
+      try { localStorage.setItem('store_id', storeData.id); } catch {}
 
-      localStorage.setItem('store_id', storeData.id);
-      console.log('📦 寫入 store_id:', storeData.id);
-
-      // 查 store_accounts 取得 store_account_id
+      // 3) 找 store_account（可略作存在性檢查）
       const { data: accountData, error: accountError } = await supabase
         .from('store_accounts')
         .select('id')
@@ -66,98 +59,125 @@ export default function LoginPage() {
         .limit(1)
         .maybeSingle();
 
-      console.log('🧾 查詢 store_accounts 結果:', accountData);
       if (accountError || !accountData?.id) {
-        console.warn('❌ 查無對應 store_account');
-        setError('此店家尚未啟用登入帳號');
+        setMsg('此店家尚未啟用登入帳號');
         return;
       }
+      try { localStorage.setItem('store_account_id', accountData.id); } catch {}
 
-      localStorage.setItem('store_account_id', accountData.id);
-      console.log('📥 寫入 store_account_id:', accountData.id);
-
-      setError('✅ 登入成功，正在導向後台...');
+      setMsg('✅ 登入成功，正在導向後台…');
       allowRedirect = true;
     } catch (err) {
       console.error('💥 登入流程錯誤:', err);
-      setError('發生未知錯誤，請稍後再試');
+      setMsg('發生未知錯誤，請稍後再試');
     } finally {
       setLoading(false);
-
       if (allowRedirect) {
-        console.log('🚀 跳轉中...');
         setTimeout(() => {
           window.location.href = '/redirect';
-        }, 200);
+        }, 250);
       }
     }
   };
 
-  // 允許按 Enter 提交
+  // 允許 Enter 提交
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     void handleLogin();
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
-      <div className="p-8 w-80 space-y-4">
-        {/* 登入框上方的 Logo 圖
-            1) 請先把圖片放在 /public 例如：/public/login-logo.png
-            2) 若你的檔名不同，改下面 src 即可（例如 src="/晨芯login.png"）
-        */}
-        <div className="flex justify-center mb-2">
-          <Image
-            src="/login-logo.png"
-            alt="晨芯 Logo"
-            width={240}       // ⬅️ 調整大小（px）
-            height={240}
-            priority
-            className="rounded"
-          />
+    <main className="bg-[#111] min-h-screen flex items-center justify-center px-4">
+      {/* Autofill 白字補丁（只作用於登入卡片） */}
+      <style jsx global>{`
+        .auth-card input,
+        .auth-card textarea,
+        .auth-card select,
+        .auth-card option {
+          color: #fff !important;
+          background-color: #1f1f1f !important;
+          -webkit-text-fill-color: #fff !important;
+          caret-color: #fff !important;
+        }
+        .auth-card ::placeholder { color: rgba(255,255,255,.4) !important; }
+        .auth-card input:-webkit-autofill {
+          -webkit-text-fill-color:#fff !important;
+          box-shadow: 0 0 0px 1000px #1f1f1f inset !important;
+          transition: background-color 5000s ease-in-out 0s !important;
+        }
+      `}</style>
+
+      {/* 登入卡片（深色） */}
+      <div className="auth-card w-full max-w-sm bg-[#2B2B2B] text-white rounded-xl border border-white/10 shadow p-6">
+        {/* Logo：白底徽章承載黑字圖（可換路徑） */}
+        <div className="flex flex-col items-center gap-3 mb-6">
+          <div className="bg-white rounded-xl px-4 py-2 border border-white/10 shadow-sm">
+            <Image
+              src="/login-logo.png"     // ← 放你的黑字 Logo
+              alt="品牌 Logo"
+              width={160}
+              height={54}
+              priority
+            />
+          </div>
+          <h1 className="text-base font-semibold">店家登入</h1>
         </div>
 
-        <h2 className="text-xl font-bold text-center">店家登入</h2>
+        <form className="space-y-3" onSubmit={onSubmit}>
+          <div>
+            <label className="block text-sm text-white/80 mb-1">Email</label>
+            <input
+              type="email"
+              className="w-full rounded px-3 py-2 bg-[#1F1F1F] border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              required
+            />
+          </div>
 
-        <form className="space-y-4" onSubmit={onSubmit}>
-          <input
-            type="email"
-            className="w-full border px-3 py-2 rounded"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-            required
-          />
-          <input
-            type="password"
-            className="w-full border px-3 py-2 rounded"
-            placeholder="密碼"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-          />
+          <div>
+            <label className="block text-sm text-white/80 mb-1">密碼</label>
+            <input
+              type="password"
+              className="w-full rounded px-3 py-2 bg-[#1F1F1F] border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
+              placeholder="密碼"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </div>
 
-          {error && (
-            <p
-              className={`text-sm text-center ${
-                error.startsWith('✅') ? 'text-green-600' : 'text-red-600'
+          {msg && (
+            <div
+              className={`text-sm text-center rounded px-3 py-2 border ${
+                msg.startsWith('✅')
+                  ? 'text-emerald-200 bg-emerald-500/15 border-emerald-400/30'
+                  : 'text-red-200 bg-red-500/15 border-red-300/30'
               }`}
             >
-              {error}
-            </p>
+              {msg}
+            </div>
           )}
 
           <button
             type="submit"
-            className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition disabled:opacity-50"
+            className="w-full bg-blue-600 hover:bg-blue-700 transition text-white py-2 rounded disabled:opacity-50"
             disabled={loading}
           >
-            {loading ? '登入中...' : '登入'}
+            {loading ? '登入中…' : '登入'}
           </button>
+
+          {/* 可選：忘記密碼連結 */}
+          <div className="text-center">
+            <a href="/store/forgot-password" className="text-sm text-white/70 hover:text-white">
+              忘記密碼？
+            </a>
+          </div>
         </form>
       </div>
-    </div>
+    </main>
   );
 }
