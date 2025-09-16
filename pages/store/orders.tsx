@@ -64,6 +64,7 @@ const pill = (selected: boolean, tone: 'yellow' | 'green' | 'white' | 'gray' = '
     : 'bg-white/10 text-white border border-white/15 hover:bg-white/15 transition'
 
 // ---- 工具 ----
+const TAKEOUT_VALUE = 'takeout'
 const isTakeoutStr = (t: string | null) => {
   const s = String(t ?? '').trim().toLowerCase()
   return s === 'takeout' || s === '外帶' || s === '0'
@@ -247,7 +248,6 @@ function FixedOptionsEditor({
               const raw = e.target.value
               if (raw.trim()) setRow(next, '加料', raw.split(',').map(s => s.trim()).filter(Boolean))
               else {
-                // 清空就移除該 row
                 const i = next.findIndex(r => r.key === '加料')
                 if (i >= 0) next.splice(i, 1)
               }
@@ -295,6 +295,20 @@ export default function StoreOrdersPage() {
 
   // 快速篩選：桌號/外帶
   const [tableFilter, setTableFilter] = useState<TableFilter>('ALL')
+
+  // 桌號下拉選項：外帶 + 1..20 + 目前資料中的所有桌號（去重）
+  const tableSelectOptions = useMemo(() => {
+    const set = new Set<string>()
+    set.add(TAKEOUT_VALUE)
+    for (let i = 1; i <= 20; i++) set.add(String(i))
+    orders.forEach(o => {
+      if (!isTakeoutStr(o.table_number)) {
+        const t = String(o.table_number ?? '').trim()
+        if (t) set.add(t)
+      }
+    })
+    return Array.from(set)
+  }, [orders])
 
   const dict = useMemo(
     () =>
@@ -553,8 +567,7 @@ export default function StoreOrdersPage() {
 
     const cleanedItems = editItems
       .map((i, idx) => {
-        // 沿用原本 price，不提供 UI 修改（你要求移除單價欄位）
-        const originalPrice = (editingOrder.items?.[idx]?.price ?? i.price) || 0
+        const originalPrice = (editingOrder.items?.[idx]?.price ?? i.price) || 0 // 保留原單價
         const options = rowsToOptions(editOptionRows[idx] || [])
         return {
           name: String(i.name || '').trim(),
@@ -631,16 +644,19 @@ export default function StoreOrdersPage() {
 
   return (
     <main className="bg-background min-h-screen">
-      {/* Autofill 白字補丁 */}
+      {/* Autofill & 文字顏色補丁（只作用於彈窗） */}
       <style jsx global>{`
-        input:-webkit-autofill,
-        textarea:-webkit-autofill,
-        select:-webkit-autofill {
+        .orders-modal input,
+        .orders-modal textarea,
+        .orders-modal select,
+        .orders-modal option {
+          color: #fff !important;
+          background-color: #1f1f1f !important;
           -webkit-text-fill-color: #fff !important;
           caret-color: #fff !important;
-          box-shadow: 0 0 0px 1000px #1f1f1f inset !important;
-          transition: background-color 5000s ease-in-out 0s !important;
         }
+        .orders-modal ::placeholder { color: rgba(255,255,255,.4) !important; }
+        .orders-modal select option { background: #1f1f1f !important; color:#fff !important; }
       `}</style>
 
       <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
@@ -761,10 +777,10 @@ export default function StoreOrdersPage() {
           </div>
         )}
 
-        {/* 編輯面板 —— 深色卡 + 白字 + 內部滾動 */}
+        {/* 編輯面板 —— 深色卡 + 白字 + 下拉式（桌號/狀態/辣度） */}
         {editingOrder && (
           <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center">
-            <div className="w-[min(100%-2rem,56rem)] max-w-3xl max-h-[85vh] overflow-y-auto rounded-lg shadow-lg border border-white/10 bg-[#2B2B2B] text-white">
+            <div className="orders-modal w-[min(100%-2rem,56rem)] max-w-3xl max-h-[85vh] overflow-y-auto rounded-lg shadow-lg border border-white/10 bg-[#2B2B2B] text-white">
               {/* 標題列 */}
               <div className="px-6 pt-5 pb-3 border-b border-white/10">
                 <div className="flex items-center justify-between">
@@ -775,18 +791,19 @@ export default function StoreOrdersPage() {
 
               {/* 內容 */}
               <div className="px-6 py-5 space-y-6">
-                {/* 訂單層級欄位 */}
+                {/* 訂單層級欄位：下拉式 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-white/90 mb-1">桌號</label>
-                    <input
-                      type="text"
-                      autoComplete="off"
-                      value={editingOrder.table_number ?? ''}
+                    <select
+                      value={editingOrder ? (isTakeoutStr(editingOrder.table_number) ? TAKEOUT_VALUE : String(editingOrder.table_number ?? '')) : ''}
                       onChange={e => setEditingOrder(prev => prev ? { ...prev, table_number: e.target.value } : prev)}
-                      className="w-full rounded px-3 py-2 bg-[#1F1F1F] text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
-                      placeholder="外帶"
-                    />
+                      className="w-full rounded px-3 py-2 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
+                    >
+                      {tableSelectOptions.map(v => (
+                        <option key={v} value={v}>{v === TAKEOUT_VALUE ? '外帶' : v}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
@@ -803,14 +820,17 @@ export default function StoreOrdersPage() {
 
                   <div>
                     <label className="block text-sm text-white/90 mb-1">辣度</label>
-                    <input
-                      type="text"
-                      autoComplete="off"
+                    <select
                       value={editingOrder.spicy_level ?? ''}
-                      onChange={e => setEditingOrder(prev => prev ? { ...prev, spicy_level: e.target.value } : prev)}
-                      className="w-full rounded px-3 py-2 bg-[#1F1F1F] text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
-                      placeholder="小辣/中辣/不辣…"
-                    />
+                      onChange={e => setEditingOrder(prev => prev ? { ...prev, spicy_level: e.target.value || null } : prev)}
+                      className="w-full rounded px-3 py-2 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
+                    >
+                      <option value="">（不設定）</option>
+                      <option value="不辣">不辣</option>
+                      <option value="小辣">小辣</option>
+                      <option value="中辣">中辣</option>
+                      <option value="大辣">大辣</option>
+                    </select>
                   </div>
 
                   <div className="md:col-span-2">
@@ -836,7 +856,7 @@ export default function StoreOrdersPage() {
                   {editItems.map((it, idx) => (
                     <div key={idx} className="rounded-lg border border-white/10 p-3 bg-[#2B2B2B]">
                       <div className="grid grid-cols-12 gap-2">
-                        <div className="col-span-6 md:col-span-6">
+                        <div className="col-span-7 md:col-span-7">
                           <label className="block text-xs text-white/80 mb-1">品名</label>
                           <input
                             value={it.name}
@@ -845,7 +865,7 @@ export default function StoreOrdersPage() {
                             placeholder="品名"
                           />
                         </div>
-                        <div className="col-span-4 md:col-span-3">
+                        <div className="col-span-3 md:col-span-3">
                           <label className="block text-xs text-white/80 mb-1">數量</label>
                           <input
                             type="number"
@@ -855,7 +875,7 @@ export default function StoreOrdersPage() {
                             min={0}
                           />
                         </div>
-                        <div className="col-span-2 md:col-span-3 flex items-end">
+                        <div className="col-span-2 md:col-span-2 flex items-end">
                           <Button size="sm" variant="destructive" onClick={() => removeItem(idx)}>刪</Button>
                         </div>
                       </div>
@@ -874,7 +894,6 @@ export default function StoreOrdersPage() {
                           title="其他選項"
                           rows={(editOptionRows[idx] || []).filter(r => !['甜度','冰塊','容量','加料'].includes(r.key))}
                           onChange={(rows) => {
-                            // 只替換非固定 keys；固定 keys 保留
                             const fixed = (editOptionRows[idx] || []).filter(r => ['甜度','冰塊','容量','加料'].includes(r.key as FixedKey))
                             setRowsForIndex(idx, [...fixed, ...rows])
                           }}
@@ -886,8 +905,12 @@ export default function StoreOrdersPage() {
 
                 {/* 底部按鈕列（黏底） */}
                 <div className="flex justify-end gap-3 sticky bottom-0 pt-3 bg-[#2B2B2B]">
-                  <Button variant="secondary" onClick={() => setEditingOrder(null)} disabled={isSaving}>取消</Button>
-                  <Button variant="default" onClick={saveEdit} disabled={isSaving}>{isSaving ? '儲存中…' : '儲存變更'}</Button>
+                  <Button variant="secondary" onClick={() => setEditingOrder(null)} disabled={isSaving}>
+                    取消
+                  </Button>
+                  <Button variant="default" onClick={saveEdit} disabled={isSaving}>
+                    {isSaving ? '儲存中…' : '儲存變更'}
+                  </Button>
                 </div>
               </div>
             </div>
