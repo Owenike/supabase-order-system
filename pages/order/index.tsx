@@ -19,6 +19,10 @@ const COOKIE_QS_KEY = 'order_qs_backup'
 const FLAG_RETURNED = 'liff_returned_once'
 const COOKIE_DOMAIN = '.olinex.app'
 
+// 需求：外帶要 LINE、內用不要
+const REQUIRE_LINE_FOR_TAKEOUT = true
+const REQUIRE_LINE_FOR_DINEIN = false
+
 const FALLBACK_STORE_ID =
   process.env.NEXT_PUBLIC_FALLBACK_STORE_ID || '11b687d8-f529-4da0-b901-74d5e783e6f2'
 const FALLBACK_TABLE = process.env.NEXT_PUBLIC_FALLBACK_TABLE || '外帶'
@@ -288,6 +292,12 @@ function OrderPage() {
   const tableStr = String(tableParam ?? '')
   const isTakeout = useMemo(() => ['外帶', '0', 'takeout'].includes(tableStr), [tableStr])
 
+  // 這一頁是否需要 LINE（外帶要、內用不要）
+  const needLine = useMemo(
+    () => (isTakeout ? REQUIRE_LINE_FOR_TAKEOUT : REQUIRE_LINE_FOR_DINEIN),
+    [isTakeout]
+  )
+
   const effectiveTable = useMemo(() => {
     if (typeof tableParam === 'string' && tableParam) return tableParam
     return isTakeout ? 'takeout' : ''
@@ -314,9 +324,15 @@ function OrderPage() {
   const [isLiffReady, setIsLiffReady] = useState(false)
   const [qsRestored, setQsRestored] = useState(false)
   const [liffRef, setLiffRef] = useState<any>(null)
-  const [hasLineCookie, setHasLineCookie] = useState<boolean>(!!getCookie('line_user_id'))
+  const [hasLineCookie, setHasLineCookie] = useState<boolean>(needLine ? !!getCookie('line_user_id') : true)
   const [loggingIn, setLoggingIn] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // needLine 變動時，如果需要 LINE，先把 isLiffReady 置為 false 讓初始化流程跑一次
+  useEffect(() => {
+    if (needLine) setIsLiffReady(false)
+    else setHasLineCookie(true)
+  }, [needLine])
 
   // === 商品選項狀態 ===
   const [optionGroups, setOptionGroups] = useState<OptionGroup[]>([])
@@ -337,6 +353,7 @@ function OrderPage() {
   // 取得 LINE user cookie
   const ensureLineCookie = useCallback(async () => {
     try {
+      if (!needLine) return
       const liff = liffRef
       if (!liff || !liff.isLoggedIn()) return
       if (getCookie('line_user_id')) {
@@ -360,7 +377,7 @@ function OrderPage() {
     } catch (e) {
       console.warn('ensureLineCookie failed:', e)
     }
-  }, [liffRef])
+  }, [liffRef, needLine])
 
   // ---------- 初始化 LIFF ----------
   useEffect(() => {
@@ -370,6 +387,12 @@ function OrderPage() {
 
     ;(async () => {
       try {
+        // 內用或設定為不需要 LINE：直接就緒
+        if (!needLine) {
+          setIsLiffReady(true)
+          return
+        }
+
         if (router.query.__debug_noliff === '1') {
           setIsLiffReady(true)
           return
@@ -406,7 +429,7 @@ function OrderPage() {
     })()
 
     return () => { disposed = true }
-  }, [routerReady, router.query, code, state, ensureLineCookie, router])
+  }, [routerReady, router.query, code, state, ensureLineCookie, router, needLine])
 
   // ---------- 回跳後：若缺 store/table 就還原 ----------
   useEffect(() => {
@@ -580,12 +603,12 @@ function OrderPage() {
   useEffect(() => {
     if (!isLiffReady || !storeId || !UUID_RE.test(storeId) || !flagsLoaded) return
     ;(async () => {
-      if (liffRef?.isLoggedIn?.() && !getCookie('line_user_id')) await ensureLineCookie()
+      if (needLine && liffRef?.isLoggedIn?.() && !getCookie('line_user_id')) await ensureLineCookie()
       await fetchMenus(storeId)
       await fetchCategories(storeId)
       await fetchOrders()
     })()
-  }, [isLiffReady, storeId, fetchOrders, ensureLineCookie, liffRef, flagsLoaded])
+  }, [isLiffReady, storeId, fetchOrders, ensureLineCookie, liffRef, flagsLoaded, needLine])
 
   // ---------- UI 行為 ----------
   const toggleItem = async (menu: MenuItem) => {
@@ -724,7 +747,7 @@ function OrderPage() {
       } catch {}
 
       const lineUserId = getCookie('line_user_id')
-      if (isTakeout && !lineUserId) { setErrorMsg('❌ 尚未綁定 LINE，請先登入再送單'); return }
+      if (isTakeout && needLine && !lineUserId) { setErrorMsg('❌ 尚未綁定 LINE，請先登入再送單'); return }
 
       const totalAmount = selectedItems.reduce((s, i) => s + i.price * i.quantity, 0)
       const noteText = isTakeout
@@ -742,7 +765,7 @@ function OrderPage() {
           note: noteText,
           status: 'pending',
           total: totalAmount,
-          line_user_id: isTakeout ? lineUserId : null,
+          line_user_id: (isTakeout && needLine) ? lineUserId : null,
           spicy_level: spicyLevel || null
         })
       })
@@ -842,7 +865,8 @@ function OrderPage() {
     )
   }
 
-  if (!hasLineCookie) {
+  // 只有在需要 LINE 且尚未有 cookie 時，才顯示登入卡關畫面
+  if (needLine && !hasLineCookie) {
     return (
       <main className="bg-[#111] min-h-screen">
         <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-3xl mx-auto">
@@ -901,7 +925,7 @@ function OrderPage() {
       {showPrevious && (
         <div className="mb-6 space-y-4">
           {orderHistory.map((order, idx) => (
-            <div key={idx} className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
+            <div key={idx} className="bg-[#2B2B2B] text白 rounded-lg border border-white/10 shadow p-4">
               <h2 className="font-semibold mb-2">
                 {t.confirmTitle}（第 {idx + 1} 筆）
                 {order.created_at
@@ -991,7 +1015,7 @@ function OrderPage() {
       </div>
 
       {/* 備註 */}
-      <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4 mb-6">
+      <div className="bg-[#2B2B2B] text-white rounded-lg border border白/10 shadow p-4 mb-6">
         <h2 className="font-semibold mb-2">{t.noteLabel}</h2>
         <textarea
           className="w-full border border-white/15 bg-[#1F1F1F] text-white placeholder:text-white/40 p-2 rounded outline-none focus:ring-1 focus:ring-white/30"
