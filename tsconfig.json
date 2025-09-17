@@ -11,12 +11,19 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "react-jsx",               // ← 改這行
+    "jsx": "react-jsx",
     "incremental": true,
     "baseUrl": ".",
-    "paths": { "@/*": ["./*"] },
+    "paths": {
+      "@/*": ["./*"],
+      "@/components/*": ["components/*", "src/components/*"],
+      "@/pages/*": ["pages/*", "src/pages/*"],
+      "@/lib/*": ["lib/*", "src/lib/*"],
+      "@/app/*": ["app/*", "src/app/*"]
+    },
     "types": ["node", "react", "react-dom"],
-    "plugins": [{ "name": "next" }]
+    "plugins": [{ "name": "next" }],
+    "forceConsistentCasingInFileNames": true   // ⚠️ 新增，避免大小寫錯誤在 Linux/Vercel 爆掉
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]

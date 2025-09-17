@@ -1,9 +1,11 @@
+// pages/store/index.tsx
 'use client'
 
 import { useEffect, useState, useRef, type ReactNode } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
-import Image from 'next/image'
+// ✅ 修正：資料夾是 layouts（小寫、複數）
+import StoreShell from '../../components/layouts/StoreShell'
 
 interface Order {
   id: string
@@ -20,18 +22,12 @@ const langMap = {
     manageDesc:
       '在後台快速建立分類與餐點，支援多分店同步管理；消費者可透過 LINE/QR 連結下單。',
     ordersTitle: '訂單管理',
-    ordersDesc:
-      '整合訂單狀態、備註與通知，出餐流程更順、不漏單。',
+    ordersDesc: '整合訂單狀態、備註與通知，出餐流程更順、不漏單。',
     statsTitle: '銷售報表',
     statsDesc:
       '以日期與品項維度查看營收與熱門時段，協助你做分眾與再行銷決策。',
     qrcodeTitle: '產生 QRCode',
-    qrcodeDesc:
-      '一鍵產生桌號 / 外帶 QRCode，支援PDF下載。',
-    brandSubtitle: '您的店家名稱：',
-    langSwitch: 'EN',
-    langSwitchEn: '中',
-    logout: '登出',
+    qrcodeDesc: '一鍵產生桌號 / 外帶 QRCode，支援PDF下載。',
     logoutMessage: '✅ 已成功登出',
     newOrder: '🛎️ 新訂單來囉！',
     inactive: '此帳號已被停用，請聯繫管理員',
@@ -50,10 +46,6 @@ const langMap = {
     qrcodeTitle: 'Tiered Membership / QR Codes',
     qrcodeDesc:
       'Generate table/takeout QR codes in one click. Print or download for tiered offers.',
-    brandSubtitle: 'Your store name:',
-    langSwitch: '中',
-    langSwitchEn: 'EN',
-    logout: 'Logout',
     logoutMessage: '✅ Logged out successfully',
     newOrder: '🛎️ New Order Received!',
     inactive: 'This account has been deactivated. Please contact admin.',
@@ -64,9 +56,8 @@ type Lang = keyof typeof langMap
 
 export default function StoreHomePage() {
   const router = useRouter()
-  const [storeName, setStoreName] = useState('')
   const [, setLatestOrder] = useState<Order | null>(null)
-  const [lang, setLang] = useState<Lang>('zh')
+  const [lang] = useState<Lang>('zh') // 首頁文案使用本地狀態；Header 語系由 StoreShell 控制
   const [showAlert, setShowAlert] = useState(false)
   const [loading, setLoading] = useState(true)
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -92,28 +83,14 @@ export default function StoreHomePage() {
         return
       }
 
-      // 3) 店家名稱
-      const { data: storeData, error: storeErr } = await supabase
-        .from('stores')
-        .select('name')
-        .eq('id', storeId)
-        .maybeSingle()
-
-      if (storeErr || !storeData?.name) {
-        localStorage.clear()
-        router.replace('/login')
-        return
-      }
-      setStoreName(storeData.name)
-
-      // 4) 帳號啟用
-      const { data: accountData, error: accountErr } = await supabase
+      // 3) 帳號啟用檢查
+      const { data: accountData } = await supabase
         .from('store_accounts')
         .select('id, is_active')
         .eq('store_id', storeId)
         .maybeSingle()
 
-      if (accountErr || !accountData?.id) {
+      if (!accountData?.id) {
         localStorage.clear()
         router.replace('/login')
         return
@@ -129,7 +106,7 @@ export default function StoreHomePage() {
       localStorage.setItem('store_account_id', accountData.id)
       setLoading(false)
 
-      // 5) 新訂單通知
+      // 4) 新訂單通知（Realtime）
       const channel = supabase
         .channel('order_notifications')
         .on(
@@ -154,15 +131,8 @@ export default function StoreHomePage() {
       }
     }
 
-    init()
+    void init()
   }, [router, t.inactive])
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    localStorage.clear()
-    alert(t.logoutMessage)
-    router.push('/login')
-  }
 
   const go = (path: string) => {
     router.push(path)
@@ -210,42 +180,7 @@ export default function StoreHomePage() {
   if (loading) return null
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      {/* ==== 頂部導覽：左上角 LOGO、右上角語言與登出（放大版） ==== */}
-      <header className="flex items-center justify-between px-4 sm:px-6 md:px-10 py-6 md:py-8">
-        <div className="flex items-center gap-4 sm:gap-5">
-          {/* LOGO 放大：手機 56、平板 64、桌機 80 */}
-          <Image
-            src="/logo.png"
-            alt="品牌 Logo"
-            width={80}
-            height={80}
-            className="rounded-full w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 shadow-lg"
-            priority
-          />
-          {/* 文字放大：手機 lg、平板 xl、桌機 2xl；不再 hidden */}
-          <div className="text-lg sm:text-xl md:text-2xl text-white/90 leading-tight">
-            {t.brandSubtitle}{' '}
-            <span className="font-semibold text-white">{storeName}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-            className="text-xs sm:text-sm text-white/80 border border-white/20 px-3 py-1.5 rounded-md hover:bg-white/10"
-          >
-            {lang === 'zh' ? t.langSwitch : t.langSwitchEn}
-          </button>
-          <button
-            onClick={handleLogout}
-            className="text-xs sm:text-sm text-white/90 border border-white/20 px-3 py-1.5 rounded-md hover:bg-white/10"
-          >
-            {t.logout}
-          </button>
-        </div>
-      </header>
-
+    <StoreShell title={t.pageTitle}>
       {/* 新訂單提醒 */}
       {showAlert && (
         <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg animate-pulse z-50">
@@ -253,17 +188,10 @@ export default function StoreHomePage() {
         </div>
       )}
 
-      {/* ==== 主視覺：置中大標 ==== */}
-      <section className="px-4 sm:px-6 md:px-10 pt-4 pb-6 text-center">
-        <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight">
-          {t.pageTitle}
-        </h1>
-      </section>
-
-      {/* ==== 內容卡片（2×2） ==== */}
+      {/* 內容卡片（2×2） */}
       <main className="px-4 sm:px-6 md:px-10 pb-16">
         <div className="grid gap-6 sm:gap-7 md:gap-8 grid-cols-1 md:grid-cols-2 max-w-6xl mx-auto">
-          {/* 1. 分類與菜單管理 → /store/manage-menus */}
+          {/* 1. 分類與菜單管理 */}
           <Card
             ariaLabel="manage-menus"
             onClick={() => go('/store/manage-menus')}
@@ -283,7 +211,7 @@ export default function StoreHomePage() {
             }
           />
 
-          {/* 2. 訂單管理 → /store/orders */}
+          {/* 2. 訂單管理 */}
           <Card
             ariaLabel="orders"
             onClick={() => go('/store/orders')}
@@ -303,7 +231,7 @@ export default function StoreHomePage() {
             }
           />
 
-          {/* 3. 銷售報表 → /store/stats */}
+          {/* 3. 銷售報表 */}
           <Card
             ariaLabel="stats"
             onClick={() => go('/store/stats')}
@@ -322,7 +250,7 @@ export default function StoreHomePage() {
             }
           />
 
-          {/* 4. 產生 QRCode → /qrcode */}
+          {/* 4. 產生 QRCode */}
           <Card
             ariaLabel="qrcode"
             onClick={() => go('/qrcode')}
@@ -347,6 +275,6 @@ export default function StoreHomePage() {
       </main>
 
       <audio ref={audioRef} src="/ding.mp3" preload="auto" />
-    </div>
+    </StoreShell>
   )
 }
