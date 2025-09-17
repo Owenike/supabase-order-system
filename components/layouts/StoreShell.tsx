@@ -16,6 +16,7 @@ const i18n = {
     langSwitchEn: '中',
     logout: '登出',
     inactive: '此帳號已被停用，請聯繫管理員',
+    line: 'LINE',
   },
   en: {
     brandSubtitle: 'Your store name:',
@@ -23,6 +24,7 @@ const i18n = {
     langSwitchEn: 'EN',
     logout: 'Logout',
     inactive: 'This account has been deactivated. Please contact admin.',
+    line: 'LINE',
   },
 } as const
 
@@ -40,6 +42,11 @@ function isPublicStoreAuthPath(path: string): boolean {
   }
   return false
 }
+
+// ✅ LINE 連結（可用環境變數覆蓋）
+const LINE_URL =
+  process.env.NEXT_PUBLIC_LINE_URL ||
+  'https://lin.ee/m8vO3XI' // ← 改成你的官方 LINE 連結（lin.ee 或 @ID 都可）
 
 export default function StoreShell({
   title,
@@ -109,7 +116,6 @@ export default function StoreShell({
         return
       }
       if (!accountData.is_active) {
-        // 用目前語系提示
         alert(t.inactive)
         await supabase.auth.signOut()
         try {
@@ -149,7 +155,7 @@ export default function StoreShell({
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* 頂部：左上 LOGO/店名（可點回 /store），右上語言/登出 */}
+      {/* 頂部：左上 LOGO/店名（可點回 /store），右上語言/LINE/登出 */}
       <header className="flex items-center justify-between px-4 sm:px-6 md:px-10 py-6 md:py-8">
         <Link
           href="/store"
@@ -172,15 +178,41 @@ export default function StoreShell({
         </Link>
 
         <div className="flex items-center gap-2">
+          {/* 語言切換 */}
           <button
             onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
             className="text-xs sm:text-sm text-white/80 border border-white/20 px-3 py-1.5 rounded-md hover:bg-white/10"
           >
             {lang === 'zh' ? t.langSwitch : t.langSwitchEn}
           </button>
+
+          {/* ✅ LINE 綠色按鈕 */}
+          <a
+            href={LINE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-md px-3 py-1.5 bg-[#06C755] text-white text-xs sm:text-sm font-medium shadow hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-[#06C755]/40"
+            aria-label="前往 LINE"
+            title="前往 LINE"
+          >
+            {/* 內建 SVG（避免額外資產） */}
+            <svg viewBox="0 0 36 36" width="16" height="16" aria-hidden className="opacity-90">
+              <path
+                d="M18 4C9.716 4 3 9.838 3 16.94c0 4.1 2.17 7.73 5.56 10.09l-.36 3.98c-.05.55.53.94 1 .68l4.51-2.36c1.28.29 2.64.45 4.05.45 8.284 0 15-5.838 15-12.94S26.284 4 18 4z"
+                fill="currentColor"
+              />
+              <path
+                d="M11 14.5h2v7h-2v-7zm4.2 0h2v7h-2v-7zm4.2 0H21v5.1l3-5.1h2v7h-2v-5.1l-3 5.1h-1.6v-7z"
+                fill="#fff"
+              />
+            </svg>
+            {t.line}
+          </a>
+
+          {/* 登出 */}
           <button
             onClick={handleLogout}
-            className="text-xs sm:text-sm text-white/90 border border-white/20 px-3 py-1.5 rounded-md hover:bg白/10 hover:bg-white/10"
+            className="text-xs sm:text-sm text-white/90 border border-white/20 px-3 py-1.5 rounded-md hover:bg-white/10"
           >
             {t.logout}
           </button>
