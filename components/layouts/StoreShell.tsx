@@ -1,3 +1,4 @@
+// components/Layout/StoreShell.tsx
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
@@ -25,6 +26,21 @@ const i18n = {
   },
 } as const
 
+// ✅ /store 底下「不需登入即可存取」的路徑白名單
+const PUBLIC_STORE_PATHS = new Set<string>([
+  '/store/forgot-password',
+  '/store/reset-password',
+  '/store/login',
+])
+
+function isPublicStoreAuthPath(path: string): boolean {
+  // 允許子路徑與查詢字串，例如 /store/reset-password?access_token=...
+  for (const p of PUBLIC_STORE_PATHS) {
+    if (path.startsWith(p)) return true
+  }
+  return false
+}
+
 export default function StoreShell({
   title,
   children,
@@ -39,20 +55,36 @@ export default function StoreShell({
   const [booted, setBooted] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
+
     const init = async () => {
+      const currentPath = router.asPath || router.pathname
+
+      // ✅ 白名單頁面：直接放行，不做任何登入/店家檢查
+      if (isPublicStoreAuthPath(currentPath)) {
+        if (!cancelled) setBooted(true)
+        return
+      }
+
+      // 其餘 /store/* 需登入
       const {
         data: { session },
       } = await supabase.auth.getSession()
       if (!session || !session.user) {
-        router.replace('/login')
+        if (!cancelled) {
+          const next = encodeURIComponent(currentPath)
+          router.replace(`/login?next=${next}`)
+        }
         return
       }
 
       const storeId =
         typeof window !== 'undefined' ? localStorage.getItem('store_id') : null
       if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
-        localStorage.clear()
-        router.replace('/login')
+        try {
+          if (typeof window !== 'undefined') localStorage.clear()
+        } catch {}
+        if (!cancelled) router.replace('/login')
         return
       }
 
@@ -61,7 +93,7 @@ export default function StoreShell({
         .select('name')
         .eq('id', storeId)
         .maybeSingle()
-      setStoreName(storeData?.name || '')
+      if (!cancelled) setStoreName(storeData?.name || '')
 
       const { data: accountData } = await supabase
         .from('store_accounts')
@@ -70,28 +102,46 @@ export default function StoreShell({
         .maybeSingle()
 
       if (!accountData?.id) {
-        localStorage.clear()
-        router.replace('/login')
+        try {
+          if (typeof window !== 'undefined') localStorage.clear()
+        } catch {}
+        if (!cancelled) router.replace('/login')
         return
       }
       if (!accountData.is_active) {
+        // 用目前語系提示
         alert(t.inactive)
         await supabase.auth.signOut()
-        localStorage.clear()
-        router.replace('/login')
+        try {
+          if (typeof window !== 'undefined') localStorage.clear()
+        } catch {}
+        if (!cancelled) router.replace('/login')
         return
       }
 
-      localStorage.setItem('store_account_id', accountData.id)
-      setBooted(true)
+      try {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('store_account_id', accountData.id)
+        }
+      } catch {}
+
+      if (!cancelled) setBooted(true)
     }
+
     void init()
+
+    return () => {
+      cancelled = true
+    }
+    // 以路由變化為觸發；避免 t/lang 變動觸發重新導轉
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router])
+  }, [router.asPath, router.pathname])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    localStorage.clear()
+    try {
+      if (typeof window !== 'undefined') localStorage.clear()
+    } catch {}
     router.push('/login')
   }
 
@@ -130,7 +180,7 @@ export default function StoreShell({
           </button>
           <button
             onClick={handleLogout}
-            className="text-xs sm:text-sm text-white/90 border border-white/20 px-3 py-1.5 rounded-md hover:bg-white/10"
+            className="text-xs sm:text-sm text-white/90 border border-white/20 px-3 py-1.5 rounded-md hover:bg白/10 hover:bg-white/10"
           >
             {t.logout}
           </button>
