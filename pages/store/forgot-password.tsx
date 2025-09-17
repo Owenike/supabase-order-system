@@ -5,6 +5,13 @@ import { useState, type FormEvent } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 
+// === 換圖設定（改這裡就能更換顯示的圖片） ===
+// 1) 推薦把圖片放進 /public/auth/forgot-hero.png
+// 2) 若使用外部網址（CDN），把下列路徑改成完整 URL，並在 next.config.js 加入 images.domains/remotePatterns
+const FORGOT_IMG_SRC = '/auth/forgot-hero.png'; // 例如：'/login-logo.png' 或 'https://cdn.example.com/forgot.png'
+const FORGOT_IMG_W = 240; // 寬度（依你的圖片比例調整）
+const FORGOT_IMG_H = 160; // 高度（依你的圖片比例調整）
+
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [msg, setMsg] = useState('');
@@ -77,13 +84,13 @@ export default function ForgotPasswordPage() {
 
         {/* 卡片：半透明灰框 + 玻璃感（與登入頁一致） */}
         <div className="auth-card w-full max-w-sm rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl text-gray-100 shadow-[0_12px_40px_rgba(0,0,0,.35)] p-6">
-          {/* Logo + 標題 */}
+          {/* 圖片 + 標題 */}
           <div className="flex flex-col items-center gap-4 mb-6">
             <Image
-              src="/login-logo.png"
-              alt="品牌 Logo"
-              width={240}
-              height={96}
+              src={FORGOT_IMG_SRC}
+              alt="忘記密碼插圖"
+              width={FORGOT_IMG_W}
+              height={FORGOT_IMG_H}
               priority
               className="h-auto w-auto select-none pointer-events-none"
             />
