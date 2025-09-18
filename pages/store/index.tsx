@@ -64,8 +64,7 @@ export default function StoreHomePage() {
   const [loading, setLoading] = useState(true)
   const audioRef = useRef<HTMLAudioElement>(null)
 
-  // 店家資訊
-  const [storeName, setStoreName] = useState('')
+  // 只為顯示期限而取用（不再重複店名）
   const [trialRange, setTrialRange] = useState<string | null>(null)
   const [expired, setExpired] = useState(false)
 
@@ -73,6 +72,7 @@ export default function StoreHomePage() {
 
   useEffect(() => {
     const init = async () => {
+      // 1) Auth 檢查
       const {
         data: { session },
       } = await supabase.auth.getSession()
@@ -81,6 +81,7 @@ export default function StoreHomePage() {
         return
       }
 
+      // 2) store_id 檢查
       const storeId = localStorage.getItem('store_id')
       if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
         localStorage.clear()
@@ -88,6 +89,7 @@ export default function StoreHomePage() {
         return
       }
 
+      // 3) 帳號啟用檢查
       const { data: accountData } = await supabase
         .from('store_accounts')
         .select('id, is_active')
@@ -109,24 +111,24 @@ export default function StoreHomePage() {
 
       localStorage.setItem('store_account_id', accountData.id)
 
-      // 讀取店家名稱與期限
+      // 4) 讀取「試用期限」（不再讀 name，避免重複顯示）
       const { data: store } = await supabase
         .from('stores')
-        .select('name, trial_start_at, trial_end_at')
+        .select('trial_start_at, trial_end_at')
         .eq('id', storeId)
         .maybeSingle()
 
-      if (store) {
-        setStoreName(store.name || '')
-        if (store.trial_start_at && store.trial_end_at) {
-          setTrialRange(formatROCRange(store.trial_start_at, store.trial_end_at))
-          setExpired(Date.now() > new Date(store.trial_end_at).getTime())
-        }
+      if (store?.trial_start_at && store?.trial_end_at) {
+        setTrialRange(formatROCRange(store.trial_start_at, store.trial_end_at))
+        setExpired(Date.now() > new Date(store.trial_end_at).getTime())
+      } else {
+        setTrialRange(null)
+        setExpired(false)
       }
 
       setLoading(false)
 
-      // Realtime 新訂單通知
+      // 5) 新訂單通知（Realtime）
       const channel = supabase
         .channel('order_notifications')
         .on(
@@ -208,46 +210,98 @@ export default function StoreHomePage() {
         </div>
       )}
 
-      {/* 店家名稱＋期限 */}
-      <div className="px-4 sm:px-6 md:px-10 max-w-6xl mx-auto mb-6">
-        <h2 className="text-xl sm:text-2xl font-bold text-white">
-          您的店家名稱：{storeName}{' '}
-          {trialRange && <span className="text-amber-300">（期限{trialRange}）</span>}
-          {expired && <span className="text-red-400 ml-2">{t.expired}</span>}
-        </h2>
-      </div>
+      {/* ✅ 只顯示「期限徽章」，不再重複店名（StoreShell 左上角已顯示店名） */}
+      {trialRange && (
+        <div className="px-4 sm:px-6 md:px-10 max-w-6xl mx-auto mb-4">
+          <span className="inline-flex items-center px-2.5 py-1.5 rounded-md border border-amber-300/40 bg-amber-500/15 text-amber-200 text-sm">
+            期限{trialRange}
+          </span>
+          {expired && <span className="ml-2 text-red-400 text-sm">{t.expired}</span>}
+        </div>
+      )}
 
-      {/* 功能卡片 */}
+      {/* 內容卡片（2×2） */}
       <main className="px-4 sm:px-6 md:px-10 pb-16">
         <div className="grid gap-6 sm:gap-7 md:gap-8 grid-cols-1 md:grid-cols-2 max-w-6xl mx-auto">
-          {/* 四大功能卡片 */}
+          {/* 1. 分類與菜單管理 */}
           <Card
             ariaLabel="manage-menus"
             onClick={() => go('/store/manage-menus')}
             title={t.manageTitle}
             desc={t.manageDesc}
-            icon={<svg viewBox="0 0 24 24" className="h-12 w-12 text-yellow-400" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 9h10M7 13h6" /></svg>}
+            icon={
+              <svg
+                viewBox="0 0 24 24"
+                className="h-12 w-12 text-yellow-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <path d="M7 9h10M7 13h6" />
+              </svg>
+            }
           />
+
+          {/* 2. 訂單管理 */}
           <Card
             ariaLabel="orders"
             onClick={() => go('/store/orders')}
             title={t.ordersTitle}
             desc={t.ordersDesc}
-            icon={<svg viewBox="0 0 24 24" className="h-12 w-12 text-yellow-400" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 7h16M4 12h16M4 17h10" /><circle cx="18" cy="17" r="0.8" fill="currentColor" /></svg>}
+            icon={
+              <svg
+                viewBox="0 0 24 24"
+                className="h-12 w-12 text-yellow-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M4 7h16M4 12h16M4 17h10" />
+                <circle cx="18" cy="17" r="0.8" fill="currentColor" />
+              </svg>
+            }
           />
+
+          {/* 3. 銷售報表 */}
           <Card
             ariaLabel="stats"
             onClick={() => go('/store/stats')}
             title={t.statsTitle}
             desc={t.statsDesc}
-            icon={<svg viewBox="0 0 24 24" className="h-12 w-12 text-yellow-400" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 19V5M8 19v-6M12 19v-9M16 19V8M20 19V4" /></svg>}
+            icon={
+              <svg
+                viewBox="0 0 24 24"
+                className="h-12 w-12 text-yellow-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M4 19V5M8 19v-6M12 19v-9M16 19V8M20 19V4" />
+              </svg>
+            }
           />
+
+          {/* 4. 產生 QRCode */}
           <Card
             ariaLabel="qrcode"
             onClick={() => go('/qrcode')}
             title={t.qrcodeTitle}
             desc={t.qrcodeDesc}
-            icon={<svg viewBox="0 0 24 24" className="h-12 w-12 text-yellow-400" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><path d="M14 14h3v3M17 17h4M21 14v7" /></svg>}
+            icon={
+              <svg
+                viewBox="0 0 24 24"
+                className="h-12 w-12 text-yellow-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+                <path d="M14 14h3v3M17 17h4M21 14v7" />
+              </svg>
+            }
           />
         </div>
       </main>
