@@ -2,6 +2,7 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
+import { useRouter } from 'next/router'
 import { formatROC, formatROCRange } from '@/lib/date'
 
 type CreateResult = {
@@ -14,14 +15,16 @@ type CreateResult = {
 
 export default function NewStorePage() {
   const [storeName, setStoreName] = useState('')
-  const [ownerName, setOwnerName] = useState('') // ✅ 新增：負責人姓名
+  const [ownerName, setOwnerName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [trialRange, setTrialRange] = useState<string>('') // 顯示 期限114/..~114/..
+  const [trialRange, setTrialRange] = useState<string>('')
+
+  const router = useRouter()
 
   const handleCreate = async () => {
     setMessage('')
@@ -35,7 +38,7 @@ export default function NewStorePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           storeName,
-          ownerName, // ✅ 一併送到 API（API 未用到也不影響）
+          ownerName,
           phone,
           email,
           password,
@@ -45,11 +48,10 @@ export default function NewStorePage() {
       const result: CreateResult = await res.json()
       if (!res.ok) throw new Error(result.error || '建立失敗')
 
-      // 顯示三天期限（民國年）
+      // 顯示三天期限
       if (result.trial_start_at && result.trial_end_at) {
         setTrialRange(`期限${formatROCRange(result.trial_start_at, result.trial_end_at)}`)
       } else {
-        // 萬一 API 沒回，也用前端推算（以今日起三天）
         const start = new Date()
         const end = new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000)
         setTrialRange(`期限${formatROC(start)}~${formatROC(end)}`)
@@ -61,6 +63,11 @@ export default function NewStorePage() {
       setPhone('')
       setEmail('')
       setPassword('')
+
+      // ✅ 自動導向登入頁
+      setTimeout(() => {
+        router.replace('/admin/login')
+      }, 1500) // 可加 1.5 秒延遲給提示訊息
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message)
       else setError('建立失敗')
@@ -76,7 +83,6 @@ export default function NewStorePage() {
 
   return (
     <main className="bg-[#0B0B0B] min-h-screen flex items-center justify-center px-4">
-      {/* 只作用於此卡片：深色半透明 + Autofill 修正 */}
       <style jsx global>{`
         .auth-card input,
         .auth-card textarea,
@@ -102,10 +108,11 @@ export default function NewStorePage() {
         <h1 className="text-2xl font-extrabold tracking-wide text-center mb-2">
           新增店家帳號
         </h1>
-        <p className="text-center text-white/70 mb-6">建立後將自動啟用 <span className="text-amber-300 font-semibold">3 天試用</span></p>
+        <p className="text-center text-white/70 mb-6">
+          建立後將自動啟用 <span className="text-amber-300 font-semibold">3 天試用</span>
+        </p>
 
         <form className="space-y-4" onSubmit={onSubmit}>
-          {/* 店名 */}
           <div>
             <label className="block text-sm text-gray-300 mb-1">店名</label>
             <input
@@ -118,7 +125,6 @@ export default function NewStorePage() {
             />
           </div>
 
-          {/* ✅ 負責人姓名（第二項） */}
           <div>
             <label className="block text-sm text-gray-300 mb-1">負責人姓名</label>
             <input
@@ -130,7 +136,6 @@ export default function NewStorePage() {
             />
           </div>
 
-          {/* ✅ 交換順序：電話在前，Email 在後 */}
           <div>
             <label className="block text-sm text-gray-300 mb-1">電話</label>
             <input
@@ -168,7 +173,6 @@ export default function NewStorePage() {
             />
           </div>
 
-          {/* 提示訊息 */}
           {message && (
             <div className="text-sm text-center rounded-lg px-3 py-2 border text-emerald-200 bg-emerald-600/20 border-emerald-400/30">
               {message} {trialRange ? `（${trialRange}）` : ''}
@@ -180,7 +184,6 @@ export default function NewStorePage() {
             </div>
           )}
 
-          {/* 黃色主按鈕 */}
           <button
             type="submit"
             disabled={loading}
