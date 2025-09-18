@@ -5,7 +5,6 @@ import { useEffect, useState, useRef, type ReactNode } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 import StoreShell from '../../components/layouts/StoreShell'
-import { formatROCRange } from '@/lib/date'
 
 interface Order {
   id: string
@@ -31,7 +30,6 @@ const langMap = {
     logoutMessage: '✅ 已成功登出',
     newOrder: '🛎️ 新訂單來囉！',
     inactive: '此帳號已被停用，請聯繫管理員',
-    expired: '（試用已到期）',
   },
   en: {
     pageTitle: 'From New to Loyal Customers — Omnichannel Membership Ops',
@@ -50,7 +48,6 @@ const langMap = {
     logoutMessage: '✅ Logged out successfully',
     newOrder: '🛎️ New Order Received!',
     inactive: 'This account has been deactivated. Please contact admin.',
-    expired: '(Trial expired)',
   },
 } as const
 
@@ -59,14 +56,10 @@ type Lang = keyof typeof langMap
 export default function StoreHomePage() {
   const router = useRouter()
   const [, setLatestOrder] = useState<Order | null>(null)
-  const [lang] = useState<Lang>('zh')
+  const [lang] = useState<Lang>('zh') // 首頁文案使用本地狀態；Header 語系由 StoreShell 控制
   const [showAlert, setShowAlert] = useState(false)
   const [loading, setLoading] = useState(true)
   const audioRef = useRef<HTMLAudioElement>(null)
-
-  // 只為顯示期限而取用（不再重複店名）
-  const [trialRange, setTrialRange] = useState<string | null>(null)
-  const [expired, setExpired] = useState(false)
 
   const t = langMap[lang]
 
@@ -111,24 +104,9 @@ export default function StoreHomePage() {
 
       localStorage.setItem('store_account_id', accountData.id)
 
-      // 4) 讀取「試用期限」（不再讀 name，避免重複顯示）
-      const { data: store } = await supabase
-        .from('stores')
-        .select('trial_start_at, trial_end_at')
-        .eq('id', storeId)
-        .maybeSingle()
-
-      if (store?.trial_start_at && store?.trial_end_at) {
-        setTrialRange(formatROCRange(store.trial_start_at, store.trial_end_at))
-        setExpired(Date.now() > new Date(store.trial_end_at).getTime())
-      } else {
-        setTrialRange(null)
-        setExpired(false)
-      }
-
       setLoading(false)
 
-      // 5) 新訂單通知（Realtime）
+      // 4) 新訂單通知（Realtime）
       const channel = supabase
         .channel('order_notifications')
         .on(
@@ -207,16 +185,6 @@ export default function StoreHomePage() {
       {showAlert && (
         <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg animate-pulse z-50">
           {t.newOrder}
-        </div>
-      )}
-
-      {/* ✅ 只顯示「期限徽章」，不再重複店名（StoreShell 左上角已顯示店名） */}
-      {trialRange && (
-        <div className="px-4 sm:px-6 md:px-10 max-w-6xl mx-auto mb-4">
-          <span className="inline-flex items-center px-2.5 py-1.5 rounded-md border border-amber-300/40 bg-amber-500/15 text-amber-200 text-sm">
-            期限{trialRange}
-          </span>
-          {expired && <span className="ml-2 text-red-400 text-sm">{t.expired}</span>}
         </div>
       )}
 
