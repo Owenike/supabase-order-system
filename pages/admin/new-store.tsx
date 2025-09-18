@@ -64,10 +64,10 @@ export default function NewStorePage() {
       setEmail('')
       setPassword('')
 
-      // ✅ 自動導向登入頁
+      // ✅ 建立成功後 1.5 秒自動導向 /login
       setTimeout(() => {
-        router.replace('/admin/login')
-      }, 1500) // 可加 1.5 秒延遲給提示訊息
+        router.replace('/login')
+      }, 1500)
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message)
       else setError('建立失敗')
