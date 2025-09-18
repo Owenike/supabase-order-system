@@ -1,8 +1,16 @@
-// pages/admin/new-store.tsx（或你的原檔名）
-// 不需登入即可使用；Glass 風格＋黃色主按鈕
+// pages/admin/new-store.tsx
 'use client'
 
 import { useState, type FormEvent } from 'react'
+import { formatROC, formatROCRange } from '@/lib/date'
+
+type CreateResult = {
+  success?: boolean
+  error?: string
+  store_id?: string
+  trial_start_at?: string
+  trial_end_at?: string
+}
 
 export default function NewStorePage() {
   const [storeName, setStoreName] = useState('')
@@ -13,10 +21,12 @@ export default function NewStorePage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [trialRange, setTrialRange] = useState<string>('') // 顯示 期限114/..~114/..
 
   const handleCreate = async () => {
     setMessage('')
     setError('')
+    setTrialRange('')
     setLoading(true)
 
     try {
@@ -25,15 +35,25 @@ export default function NewStorePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           storeName,
-          ownerName, // ✅ 一併送到 API（若後端未接，會被忽略）
+          ownerName, // ✅ 一併送到 API（API 未用到也不影響）
           phone,
           email,
           password,
         }),
       })
 
-      const result = await res.json()
+      const result: CreateResult = await res.json()
       if (!res.ok) throw new Error(result.error || '建立失敗')
+
+      // 顯示三天期限（民國年）
+      if (result.trial_start_at && result.trial_end_at) {
+        setTrialRange(`期限${formatROCRange(result.trial_start_at, result.trial_end_at)}`)
+      } else {
+        // 萬一 API 沒回，也用前端推算（以今日起三天）
+        const start = new Date()
+        const end = new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000)
+        setTrialRange(`期限${formatROC(start)}~${formatROC(end)}`)
+      }
 
       setMessage('✅ 店家帳號建立成功！')
       setStoreName('')
@@ -79,9 +99,10 @@ export default function NewStorePage() {
       `}</style>
 
       <div className="auth-card w-full max-w-lg rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl text-gray-100 shadow-[0_12px_40px_rgba(0,0,0,.35)] p-6">
-        <h1 className="text-2xl font-extrabold tracking-wide text-center mb-6">
+        <h1 className="text-2xl font-extrabold tracking-wide text-center mb-2">
           新增店家帳號
         </h1>
+        <p className="text-center text-white/70 mb-6">建立後將自動啟用 <span className="text-amber-300 font-semibold">3 天試用</span></p>
 
         <form className="space-y-4" onSubmit={onSubmit}>
           {/* 店名 */}
@@ -97,7 +118,7 @@ export default function NewStorePage() {
             />
           </div>
 
-          {/* ✅ 新增：負責人姓名（置頂第二個） */}
+          {/* ✅ 負責人姓名（第二項） */}
           <div>
             <label className="block text-sm text-gray-300 mb-1">負責人姓名</label>
             <input
@@ -150,7 +171,7 @@ export default function NewStorePage() {
           {/* 提示訊息 */}
           {message && (
             <div className="text-sm text-center rounded-lg px-3 py-2 border text-emerald-200 bg-emerald-600/20 border-emerald-400/30">
-              {message}
+              {message} {trialRange ? `（${trialRange}）` : ''}
             </div>
           )}
           {error && (

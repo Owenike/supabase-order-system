@@ -14,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { storeName, email, phone, password } = req.body
+  const { storeName, email, phone, password } = req.body || {}
 
   if (!storeName || !email || !password) {
     return res.status(400).json({ error: '缺少必要欄位' })
@@ -22,8 +22,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const storeId = uuidv4()
 
+  // 試用期：now ~ now+3 天（以 UTC 記，但前端會用台北時間顯示）
+  const start = new Date()
+  const end = new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000)
+
   try {
-    // Step 1: 新增 stores
+    // Step 1: 新增 stores（含試用起訖）
     const { error: storeErr } = await supabase
       .from('stores')
       .insert({
@@ -31,8 +35,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         name: storeName,
         email,
         phone,
-        is_enabled: true,
-        manage_password: password,
+        is_active: true,              // 先啟用
+        is_enabled: true,             // 若你仍在用此欄也保持 true
+        manage_password: password,    // 你原本就有的欄位（如後續改為不用可移除）
+        trial_start_at: start.toISOString(),
+        trial_end_at: end.toISOString(),
       })
     if (storeErr) throw storeErr
 
@@ -51,7 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .insert({ email, store_id: storeId })
     if (linkErr) throw linkErr
 
-    // Step 4: 新增 store_accounts
+    // Step 4: 新增 store_accounts（bcrypt）
     const hash = await bcrypt.hash(password, 10)
     const { error: accErr } = await supabase
       .from('store_accounts')
@@ -64,12 +71,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
     if (accErr) throw accErr
 
-    return res.status(200).json({ success: true })
-  } catch (err: unknown) {
-    if (err instanceof Error) {
-      return res.status(500).json({ error: err.message })
-    } else {
-      return res.status(500).json({ error: 'Unknown error' })
-    }
+    return res.status(200).json({
+      success: true,
+      store_id: storeId,
+      trial_start_at: start.toISOString(),
+      trial_end_at: end.toISOString(),
+    })
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Unknown error' })
   }
 }
