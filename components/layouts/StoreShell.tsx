@@ -6,6 +6,7 @@ import { useRouter } from 'next/router'
 import Link from 'next/link'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabaseClient'
+import { formatROCRange } from '@/lib/date' // ✅ 新增：民國年日期格式
 
 type Lang = 'zh' | 'en'
 
@@ -17,6 +18,7 @@ const i18n = {
     logout: '登出',
     inactive: '此帳號已被停用，請聯繫管理員',
     line: 'LINE',
+    expired: '（試用已到期）',
   },
   en: {
     brandSubtitle: 'Your store name:',
@@ -25,6 +27,7 @@ const i18n = {
     logout: 'Logout',
     inactive: 'This account has been deactivated. Please contact admin.',
     line: 'LINE',
+    expired: '(Trial expired)',
   },
 } as const
 
@@ -36,7 +39,6 @@ const PUBLIC_STORE_PATHS = new Set<string>([
 ])
 
 function isPublicStoreAuthPath(path: string): boolean {
-  // 允許子路徑與查詢字串，例如 /store/reset-password?access_token=...
   for (const p of PUBLIC_STORE_PATHS) {
     if (path.startsWith(p)) return true
   }
@@ -46,7 +48,7 @@ function isPublicStoreAuthPath(path: string): boolean {
 // ✅ LINE 連結（可用環境變數覆蓋）
 const LINE_URL =
   process.env.NEXT_PUBLIC_LINE_URL ||
-  'https://lin.ee/m8vO3XI' // ← 改成你的官方 LINE 連結（lin.ee 或 @ID 都可）
+  'https://lin.ee/m8vO3XI'
 
 export default function StoreShell({
   title,
@@ -61,13 +63,17 @@ export default function StoreShell({
   const t = i18n[lang]
   const [booted, setBooted] = useState(false)
 
+  // ✅ 新增：試用區間（民國年）與是否過期
+  const [trialRange, setTrialRange] = useState<string | null>(null)
+  const [expired, setExpired] = useState(false)
+
   useEffect(() => {
     let cancelled = false
 
     const init = async () => {
       const currentPath = router.asPath || router.pathname
 
-      // ✅ 白名單頁面：直接放行，不做任何登入/店家檢查
+      // ✅ 白名單頁面：直接放行
       if (isPublicStoreAuthPath(currentPath)) {
         if (!cancelled) setBooted(true)
         return
@@ -95,13 +101,25 @@ export default function StoreShell({
         return
       }
 
+      // 讀店名 + 試用區間
       const { data: storeData } = await supabase
         .from('stores')
-        .select('name')
+        .select('name, trial_start_at, trial_end_at')
         .eq('id', storeId)
         .maybeSingle()
-      if (!cancelled) setStoreName(storeData?.name || '')
 
+      if (!cancelled) {
+        setStoreName(storeData?.name || '')
+        if (storeData?.trial_start_at && storeData?.trial_end_at) {
+          setTrialRange(formatROCRange(storeData.trial_start_at, storeData.trial_end_at))
+          setExpired(Date.now() > new Date(storeData.trial_end_at).getTime())
+        } else {
+          setTrialRange(null)
+          setExpired(false)
+        }
+      }
+
+      // 檢查帳號是否啟用
       const { data: accountData } = await supabase
         .from('store_accounts')
         .select('id, is_active')
@@ -139,7 +157,6 @@ export default function StoreShell({
     return () => {
       cancelled = true
     }
-    // 以路由變化為觸發；避免 t/lang 變動觸發重新導轉
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.asPath, router.pathname])
 
@@ -171,9 +188,23 @@ export default function StoreShell({
             className="rounded-full w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 shadow-lg transition-transform group-hover:scale-[1.03]"
             priority
           />
-          <div className="text-lg sm:text-xl md:text-2xl text-white/90 leading-tight">
-            {t.brandSubtitle}{' '}
-            <span className="font-semibold text-white">{storeName}</span>
+          <div className="flex flex-col">
+            <div className="text-lg sm:text-xl md:text-2xl text-white/90 leading-tight flex items-center gap-2 flex-wrap">
+              <span>
+                {t.brandSubtitle}{' '}
+                <span className="font-semibold text-white">{storeName}</span>
+              </span>
+
+              {/* ✅ 店名右側的期限徽章（只有有資料才顯示） */}
+              {trialRange && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md border border-amber-300/40 bg-amber-500/15 text-amber-200 text-xs sm:text-sm">
+                  期限{trialRange}
+                </span>
+              )}
+              {expired && (
+                <span className="text-red-400 text-xs sm:text-sm">{t.expired}</span>
+              )}
+            </div>
           </div>
         </Link>
 
@@ -195,7 +226,6 @@ export default function StoreShell({
             aria-label="前往 LINE"
             title="前往 LINE"
           >
-            {/* 內建 SVG（避免額外資產） */}
             <svg viewBox="0 0 36 36" width="16" height="16" aria-hidden className="opacity-90">
               <path
                 d="M18 4C9.716 4 3 9.838 3 16.94c0 4.1 2.17 7.73 5.56 10.09l-.36 3.98c-.05.55.53.94 1 .68l4.51-2.36c1.28.29 2.64.45 4.05.45 8.284 0 15-5.838 15-12.94S26.284 4 18 4z"
@@ -212,7 +242,7 @@ export default function StoreShell({
           {/* 登出 */}
           <button
             onClick={handleLogout}
-            className="text-xs sm:text-sm text-white/90 border border-white/20 px-3 py-1.5 rounded-md hover:bg-white/10"
+            className="text-xs sm:text-sm text-white/90 border border-white/20 px-3 py-1.5 rounded-md hover:bg白/10"
           >
             {t.logout}
           </button>
@@ -228,7 +258,7 @@ export default function StoreShell({
         </section>
       ) : null}
 
-      {/* 內容容器：預設白字；同時針對「白底元件」自動把文字改為深色 */}
+      {/* 內容容器 */}
       <main
         className="
           px-4 sm:px-6 md:px-10 pb-16
