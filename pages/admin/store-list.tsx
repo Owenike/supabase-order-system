@@ -18,16 +18,14 @@ type Store = {
 }
 
 type StoreRow = Store & {
-  dine_in_enabled: boolean // 內用
-  takeout_enabled: boolean // 外帶
-  expired: boolean         // 已逾期
+  dine_in_enabled: boolean
+  takeout_enabled: boolean
+  expired: boolean
 }
 
 /** 取得最新 access token（必要時 refresh）並組 headers */
 async function getAuthHeaders(): Promise<Record<string, string>> {
-  // 先拿現有 session
   let { data: sess } = await supabase.auth.getSession()
-  // 若沒有，refresh 一次
   if (!sess.session?.access_token) {
     const { data: refreshed } = await supabase.auth.refreshSession()
     sess = refreshed
@@ -76,29 +74,50 @@ function sessionIsAdmin(session: any): boolean {
   return roles.has('admin')
 }
 
+/** YYYY-MM-DD -> ISO(當地 00:00) */
+function dateToIso(d: string | null | undefined): string | null {
+  if (!d) return null
+  return new Date(`${d}T00:00:00`).toISOString()
+}
+
+/** ISO -> YYYY-MM-DD */
+function isoToDateInput(iso: string | null): string {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toISOString().slice(0, 10)
+  } catch { return '' }
+}
+
 export default function StoreListPage() {
   const [stores, setStores] = useState<StoreRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState<string | null>(null) // 正在切換的 store_id
+  const [busy, setBusy] = useState<string | null>(null)
   const router = useRouter()
+
+  // ====== 編輯彈窗狀態 ======
+  const [editing, setEditing] = useState<StoreRow | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editStart, setEditStart] = useState('') // YYYY-MM-DD
+  const [editEnd, setEditEnd] = useState('')     // YYYY-MM-DD
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editErr, setEditErr] = useState('')
 
   useEffect(() => {
     const checkSessionAndFetch = async () => {
       setLoading(true)
       setError('')
 
-      await new Promise((r) => setTimeout(r, 200))
+      await new Promise((r) => setTimeout(r, 150))
 
       const sessionRes = await supabase.auth.getSession()
       const session = sessionRes.data.session
-
       if (!session || !sessionIsAdmin(session)) {
         router.replace('/admin/login')
         return
       }
 
-      // 1) 讀 stores（取回試用期欄位）
+      // 1) 讀 stores（含試用期欄位）
       const { data: storesData, error: storesErr } = await supabase
         .from('stores')
         .select('id, name, email, phone, is_active, created_at, trial_start_at, trial_end_at')
@@ -117,10 +136,10 @@ export default function StoreListPage() {
           phone: s.phone ?? null,
           dine_in_enabled: true,
           takeout_enabled: true,
-          expired: isExpired(s.trial_end_at), // ✅ 計算是否逾期
+          expired: isExpired(s.trial_end_at),
         })) ?? []
 
-      // 2) 一次抓回所有店家的 dine_in / takeout 旗標
+      // 2) 一次抓旗標
       const ids = baseRows.map((s) => s.id)
       if (ids.length > 0) {
         const { data: flags } = await supabase
@@ -152,8 +171,7 @@ export default function StoreListPage() {
       setStores(baseRows)
       setLoading(false)
 
-      // 3) ✅ 自動停用：若已逾期但仍為 is_active=true，呼叫 API 停用
-      //   （可選；若你想僅顯示不自動關閉，可移除這段）
+      // 3) 自動停用（可選）
       for (const row of baseRows) {
         if (row.expired && row.is_active) {
           try {
@@ -174,11 +192,10 @@ export default function StoreListPage() {
                 body: JSON.stringify({ email: row.email || '', store_id: row.id, is_active: false }),
               })
             }
-            // 本地也同步為停用
-            setStores((prev) => prev.map((s) => (s.id === row.id ? { ...s, is_active: false } : s)))
-          } catch {
-            // 靜默忽略；管理員仍可手動按「暫停」
-          }
+            setStores((prev) =>
+              prev.map((s) => (s.id === row.id ? { ...s, is_active: false } as StoreRow : s))
+            )
+          } catch {}
         }
       }
     }
@@ -186,16 +203,63 @@ export default function StoreListPage() {
     void checkSessionAndFetch()
   }, [router])
 
-  const handleEditName = async (storeId: string, currentName: string) => {
-    const newName = prompt('請輸入新的店名：', currentName)
-    if (!newName || newName.trim() === '' || newName === currentName) return
+  // ====== 編輯：開啟彈窗 ======
+  const openEdit = (row: StoreRow) => {
+    setEditing(row)
+    setEditName(row.name)
+    setEditStart(isoToDateInput(row.trial_start_at))
+    setEditEnd(isoToDateInput(row.trial_end_at))
+    setEditErr('')
+  }
 
-    const { error } = await supabase.from('stores').update({ name: newName.trim() }).eq('id', storeId)
-    if (error) {
-      alert('❌ 修改失敗：' + error.message)
-    } else {
-      alert('✅ 店名已更新')
-      setStores((prev) => prev.map((s) => (s.id === storeId ? { ...s, name: newName.trim() } : s)))
+  // ====== 編輯：儲存 ======
+  const saveEdit = async () => {
+    if (!editing) return
+    setEditErr('')
+
+    const start = editStart?.trim() || ''
+    const end = editEnd?.trim() || ''
+    if (!editName.trim()) {
+      setEditErr('請輸入店名'); return
+    }
+    if (!start || !end) {
+      setEditErr('請選擇開始日與結束日'); return
+    }
+    if (new Date(start).getTime() >= new Date(end).getTime()) {
+      setEditErr('結束日需晚於開始日'); return
+    }
+
+    setSavingEdit(true)
+    try {
+      const payload: Partial<Store> = {
+        name: editName.trim(),
+        trial_start_at: dateToIso(start),
+        trial_end_at: dateToIso(end),
+      }
+
+      const { error } = await supabase.from('stores').update(payload).eq('id', editing.id)
+      if (error) throw error
+
+      // ✅ 重點：保留其餘欄位，確保回傳型別仍是 StoreRow
+      setStores((prev) =>
+        prev.map((s) =>
+          s.id === editing.id
+            ? ({
+                ...s,
+                name: payload.name ?? s.name,
+                trial_start_at: payload.trial_start_at ?? s.trial_start_at,
+                trial_end_at: payload.trial_end_at ?? s.trial_end_at,
+                expired: isExpired((payload.trial_end_at ?? s.trial_end_at) || null),
+              } as StoreRow)
+            : s
+        )
+      )
+
+      setEditing(null)
+    } catch (e: any) {
+      setEditErr(e?.message || '更新失敗')
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -249,25 +313,28 @@ export default function StoreListPage() {
     }
   }
 
-  // === 單獨切換「內用 / 外帶」：呼叫 Server API ===
   const handleToggleDineIn = async (store_id: string) => {
     try {
       setBusy(store_id)
-      // 樂觀更新
-      setStores((prev) => prev.map((s) => (s.id === store_id ? { ...s, dine_in_enabled: !s.dine_in_enabled } : s)))
-
+      setStores((prev) =>
+        prev.map((s) =>
+          s.id === store_id ? ({ ...s, dine_in_enabled: !s.dine_in_enabled } as StoreRow) : s
+        )
+      )
       const resp = await apiPost('/api/admin/toggle-dinein', { store_id })
       const json = await resp.json().catch(() => ({} as any))
       if (!resp.ok) throw new Error(json?.error || '切換失敗')
-
       setStores((prev) =>
-        prev.map((s) => (s.id === store_id ? { ...s, dine_in_enabled: !!json.dine_in_enabled } : s))
+        prev.map((s) =>
+          s.id === store_id ? ({ ...s, dine_in_enabled: !!json.dine_in_enabled } as StoreRow) : s
+        )
       )
     } catch (e: any) {
       alert('❌ 內用開關切換失敗：' + (e?.message || 'Unknown error'))
-      // 還原
       setStores((prev) =>
-        prev.map((s) => (s.id === store_id ? { ...s, dine_in_enabled: !s.dine_in_enabled } : s))
+        prev.map((s) =>
+          s.id === store_id ? ({ ...s, dine_in_enabled: !s.dine_in_enabled } as StoreRow) : s
+        )
       )
     } finally {
       setBusy(null)
@@ -277,28 +344,31 @@ export default function StoreListPage() {
   const handleToggleTakeout = async (store_id: string) => {
     try {
       setBusy(store_id)
-      // 樂觀更新
-      setStores((prev) => prev.map((s) => (s.id === store_id ? { ...s, takeout_enabled: !s.takeout_enabled } : s)))
-
+      setStores((prev) =>
+        prev.map((s) =>
+          s.id === store_id ? ({ ...s, takeout_enabled: !s.takeout_enabled } as StoreRow) : s
+        )
+      )
       const resp = await apiPost('/api/admin/toggle-takeout', { store_id })
       const json = await resp.json().catch(() => ({} as any))
       if (!resp.ok) throw new Error(json?.error || '切換失敗')
-
       setStores((prev) =>
-        prev.map((s) => (s.id === store_id ? { ...s, takeout_enabled: !!json.takeout_enabled } : s))
+        prev.map((s) =>
+          s.id === store_id ? ({ ...s, takeout_enabled: !!json.takeout_enabled } as StoreRow) : s
+        )
       )
     } catch (e: any) {
       alert('❌ 外帶開關切換失敗：' + (e?.message || 'Unknown error'))
-      // 還原
       setStores((prev) =>
-        prev.map((s) => (s.id === store_id ? { ...s, takeout_enabled: !s.takeout_enabled } : s))
+        prev.map((s) =>
+          s.id === store_id ? ({ ...s, takeout_enabled: !s.takeout_enabled } as StoreRow) : s
+        )
       )
     } finally {
       setBusy(null)
     }
   }
 
-  // === 啟用/暫停：只改 is_active（到期自動停用也會走這條） ===
   const handleToggleActive = async (email: string, store_id: string, isActive: boolean) => {
     try {
       let headers = await getAuthHeaders()
@@ -320,8 +390,9 @@ export default function StoreListPage() {
       }
       const result = await res.json()
       if (!res.ok) throw new Error(result?.error || 'toggle-store-active failed')
-
-      setStores((prev) => prev.map((s) => (s.id === store_id ? { ...s, is_active: isActive } : s)))
+      setStores((prev) =>
+        prev.map((s) => (s.id === store_id ? ({ ...s, is_active: isActive } as StoreRow) : s))
+      )
     } catch (e: any) {
       alert('❌ 操作失敗：' + (e?.message || 'Unknown error'))
     }
@@ -334,82 +405,67 @@ export default function StoreListPage() {
           ? `（期限${formatROCRange(store.trial_start_at, store.trial_end_at)}）`
           : ''
       return (
-        <tr key={store.id} className={`border-t ${store.expired ? 'bg-red-50' : ''}`}>
-          <td className="p-2">
-            <div className="font-medium">
-              {store.name} {period}
+        <tr
+          key={store.id}
+          className={`border-t hover:bg-gray-50 transition ${store.expired ? 'bg-red-50' : 'bg-white'}`}
+        >
+          <td className="p-3 align-top">
+            <div className="font-semibold text-gray-900">
+              {store.name} <span className="text-amber-600">{period}</span>
             </div>
             {!store.is_active && (
-              <div className="text-xs text-red-600 mt-0.5">已停用{store.expired ? '（試用到期）' : ''}</div>
+              <div className="text-xs text-red-600 mt-0.5">
+                已停用{store.expired ? '（試用到期）' : ''}
+              </div>
             )}
           </td>
-          <td className="p-2">{store.email || '—'}</td>
-          <td className="p-2">{store.phone || '—'}</td>
-          <td className="p-2 space-x-2 text-center">
-            {/* 編輯 */}
-            <button
-              onClick={() => handleEditName(store.id, store.name)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded"
-            >
-              編輯
-            </button>
-
-            {/* 內用開關 */}
-            <button
-              onClick={() => handleToggleDineIn(store.id)}
-              disabled={busy === store.id || !store.is_active}
-              className={`px-3 py-1 rounded font-medium ${
-                store.dine_in_enabled
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-              } ${!store.is_active ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={
-                store.dine_in_enabled
-                  ? '目前允許內用，點擊後將封鎖內用'
-                  : '目前已封鎖內用，點擊後將啟動內用'
-              }
-            >
-              {busy === store.id ? '…處理中' : store.dine_in_enabled ? '封鎖內用' : '啟動內用'}
-            </button>
-
-            {/* 外帶開關 */}
-            <button
-              onClick={() => handleToggleTakeout(store.id)}
-              disabled={busy === store.id || !store.is_active}
-              className={`px-3 py-1 rounded font-medium ${
-                store.takeout_enabled
-                  ? 'bg-sky-600 hover:bg-sky-700 text-white'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-              } ${!store.is_active ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={
-                store.takeout_enabled
-                  ? '目前允許外帶，點擊後將封鎖外帶'
-                  : '目前已封鎖外帶，點擊後將啟動外帶'
-              }
-            >
-              {busy === store.id ? '…處理中' : store.takeout_enabled ? '封鎖外帶' : '啟動外帶'}
-            </button>
-
-            {/* 啟用/暫停（只改 is_active） */}
-            <button
-              onClick={() => handleToggleActive(store.email || '', store.id, !store.is_active)}
-              className={`px-3 py-1 rounded font-medium ${
-                store.is_active
-                  ? 'bg-yellow-500 hover:bg-yellow-600 text-white'
-                  : 'bg-green-600 hover:bg-green-700 text-white'
-              }`}
-              title={store.is_active ? '暫停帳號' : '啟用帳號'}
-            >
-              {store.is_active ? '暫停' : '啟用'}
-            </button>
-
-            {/* 刪除 */}
-            <button
-              onClick={() => handleDelete(store.email || '', store.id)}
-              className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded"
-            >
-              刪除
-            </button>
+          <td className="p-3 align-top text-gray-700">{store.email || '—'}</td>
+          <td className="p-3 align-top text-gray-700">{store.phone || '—'}</td>
+          <td className="p-3 align-top">
+            <div className="flex flex-wrap gap-2 justify-center">
+              <button
+                onClick={() => openEdit(store)}
+                className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm shadow"
+              >
+                編輯
+              </button>
+              <button
+                onClick={() => handleToggleDineIn(store.id)}
+                disabled={busy === store.id || !store.is_active}
+                className={`px-3 py-1.5 rounded-md text-white text-sm shadow ${
+                  store.dine_in_enabled
+                    ? 'bg-amber-500 hover:bg-amber-600'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                } ${!store.is_active ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {busy === store.id ? '…處理中' : store.dine_in_enabled ? '封鎖內用' : '啟動內用'}
+              </button>
+              <button
+                onClick={() => handleToggleTakeout(store.id)}
+                disabled={busy === store.id || !store.is_active}
+                className={`px-3 py-1.5 rounded-md text-white text-sm shadow ${
+                  store.takeout_enabled
+                    ? 'bg-sky-600 hover:bg-sky-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                } ${!store.is_active ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {busy === store.id ? '…處理中' : store.takeout_enabled ? '封鎖外帶' : '啟動外帶'}
+              </button>
+              <button
+                onClick={() => handleToggleActive(store.email || '', store.id, !store.is_active)}
+                className={`px-3 py-1.5 rounded-md text白 text-sm shadow ${
+                  store.is_active ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-green-600 hover:bg-green-700'
+                }`}
+              >
+                {store.is_active ? '暫停' : '啟用'}
+              </button>
+              <button
+                onClick={() => handleDelete(store.email || '', store.id)}
+                className="px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white text-sm shadow"
+              >
+                刪除
+              </button>
+            </div>
           </td>
         </tr>
       )
@@ -417,24 +473,90 @@ export default function StoreListPage() {
   }, [stores, busy])
 
   return (
-    <div className="max-w-5xl mx-auto mt-10 p-4">
-      <h1 className="text-2xl font-bold mb-6">📋 店家清單</h1>
-      {loading && <p>讀取中...</p>}
-      {error && <p className="text-red-600">{error}</p>}
-      {!loading && stores.length === 0 && <p>目前沒有店家</p>}
+    <div className="max-w-6xl mx-auto mt-10 p-4">
+      <h1 className="text-2xl font-bold mb-4">📋 店家清單</h1>
 
-      <table className="w-full border bg-white">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="p-2 text-left">店名 / 期限</th>
-            <th className="p-2 text-left">Email</th>
-            <th className="p-2 text-left">電話</th>
-            <th className="p-2 text-center">操作</th>
-          </tr>
-        </thead>
-        <tbody>{tableBody}</tbody>
-      </table>
+      <div className="rounded-xl border border-gray-200 shadow-sm overflow-hidden bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-100/80 text-gray-700">
+            <tr>
+              <th className="p-3 text-left">店名 / 期限</th>
+              <th className="p-3 text-left">Email</th>
+              <th className="p-3 text-left">電話</th>
+              <th className="p-3 text-center">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td className="p-6 text-gray-500" colSpan={4}>讀取中…</td></tr>
+            ) : error ? (
+              <tr><td className="p-6 text-red-600" colSpan={4}>{error}</td></tr>
+            ) : stores.length === 0 ? (
+              <tr><td className="p-6 text-gray-500" colSpan={4}>目前沒有店家</td></tr>
+            ) : (
+              tableBody
+            )}
+          </tbody>
+        </table>
+      </div>
       <p className="text-xs text-gray-500 mt-2">＊到期店家列會以淡紅底顯示，並自動停用帳號</p>
+
+      {/* ====== 編輯彈窗 ====== */}
+      {editing && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="w-full max-w-md bg白 text-gray-900 rounded-xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold mb-4">編輯店家資訊</h2>
+
+            <label className="block text-sm mb-1">店名</label>
+            <input
+              className="w-full border rounded-md px-3 py-2 mb-3"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="店家名稱"
+            />
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm mb-1">開始日</label>
+                <input
+                  type="date"
+                  className="w-full border rounded-md px-3 py-2"
+                  value={editStart}
+                  onChange={(e) => setEditStart(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">結束日</label>
+                <input
+                  type="date"
+                  className="w-full border rounded-md px-3 py-2"
+                  value={editEnd}
+                  onChange={(e) => setEditEnd(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {editErr && <div className="mt-3 text-sm text-red-600">{editErr}</div>}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 rounded-md border border-gray-300 hover:bg-gray-50"
+                onClick={() => setEditing(null)}
+                disabled={savingEdit}
+              >
+                取消
+              </button>
+              <button
+                className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-60"
+                onClick={saveEdit}
+                disabled={savingEdit}
+              >
+                {savingEdit ? '儲存中…' : '儲存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
