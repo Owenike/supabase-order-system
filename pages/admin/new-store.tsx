@@ -22,6 +22,7 @@ export default function NewStorePage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [redirecting, setRedirecting] = useState(false) // ✅ 轉頁前的小轉圈
   const [trialRange, setTrialRange] = useState<string>('')
 
   const router = useRouter()
@@ -48,7 +49,7 @@ export default function NewStorePage() {
       const result: CreateResult = await res.json()
       if (!res.ok) throw new Error(result.error || '建立失敗')
 
-      // 顯示三天期限
+      // 顯示三天期限（民國年）
       if (result.trial_start_at && result.trial_end_at) {
         setTrialRange(`期限${formatROCRange(result.trial_start_at, result.trial_end_at)}`)
       } else {
@@ -64,7 +65,8 @@ export default function NewStorePage() {
       setEmail('')
       setPassword('')
 
-      // ✅ 建立成功後 1.5 秒自動導向 /login
+      // ✅ 顯示轉圈 → 1.5 秒後導向 /login
+      setRedirecting(true)
       setTimeout(() => {
         router.replace('/login')
       }, 1500)
@@ -78,11 +80,14 @@ export default function NewStorePage() {
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
-    void handleCreate()
+    if (!loading && !redirecting) void handleCreate()
   }
+
+  const disabled = loading || redirecting
 
   return (
     <main className="bg-[#0B0B0B] min-h-screen flex items-center justify-center px-4">
+      {/* 只作用於此卡片：深色半透明 + Autofill 修正 */}
       <style jsx global>{`
         .auth-card input,
         .auth-card textarea,
@@ -122,6 +127,7 @@ export default function NewStorePage() {
               value={storeName}
               onChange={(e) => setStoreName(e.target.value)}
               required
+              disabled={disabled}
             />
           </div>
 
@@ -133,6 +139,7 @@ export default function NewStorePage() {
               className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
               value={ownerName}
               onChange={(e) => setOwnerName(e.target.value)}
+              disabled={disabled}
             />
           </div>
 
@@ -144,6 +151,7 @@ export default function NewStorePage() {
               className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              disabled={disabled}
             />
           </div>
 
@@ -157,6 +165,7 @@ export default function NewStorePage() {
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
               required
+              disabled={disabled}
             />
           </div>
 
@@ -165,14 +174,16 @@ export default function NewStorePage() {
             <input
               type="password"
               placeholder="設定初始密碼"
-              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
+              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text白 placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
               required
+              disabled={disabled}
             />
           </div>
 
+          {/* 成功／錯誤提示 */}
           {message && (
             <div className="text-sm text-center rounded-lg px-3 py-2 border text-emerald-200 bg-emerald-600/20 border-emerald-400/30">
               {message} {trialRange ? `（${trialRange}）` : ''}
@@ -184,12 +195,20 @@ export default function NewStorePage() {
             </div>
           )}
 
+          {/* 轉圈圈動畫（導頁前顯示） */}
+          {redirecting && (
+            <div className="flex justify-center items-center gap-2 text-amber-300">
+              <div className="animate-spin rounded-full h-6 w-6 border-2 border-amber-300 border-t-transparent" aria-label="loading" />
+              <span>即將導向登入頁…</span>
+            </div>
+          )}
+
           <button
             type="submit"
-            disabled={loading}
+            disabled={disabled}
             className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow-[0_6px_20px_rgba(255,193,7,.25)] hover:bg-amber-500 hover:shadow-[0_8px_24px_rgba(255,193,7,.35)] focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition"
           >
-            {loading ? '建立中…' : '建立帳號'}
+            {loading ? '建立中…' : redirecting ? '即將導向…' : '建立帳號'}
           </button>
         </form>
       </div>
