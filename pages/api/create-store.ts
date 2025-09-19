@@ -14,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { storeName, email, phone, password } = req.body || {}
+  const { storeName, ownerName, email, phone, password } = req.body || {}
 
   if (!storeName || !email || !password) {
     return res.status(400).json({ error: '缺少必要欄位' })
@@ -22,22 +22,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const storeId = uuidv4()
 
-  // 試用期：now ~ now+3 天（以 UTC 記，但前端會用台北時間顯示）
+  // 試用期：now ~ now+3 天
   const start = new Date()
   const end = new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000)
 
   try {
-    // Step 1: 新增 stores（含試用起訖）
+    // Step 1: 新增 stores（含負責人與試用起訖）
     const { error: storeErr } = await supabase
       .from('stores')
       .insert({
         id: storeId,
         name: storeName,
+        owner_name: ownerName || null,   // ✅ 寫入負責人姓名
         email,
         phone,
-        is_active: true,              // 先啟用
-        is_enabled: true,             // 若你仍在用此欄也保持 true
-        manage_password: password,    // 你原本就有的欄位（如後續改為不用可移除）
+        is_active: true,
+        is_enabled: true,
+        manage_password: password,
         trial_start_at: start.toISOString(),
         trial_end_at: end.toISOString(),
       })
