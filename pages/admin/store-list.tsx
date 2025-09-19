@@ -88,12 +88,17 @@ function isoToDateInput(iso: string | null): string {
   } catch { return '' }
 }
 
+type Filter = 'all' | 'in' | 'expired' // 所有清單 / 期限內 / 已過期
+
 export default function StoreListPage() {
   const [stores, setStores] = useState<StoreRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState<string | null>(null) // 正在切換的 store_id
   const router = useRouter()
+
+  // ====== 篩選狀態（新） ======
+  const [filter, setFilter] = useState<Filter>('all')
 
   // ====== 編輯彈窗狀態（UI 只改樣式，不改功能） ======
   const [editing, setEditing] = useState<StoreRow | null>(null)
@@ -220,14 +225,13 @@ export default function StoreListPage() {
     setEditErr('')
 
     const start = editStart?.trim() || ''
-    const end = editEnd?.trim() || ''
     if (!editName.trim()) {
       setEditErr('請輸入店名'); return
     }
-    if (!start || !end) {
+    if (!start || !editEnd?.trim()) {
       setEditErr('請選擇開始日與結束日'); return
     }
-    if (new Date(start).getTime() >= new Date(end).getTime()) {
+    if (new Date(start).getTime() >= new Date(editEnd).getTime()) {
       setEditErr('結束日需晚於開始日'); return
     }
 
@@ -236,7 +240,7 @@ export default function StoreListPage() {
       const payload: Partial<Store> = {
         name: editName.trim(),
         trial_start_at: dateToIso(start),
-        trial_end_at: dateToIso(end),
+        trial_end_at: dateToIso(editEnd),
       }
 
       const { error } = await supabase.from('stores').update(payload).eq('id', editing.id)
@@ -401,8 +405,16 @@ export default function StoreListPage() {
     }
   }
 
+  // ====== 清單篩選（新） ======
+  const filtered = useMemo(() => {
+    if (filter === 'all') return stores
+    if (filter === 'expired') return stores.filter((s) => s.expired)
+    // 期限內：未過期
+    return stores.filter((s) => !s.expired)
+  }, [stores, filter])
+
   const tableBody = useMemo(() => {
-    return stores.map((store) => {
+    return filtered.map((store) => {
       const period =
         store.trial_start_at && store.trial_end_at
           ? `（期限${formatROCRange(store.trial_start_at, store.trial_end_at)}）`
@@ -485,11 +497,47 @@ export default function StoreListPage() {
         </tr>
       )
     })
-  }, [stores, busy])
+  }, [filtered, busy])
 
   return (
     <div className="max-w-6xl mx-auto mt-10 p-4">
       <h1 className="text-2xl font-bold mb-4">📋 店家清單</h1>
+
+      {/* ====== 篩選膠囊鈕（新） ====== */}
+      <div className="mb-4">
+        <div className="inline-flex rounded-full overflow-hidden shadow border border-black/20">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 text-sm transition ${
+              filter === 'all'
+                ? 'bg-amber-400 text-black font-semibold'
+                : 'bg-black/80 text-white/85'
+            }`}
+          >
+            所有清單
+          </button>
+          <button
+            onClick={() => setFilter('in')}
+            className={`px-4 py-2 text-sm transition border-l border-white/10 ${
+              filter === 'in'
+                ? 'bg-amber-400 text-black font-semibold'
+                : 'bg-black/80 text-white/85'
+            }`}
+          >
+            期限內
+          </button>
+          <button
+            onClick={() => setFilter('expired')}
+            className={`px-4 py-2 text-sm transition border-l border-white/10 ${
+              filter === 'expired'
+                ? 'bg-amber-400 text黑 font-semibold'
+                : 'bg-black/80 text-white/85'
+            }`}
+          >
+            已過期
+          </button>
+        </div>
+      </div>
 
       <div className="rounded-xl border border-gray-200 shadow-sm overflow-hidden bg-white">
         <table className="w-full text-sm">
@@ -506,8 +554,8 @@ export default function StoreListPage() {
               <tr><td className="p-6 text-gray-500" colSpan={4}>讀取中…</td></tr>
             ) : error ? (
               <tr><td className="p-6 text-red-600" colSpan={4}>{error}</td></tr>
-            ) : stores.length === 0 ? (
-              <tr><td className="p-6 text-gray-500" colSpan={4}>目前沒有店家</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td className="p-6 text-gray-500" colSpan={4}>無資料</td></tr>
             ) : (
               tableBody
             )}
