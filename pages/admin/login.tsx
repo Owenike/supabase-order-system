@@ -1,3 +1,6 @@
+// pages/admin/login.tsx
+'use client'
+
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
@@ -7,9 +10,12 @@ export default function AdminLoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const handleLogin = async () => {
+    if (loading) return
     setError('')
+    setLoading(true)
 
     const { data, error: signInError } = await supabase.auth.signInWithPassword({
       email,
@@ -18,12 +24,14 @@ export default function AdminLoginPage() {
 
     if (signInError || !data.session) {
       setError('帳號或密碼錯誤')
+      setLoading(false)
       return
     }
 
     const role = data.user.user_metadata?.role
     if (role !== 'admin') {
       setError('非管理員帳號')
+      setLoading(false)
       return
     }
 
@@ -31,29 +39,61 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="p-6 max-w-sm mx-auto">
-      <h1 className="text-2xl font-bold mb-4">平台管理員登入</h1>
-      <input
-        type="email"
-        className="w-full border p-2 mb-3 rounded"
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-      <input
-        type="password"
-        className="w-full border p-2 mb-3 rounded"
-        placeholder="密碼"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      <button
-        onClick={handleLogin}
-        className="w-full bg-blue-600 text-white py-2 rounded"
-      >
-        登入
-      </button>
-      {error && <p className="text-red-600 mt-3">{error}</p>}
-    </div>
+    <main className="bg-[#0B0B0B] min-h-screen flex items-center justify-center px-4">
+      {/* 全域樣式，讓 autofill 跟 placeholder 在暗色背景看起來正確 */}
+      <style jsx global>{`
+        .auth-card input {
+          color: #fff !important;
+          background-color: rgba(255, 255, 255, 0.08) !important;
+          -webkit-text-fill-color: #fff !important;
+          caret-color: #fff !important;
+        }
+        .auth-card ::placeholder {
+          color: rgba(255, 255, 255, 0.5) !important;
+        }
+        .auth-card input:-webkit-autofill {
+          -webkit-text-fill-color: #fff !important;
+          box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.08) inset !important;
+          transition: background-color 5000s ease-in-out 0s !important;
+        }
+      `}</style>
+
+      <div className="auth-card w-full max-w-md rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl text-gray-100 shadow-[0_12px_40px_rgba(0,0,0,.35)] p-6">
+        <h1 className="text-2xl font-extrabold tracking-wide text-center mb-6">
+          平台管理員登入
+        </h1>
+
+        <div className="space-y-4">
+          <input
+            type="email"
+            className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <input
+            type="password"
+            className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40"
+            placeholder="密碼"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+
+          {error && (
+            <div className="text-sm text-center rounded-lg px-3 py-2 border text-red-200 bg-red-600/20 border-red-400/30">
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={handleLogin}
+            disabled={loading}
+            className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow-[0_6px_20px_rgba(255,193,7,.25)] hover:bg-amber-500 hover:shadow-[0_8px_24px_rgba(255,193,7,.35)] focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition"
+          >
+            {loading ? '登入中…' : '登入'}
+          </button>
+        </div>
+      </div>
+    </main>
   )
 }
