@@ -11,6 +11,7 @@ type Store = {
   name: string
   email: string | null
   phone: string | null
+  owner_name: string | null   // ✅ 新增：負責人
   is_active: boolean
   created_at: string
   trial_start_at: string | null
@@ -97,10 +98,10 @@ export default function StoreListPage() {
   const [busy, setBusy] = useState<string | null>(null) // 正在切換的 store_id
   const router = useRouter()
 
-  // ====== 篩選狀態（新） ======
+  // 篩選
   const [filter, setFilter] = useState<Filter>('all')
 
-  // ====== 編輯彈窗狀態（UI 只改樣式，不改功能） ======
+  // 編輯彈窗
   const [editing, setEditing] = useState<StoreRow | null>(null)
   const [editName, setEditName] = useState('')
   const [editStart, setEditStart] = useState('') // YYYY-MM-DD
@@ -123,10 +124,10 @@ export default function StoreListPage() {
         return
       }
 
-      // 1) 讀 stores（含試用期欄位）
+      // 1) 讀 stores（含試用期欄位 & 負責人）
       const { data: storesData, error: storesErr } = await supabase
         .from('stores')
-        .select('id, name, email, phone, is_active, created_at, trial_start_at, trial_end_at')
+        .select('id, name, email, phone, owner_name, is_active, created_at, trial_start_at, trial_end_at')
         .order('created_at', { ascending: false })
 
       if (storesErr) {
@@ -140,12 +141,13 @@ export default function StoreListPage() {
           ...s,
           email: s.email ?? null,
           phone: s.phone ?? null,
+          owner_name: s.owner_name ?? null,
           dine_in_enabled: true,
           takeout_enabled: true,
           expired: isExpired(s.trial_end_at),
         })) ?? []
 
-      // 2) 一次抓回所有店家的 dine_in / takeout 旗標
+      // 2) 抓 dine_in/takeout 旗標
       const ids = baseRows.map((s) => s.id)
       if (ids.length > 0) {
         const { data: flags } = await supabase
@@ -177,7 +179,7 @@ export default function StoreListPage() {
       setStores(baseRows)
       setLoading(false)
 
-      // 3) ✅ 自動停用：若已逾期但仍為 is_active=true，呼叫 API 停用（功能保留）
+      // 3) 自動停用（保留）
       for (const row of baseRows) {
         if (row.expired && row.is_active) {
           try {
@@ -201,9 +203,7 @@ export default function StoreListPage() {
             setStores((prev) =>
               prev.map((s) => (s.id === row.id ? ({ ...s, is_active: false } as StoreRow) : s))
             )
-          } catch {
-            // 靜默忽略；管理員仍可手動按「暫停」
-          }
+          } catch {}
         }
       }
     }
@@ -211,7 +211,6 @@ export default function StoreListPage() {
     void checkSessionAndFetch()
   }, [router])
 
-  // ====== 原本「編輯店名」改為開彈窗（保留功能，只改操作方式） ======
   const openEdit = (row: StoreRow) => {
     setEditing(row)
     setEditName(row.name)
@@ -225,27 +224,20 @@ export default function StoreListPage() {
     setEditErr('')
 
     const start = editStart?.trim() || ''
-    if (!editName.trim()) {
-      setEditErr('請輸入店名'); return
-    }
-    if (!start || !editEnd?.trim()) {
-      setEditErr('請選擇開始日與結束日'); return
-    }
-    if (new Date(start).getTime() >= new Date(editEnd).getTime()) {
-      setEditErr('結束日需晚於開始日'); return
-    }
+    const end = editEnd?.trim() || ''
+    if (!editName.trim()) return setEditErr('請輸入店名')
+    if (!start || !end) return setEditErr('請選擇開始日與結束日')
+    if (new Date(start).getTime() >= new Date(end).getTime()) return setEditErr('結束日需晚於開始日')
 
     setSavingEdit(true)
     try {
       const payload: Partial<Store> = {
         name: editName.trim(),
         trial_start_at: dateToIso(start),
-        trial_end_at: dateToIso(editEnd),
+        trial_end_at: dateToIso(end),
       }
-
       const { error } = await supabase.from('stores').update(payload).eq('id', editing.id)
       if (error) throw error
-
       setStores((prev) =>
         prev.map((s) =>
           s.id === editing.id
@@ -267,11 +259,9 @@ export default function StoreListPage() {
     }
   }
 
-  // ====== 刪除店家（保留既有流程與驗證） ======
   const handleDelete = async (email: string, store_id: string) => {
     const confirmDel = window.confirm(`你確定要刪除 ${email} 的帳號嗎？此操作無法還原`)
     if (!confirmDel) return
-
     const password = prompt('請輸入管理員密碼確認刪除：')
     if (!password) return
 
@@ -318,7 +308,6 @@ export default function StoreListPage() {
     }
   }
 
-  // === 單獨切換「內用 / 外帶」 ===
   const handleToggleDineIn = async (store_id: string) => {
     try {
       setBusy(store_id)
@@ -375,7 +364,6 @@ export default function StoreListPage() {
     }
   }
 
-  // === 啟用/暫停：只改 is_active（到期自動停用也會走這條） ===
   const handleToggleActive = async (email: string, store_id: string, isActive: boolean) => {
     try {
       let headers = await getAuthHeaders()
@@ -405,12 +393,11 @@ export default function StoreListPage() {
     }
   }
 
-  // ====== 清單篩選（新） ======
+  // 篩選
   const filtered = useMemo(() => {
     if (filter === 'all') return stores
     if (filter === 'expired') return stores.filter((s) => s.expired)
-    // 期限內：未過期
-    return stores.filter((s) => !s.expired)
+    return stores.filter((s) => !s.expired) // 期限內
   }, [stores, filter])
 
   const tableBody = useMemo(() => {
@@ -435,46 +422,36 @@ export default function StoreListPage() {
             )}
           </td>
           <td className="p-3 align-top text-gray-700">{store.email || '—'}</td>
+          <td className="p-3 align-top text-gray-700">{store.owner_name || '—'}</td>{/* ✅ 負責人 */}
           <td className="p-3 align-top text-gray-700">{store.phone || '—'}</td>
           <td className="p-3 align-top">
             <div className="flex flex-wrap gap-2 justify-center">
-              {/* 編輯（含期限） */}
               <button
                 onClick={() => openEdit(store)}
                 className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm shadow"
               >
                 編輯
               </button>
-
-              {/* 內用開關 */}
               <button
                 onClick={() => handleToggleDineIn(store.id)}
                 disabled={busy === store.id || !store.is_active}
                 className={`px-3 py-1.5 rounded-md text-white text-sm shadow ${
-                  store.dine_in_enabled
-                    ? 'bg-amber-500 hover:bg-amber-600'
-                    : 'bg-emerald-600 hover:bg-emerald-700'
+                  store.dine_in_enabled ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700'
                 } ${!store.is_active ? 'opacity-50 cursor-not-allowed' : ''}`}
                 title={store.dine_in_enabled ? '目前允許內用，點擊後將封鎖內用' : '目前已封鎖內用，點擊後將啟動內用'}
               >
                 {busy === store.id ? '…處理中' : store.dine_in_enabled ? '封鎖內用' : '啟動內用'}
               </button>
-
-              {/* 外帶開關 */}
               <button
                 onClick={() => handleToggleTakeout(store.id)}
                 disabled={busy === store.id || !store.is_active}
                 className={`px-3 py-1.5 rounded-md text-white text-sm shadow ${
-                  store.takeout_enabled
-                    ? 'bg-sky-600 hover:bg-sky-700'
-                    : 'bg-emerald-600 hover:bg-emerald-700'
+                  store.takeout_enabled ? 'bg-sky-600 hover:bg-sky-700' : 'bg-emerald-600 hover:bg-emerald-700'
                 } ${!store.is_active ? 'opacity-50 cursor-not-allowed' : ''}`}
                 title={store.takeout_enabled ? '目前允許外帶，點擊後將封鎖外帶' : '目前已封鎖外帶，點擊後將啟動外帶'}
               >
                 {busy === store.id ? '…處理中' : store.takeout_enabled ? '封鎖外帶' : '啟動外帶'}
               </button>
-
-              {/* 啟用/暫停（只改 is_active） */}
               <button
                 onClick={() => handleToggleActive(store.email || '', store.id, !store.is_active)}
                 className={`px-3 py-1.5 rounded-md text-white text-sm shadow ${
@@ -484,8 +461,6 @@ export default function StoreListPage() {
               >
                 {store.is_active ? '暫停' : '啟用'}
               </button>
-
-              {/* 刪除 */}
               <button
                 onClick={() => handleDelete(store.email || '', store.id)}
                 className="px-3 py-1.5 rounded-md bg-red-600 hover:bg-red-700 text-white text-sm shadow"
@@ -503,15 +478,13 @@ export default function StoreListPage() {
     <div className="max-w-6xl mx-auto mt-10 p-4">
       <h1 className="text-2xl font-bold mb-4">📋 店家清單</h1>
 
-      {/* ====== 篩選膠囊鈕（新） ====== */}
+      {/* 篩選膠囊鈕 */}
       <div className="mb-4">
         <div className="inline-flex rounded-full overflow-hidden shadow border border-black/20">
           <button
             onClick={() => setFilter('all')}
             className={`px-4 py-2 text-sm transition ${
-              filter === 'all'
-                ? 'bg-amber-400 text-black font-semibold'
-                : 'bg-black/80 text-white/85'
+              filter === 'all' ? 'bg-amber-400 text-black font-semibold' : 'bg-black/80 text-white/85'
             }`}
           >
             所有清單
@@ -519,9 +492,7 @@ export default function StoreListPage() {
           <button
             onClick={() => setFilter('in')}
             className={`px-4 py-2 text-sm transition border-l border-white/10 ${
-              filter === 'in'
-                ? 'bg-amber-400 text-black font-semibold'
-                : 'bg-black/80 text-white/85'
+              filter === 'in' ? 'bg-amber-400 text-black font-semibold' : 'bg-black/80 text-white/85'
             }`}
           >
             期限內
@@ -529,9 +500,7 @@ export default function StoreListPage() {
           <button
             onClick={() => setFilter('expired')}
             className={`px-4 py-2 text-sm transition border-l border-white/10 ${
-              filter === 'expired'
-                ? 'bg-amber-400 text黑 font-semibold'
-                : 'bg-black/80 text-white/85'
+              filter === 'expired' ? 'bg-amber-400 text-black font-semibold' : 'bg-black/80 text-white/85'
             }`}
           >
             已過期
@@ -545,17 +514,18 @@ export default function StoreListPage() {
             <tr>
               <th className="p-3 text-left">店名 / 期限</th>
               <th className="p-3 text-left">Email</th>
+              <th className="p-3 text-left">負責人</th>{/* ✅ 新增表頭 */}
               <th className="p-3 text-left">電話</th>
               <th className="p-3 text-center">操作</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td className="p-6 text-gray-500" colSpan={4}>讀取中…</td></tr>
+              <tr><td className="p-6 text-gray-500" colSpan={5}>讀取中…</td></tr>
             ) : error ? (
-              <tr><td className="p-6 text-red-600" colSpan={4}>{error}</td></tr>
+              <tr><td className="p-6 text-red-600" colSpan={5}>{error}</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td className="p-6 text-gray-500" colSpan={4}>無資料</td></tr>
+              <tr><td className="p-6 text-gray-500" colSpan={5}>無資料</td></tr>
             ) : (
               tableBody
             )}
@@ -564,7 +534,7 @@ export default function StoreListPage() {
       </div>
       <p className="text-xs text-gray-500 mt-2">＊到期店家列會以淡紅底顯示，並自動停用帳號</p>
 
-      {/* ====== 編輯彈窗（UI 強化：一致白底卡片、民國日期提示、按鈕右下角） ====== */}
+      {/* 編輯彈窗（保留原功能＋UI統一） */}
       {editing && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="w-full max-w-md bg-white text-gray-900 rounded-xl shadow-lg p-6">
@@ -587,9 +557,7 @@ export default function StoreListPage() {
                   value={editStart}
                   onChange={(e) => setEditStart(e.target.value)}
                 />
-                {editStart && (
-                  <p className="text-xs text-gray-500 mt-1">民國：{formatROC(new Date(editStart))}</p>
-                )}
+                {editStart && <p className="text-xs text-gray-500 mt-1">民國：{formatROC(new Date(editStart))}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-600 mb-1">結束日</label>
@@ -599,9 +567,7 @@ export default function StoreListPage() {
                   value={editEnd}
                   onChange={(e) => setEditEnd(e.target.value)}
                 />
-                {editEnd && (
-                  <p className="text-xs text-gray-500 mt-1">民國：{formatROC(new Date(editEnd))}</p>
-                )}
+                {editEnd && <p className="text-xs text-gray-500 mt-1">民國：{formatROC(new Date(editEnd))}</p>}
               </div>
             </div>
 
