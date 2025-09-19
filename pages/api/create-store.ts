@@ -38,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         phone,
         is_active: true,
         is_enabled: true,
-        manage_password: password,
+        // ❌ 移除 manage_password，不再存明碼
         trial_start_at: start.toISOString(),
         trial_end_at: end.toISOString(),
       })
