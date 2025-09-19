@@ -114,6 +114,7 @@ export default function StoreListPage() {
       setLoading(true)
       setError('')
 
+      // 稍等片刻讓 UI 有 loading 視覺
       await new Promise((r) => setTimeout(r, 150))
 
       const sessionRes = await supabase.auth.getSession()
@@ -142,8 +143,8 @@ export default function StoreListPage() {
           email: s.email ?? null,
           phone: s.phone ?? null,
           owner_name: s.owner_name ?? null,
-          dine_in_enabled: true,
-          takeout_enabled: true,
+          dine_in_enabled: true,   // 先給預設，稍後用 flags 覆蓋
+          takeout_enabled: true,   // 先給預設，稍後用 flags 覆蓋
           expired: isExpired(s.trial_end_at),
         })) ?? []
 
@@ -169,8 +170,8 @@ export default function StoreListPage() {
           baseRows.forEach((row) => {
             const obj = flagMap.get(row.id)
             if (obj) {
-              if ('dine_in' in obj) row.dine_in_enabled = !!obj.dine_in
-              if ('takeout' in obj) row.takeout_enabled = !!obj.takeout
+              if ('dine_in' in obj) row.dine_in_enabled = !!(obj as any).dine_in
+              if ('takeout' in obj) row.takeout_enabled = !!(obj as any).takeout
             }
           })
         }
@@ -179,12 +180,12 @@ export default function StoreListPage() {
       setStores(baseRows)
       setLoading(false)
 
-      // 3) ✅ 自動停用：若已逾期但仍為 is_active=true，呼叫 API 停用
+      // 3) ✅ 自動停用：若已逾期但仍為 is_active=true，呼叫 API 停用（含 401 重試）
       for (const row of baseRows) {
         if (row.expired && row.is_active) {
           try {
             let headers = await getAuthHeaders()
-            const resp = await fetch('/api/toggle-store-active', {
+            let resp = await fetch('/api/toggle-store-active', {
               method: 'PATCH',
               headers,
               credentials: 'include',
@@ -193,7 +194,7 @@ export default function StoreListPage() {
             if (resp.status === 401) {
               await supabase.auth.refreshSession()
               headers = await getAuthHeaders()
-              await fetch('/api/toggle-store-active', {
+              resp = await fetch('/api/toggle-store-active', {
                 method: 'PATCH',
                 headers,
                 credentials: 'include',
@@ -316,25 +317,22 @@ export default function StoreListPage() {
   const handleToggleDineIn = async (store_id: string) => {
     try {
       setBusy(store_id)
+      // 樂觀更新：先反轉
       setStores((prev) =>
-        prev.map((s) =>
-          s.id === store_id ? ({ ...s, dine_in_enabled: !s.dine_in_enabled } as StoreRow) : s
-        )
+        prev.map((s) => (s.id === store_id ? ({ ...s, dine_in_enabled: !s.dine_in_enabled } as StoreRow) : s))
       )
       const resp = await apiPost('/api/admin/toggle-dinein', { store_id })
       const json = await resp.json().catch(() => ({} as any))
       if (!resp.ok) throw new Error(json?.error || '切換失敗')
+      // 以後端回傳為準
       setStores((prev) =>
-        prev.map((s) =>
-          s.id === store_id ? ({ ...s, dine_in_enabled: !!json.dine_in_enabled } as StoreRow) : s
-        )
+        prev.map((s) => (s.id === store_id ? ({ ...s, dine_in_enabled: !!json.dine_in_enabled } as StoreRow) : s))
       )
     } catch (e: any) {
       alert('❌ 內用開關切換失敗：' + (e?.message || 'Unknown error'))
+      // 失敗：把剛才的樂觀更新還原
       setStores((prev) =>
-        prev.map((s) =>
-          s.id === store_id ? ({ ...s, dine_in_enabled: !s.dine_in_enabled } as StoreRow) : s
-        )
+        prev.map((s) => (s.id === store_id ? ({ ...s, dine_in_enabled: !s.dine_in_enabled } as StoreRow) : s))
       )
     } finally {
       setBusy(null)
@@ -345,24 +343,18 @@ export default function StoreListPage() {
     try {
       setBusy(store_id)
       setStores((prev) =>
-        prev.map((s) =>
-          s.id === store_id ? ({ ...s, takeout_enabled: !s.takeout_enabled } as StoreRow) : s
-        )
+        prev.map((s) => (s.id === store_id ? ({ ...s, takeout_enabled: !s.takeout_enabled } as StoreRow) : s))
       )
       const resp = await apiPost('/api/admin/toggle-takeout', { store_id })
       const json = await resp.json().catch(() => ({} as any))
       if (!resp.ok) throw new Error(json?.error || '切換失敗')
       setStores((prev) =>
-        prev.map((s) =>
-          s.id === store_id ? ({ ...s, takeout_enabled: !!json.takeout_enabled } as StoreRow) : s
-        )
+        prev.map((s) => (s.id === store_id ? ({ ...s, takeout_enabled: !!json.takeout_enabled } as StoreRow) : s))
       )
     } catch (e: any) {
       alert('❌ 外帶開關切換失敗：' + (e?.message || 'Unknown error'))
       setStores((prev) =>
-        prev.map((s) =>
-          s.id === store_id ? ({ ...s, takeout_enabled: !s.takeout_enabled } as StoreRow) : s
-        )
+        prev.map((s) => (s.id === store_id ? ({ ...s, takeout_enabled: !s.takeout_enabled } as StoreRow) : s))
       )
     } finally {
       setBusy(null)
@@ -523,7 +515,7 @@ export default function StoreListPage() {
         }
       `}</style>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-10 py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-10 py-10">
         <h1 className="text-2xl font-extrabold tracking-wide text-white mb-4">📋 店家清單</h1>
 
         {/* 篩選膠囊鈕（深色＋玻璃感） */}
@@ -551,9 +543,9 @@ export default function StoreListPage() {
             </button>
             <button
               onClick={() => setFilter('expired')}
-              className={`px-4 py-2 text-sm transition border-l border白/10 ${
+              className={`px-4 py-2 text-sm transition border-l border-white/10 ${
                 filter === 'expired'
-                  ? 'bg-amber-400 text黑 font-semibold'
+                  ? 'bg-amber-400 text-black font-semibold'
                   : 'text-white/85 hover:bg-white/10'
               }`}
             >
@@ -562,15 +554,15 @@ export default function StoreListPage() {
           </div>
         </div>
 
-        {/* 玻璃感卡片表格 */}
-        <div className="glass rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,.35)] overflow-hidden">
+        {/* 玻璃感卡片表格（寬版 + 可橫向滾動） */}
+        <div className="glass rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,.35)] overflow-x-auto">
           {/* 錯誤訊息（紅色小卡） */}
           {error && (
-            <div className="px-4 py-3 text-sm text-red-200 bg-red-600/20 border-b border-red-400/30">
+            <div className="px-4 py-3 text-sm text-red-200 bg-red-600/20 border-b border-red-400/30 min-w-[900px]">
               {error}
             </div>
           )}
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[1000px]">
             <thead className="bg-white/5 border-b border-white/10 text-white/80">
               <tr>
                 <th className="p-3 text-left">店名 / 期限</th>
@@ -591,7 +583,9 @@ export default function StoreListPage() {
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-white/50 mt-3">＊到期店家列會以淡紅底顯示，並自動停用帳號</p>
+        <p className="text-xs text-white/50 mt-3">
+          ＊到期店家列會以淡紅底顯示，並自動停用帳號
+        </p>
       </div>
 
       {/* ====== 編輯彈窗（玻璃感卡片＋暗色輸入＋Amber focus） ====== */}
