@@ -28,7 +28,26 @@ export default function AdminLoginPage() {
       return
     }
 
-    const role = data.user.user_metadata?.role
+    // 確認 email 是否已驗證（email_confirmed_at）
+    // 使用 getUser 確保拿到完整 user 資訊
+    const { data: uData, error: getUserErr } = await supabase.auth.getUser()
+    const user = uData?.user
+    if (getUserErr || !user) {
+      setError('無法取得使用者資訊')
+      setLoading(false)
+      return
+    }
+
+    const emailConfirmed = (user as any).email_confirmed_at || (user as any).confirmed_at
+    if (!emailConfirmed) {
+      // 立即 sign out，並提示使用者先驗證 Email
+      await supabase.auth.signOut()
+      setError('請先完成 Email 驗證，系統已發送驗證信（或使用重新寄發驗證信）')
+      setLoading(false)
+      return
+    }
+
+    const role = (user as any).user_metadata?.role
     if (role !== 'admin') {
       setError('非管理員帳號')
       setLoading(false)
@@ -40,7 +59,6 @@ export default function AdminLoginPage() {
 
   return (
     <main className="bg-[#0B0B0B] min-h-screen flex items-center justify-center px-4">
-      {/* 全域樣式，讓 autofill 跟 placeholder 在暗色背景看起來正確 */}
       <style jsx global>{`
         .auth-card input {
           color: #fff !important;

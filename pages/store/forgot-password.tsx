@@ -1,73 +1,72 @@
-// pages/store/forgot-password.tsx
-'use client';
+'use client'
 
-import { useState, type FormEvent } from 'react';
-import Image from 'next/image';
-import { supabase } from '@/lib/supabaseClient';
+import { useState, type FormEvent } from 'react'
+import Image from 'next/image'
+import { supabase } from '@/lib/supabaseClient'
 
-// === 換圖設定（改這裡就能更換顯示的圖片） ===
-// 1) 推薦把圖片放進 /public/auth/forgot-hero.png
-// 2) 若使用外部網址（CDN），把下列路徑改成完整 URL，並在 next.config.js 加入 images.domains/remotePatterns
-const FORGOT_IMG_SRC = '/auth/forgot-hero.png'; // 例如：'/login-logo.png' 或 'https://cdn.example.com/forgot.png'
-const FORGOT_IMG_W = 240; // 寬度（依你的圖片比例調整）
-const FORGOT_IMG_H = 160; // 高度（依你的圖片比例調整）
+// === 圖片設定 ===
+// 建議放在 /public/auth/forgot-hero.png
+const FORGOT_IMG_SRC = '/auth/forgot-hero.png'
+const FORGOT_IMG_W = 240
+const FORGOT_IMG_H = 160
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState('');
-  const [msg, setMsg] = useState('');
-  const [err, setErr] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState('')
+  const [msg, setMsg] = useState('')
+  const [err, setErr] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const handleSend = async () => {
-    if (loading) return;
-    setMsg('');
-    setErr('');
+    if (loading) return
+    setMsg('')
+    setErr('')
 
-    const cleaned = email.trim().toLowerCase();
+    const cleaned = email.trim().toLowerCase()
     if (!cleaned) {
-      setErr('請輸入註冊 Email');
-      return;
+      setErr('請輸入註冊 Email')
+      return
     }
 
-    setLoading(true);
+    setLoading(true)
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(cleaned, {
         redirectTo: `${window.location.origin}/store/reset-password`,
-      });
+      })
 
       if (error) {
-        setErr('寄送失敗，請確認 Email 是否存在或稍後再試');
+        console.error('resetPassword error', error)
+        setErr('寄送失敗，請確認 Email 是否存在或稍後再試')
       } else {
-        setMsg('✅ 重設連結已寄出，請至信箱查收');
+        setMsg('✅ 重設密碼連結已寄出，請至信箱查收')
       }
     } catch (e) {
-      console.error('resetPassword error', e);
-      setErr('系統忙碌，請稍後再試');
+      console.error('resetPassword exception', e)
+      setErr('系統忙碌，請稍後再試')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    void handleSend();
-  };
+    e.preventDefault()
+    void handleSend()
+  }
 
   return (
     <>
-      {/* 覆蓋式全螢幕背景：把外層共用面板完全遮住 */}
+      {/* 背景 */}
       <div className="fixed inset-0 bg-[#0B0B0B] z-40" aria-hidden />
 
-      {/* 置中卡片容器（永遠在最上層） */}
+      {/* 置中卡片 */}
       <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-        {/* 只作用於登入/認證卡片：深色半透明 + Autofill 視覺修正（與 /pages/login.tsx 相同） */}
+        {/* Autofill 視覺修正 */}
         <style jsx global>{`
           .auth-card input,
           .auth-card textarea,
           .auth-card select,
           .auth-card option {
             color: #fff !important;
-            background-color: rgba(255, 255, 255, 0.06) !important; /* 與 bg-white/5 對應 */
+            background-color: rgba(255, 255, 255, 0.06) !important;
             -webkit-text-fill-color: #fff !important;
             caret-color: #fff !important;
           }
@@ -82,7 +81,6 @@ export default function ForgotPasswordPage() {
           }
         `}</style>
 
-        {/* 卡片：半透明灰框 + 玻璃感（與登入頁一致） */}
         <div className="auth-card w-full max-w-sm rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl text-gray-100 shadow-[0_12px_40px_rgba(0,0,0,.35)] p-6">
           {/* 圖片 + 標題 */}
           <div className="flex flex-col items-center gap-4 mb-6">
@@ -96,7 +94,7 @@ export default function ForgotPasswordPage() {
             />
             <h1 className="text-2xl font-extrabold tracking-wide">忘記密碼</h1>
             <p className="text-sm text-gray-400 text-center">
-              輸入註冊 Email，我們會寄送重設密碼連結。
+              輸入註冊 Email，我們會寄送重設密碼連結
             </p>
           </div>
 
@@ -115,7 +113,7 @@ export default function ForgotPasswordPage() {
               />
             </div>
 
-            {/* 訊息區（與登入頁相同的樣式規則） */}
+            {/* 訊息區 */}
             {(msg || err) && (
               <div
                 className={`text-sm text-center rounded-lg px-3 py-2 border ${
@@ -128,16 +126,16 @@ export default function ForgotPasswordPage() {
               </div>
             )}
 
-            {/* 主要按鈕（Amber 主色） */}
+            {/* 按鈕 */}
             <button
               type="submit"
-              className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow-[0_6px_20px_rgba(255,193,7,.25)] hover:bg-amber-500 hover:shadow-[0_8px_24px_rgba(255,193,7,.35)] focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition"
+              className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition"
               disabled={loading}
             >
               {loading ? '寄送中…' : '寄送重設密碼連結'}
             </button>
 
-            {/* 底部小連結：返回登入 */}
+            {/* 底部小連結 */}
             <div className="text-center">
               <a href="/login" className="text-sm text-gray-400 hover:text-white">
                 返回登入
@@ -147,5 +145,5 @@ export default function ForgotPasswordPage() {
         </div>
       </div>
     </>
-  );
+  )
 }

@@ -1,19 +1,11 @@
-// pages/admin/new-store.tsx
+// pages/store/new.tsx
 'use client'
 
 import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/router'
-import { formatROC, formatROCRange } from '@/lib/date'
+import { supabase } from '@/lib/supabaseClient'
 
-type CreateResult = {
-  success?: boolean
-  error?: string
-  store_id?: string
-  trial_start_at?: string
-  trial_end_at?: string
-}
-
-export default function NewStorePage() {
+export default function NewStoreSignupPage() {
   const [storeName, setStoreName] = useState('')
   const [ownerName, setOwnerName] = useState('')
   const [phone, setPhone] = useState('')
@@ -22,57 +14,70 @@ export default function NewStorePage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [redirecting, setRedirecting] = useState(false) // ✅ 轉頁前的小轉圈
-  const [trialRange, setTrialRange] = useState<string>('')
 
   const router = useRouter()
 
-  const handleCreate = async () => {
+  function isValidEmail(v: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+  }
+
+  const handleSignup = async () => {
+    if (loading) return
     setMessage('')
     setError('')
-    setTrialRange('')
-    setLoading(true)
 
+    // --- 基本驗證 ---
+    const cleanedEmail = email.trim().toLowerCase()
+    if (!storeName.trim()) {
+      setError('請輸入店名')
+      return
+    }
+    if (!isValidEmail(cleanedEmail)) {
+      setError('請輸入有效的 Email')
+      return
+    }
+    if (password.length < 6) {
+      setError('密碼長度至少 6 碼')
+      return
+    }
+
+    setLoading(true)
     try {
-      const res = await fetch('/api/create-store', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          storeName,
-          ownerName,
-          phone,
-          email,
-          password,
-        }),
+      // ✅ 使用 signUp：會自動寄出「驗證信」
+      //    emailRedirectTo：使用者完成驗證後導回的頁面（可改成你要的）
+      const { error: signUpError } = await supabase.auth.signUp({
+        email: cleanedEmail,
+        password,
+        options: {
+          emailRedirectTo:
+            typeof window !== 'undefined'
+              ? `${window.location.origin}/login`
+              : undefined,
+          data: {
+            store_name: storeName,
+            owner_name: ownerName || null,
+            phone: phone || null,
+          },
+        },
       })
 
-      const result: CreateResult = await res.json()
-      if (!res.ok) throw new Error(result.error || '建立失敗')
+      if (signUpError) throw signUpError
 
-      // 顯示三天期限（民國年）
-      if (result.trial_start_at && result.trial_end_at) {
-        setTrialRange(`期限${formatROCRange(result.trial_start_at, result.trial_end_at)}`)
-      } else {
-        const start = new Date()
-        const end = new Date(start.getTime() + 3 * 24 * 60 * 60 * 1000)
-        setTrialRange(`期限${formatROC(start)}~${formatROC(end)}`)
-      }
-
-      setMessage('✅ 店家帳號建立成功！')
+      setMessage(`✅ 註冊成功！已寄驗證信到 ${cleanedEmail}，請至信箱完成驗證。`)
+      // 清空欄位
       setStoreName('')
       setOwnerName('')
       setPhone('')
       setEmail('')
       setPassword('')
 
-      // ✅ 顯示轉圈 → 1.5 秒後導向 /login
-      setRedirecting(true)
+      // 3 秒後導回登入頁
       setTimeout(() => {
         router.replace('/login')
-      }, 1500)
+      }, 3000)
     } catch (err: unknown) {
-      if (err instanceof Error) setError(err.message)
-      else setError('建立失敗')
+      console.error('signUp error:', err)
+      setError(err instanceof Error ? err.message : '註冊失敗，請稍後再試')
     } finally {
       setLoading(false)
     }
@@ -80,14 +85,14 @@ export default function NewStorePage() {
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
-    if (!loading && !redirecting) void handleCreate()
+    void handleSignup()
   }
 
-  const disabled = loading || redirecting
+  const disabled = loading
 
   return (
     <main className="bg-[#0B0B0B] min-h-screen flex items-center justify-center px-4">
-      {/* 只作用於此卡片：深色半透明 + Autofill 修正 */}
+      {/* 與 login/forgot/reset 一致的 Autofill 修正 */}
       <style jsx global>{`
         .auth-card input,
         .auth-card textarea,
@@ -111,10 +116,12 @@ export default function NewStorePage() {
 
       <div className="auth-card w-full max-w-lg rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl text-gray-100 shadow-[0_12px_40px_rgba(0,0,0,.35)] p-6">
         <h1 className="text-2xl font-extrabold tracking-wide text-center mb-2">
-          新增店家帳號
+          店家自助註冊
         </h1>
         <p className="text-center text-white/70 mb-6">
-          建立後將自動啟用 <span className="text-amber-300 font-semibold">3 天試用</span>
+          建立帳號後，系統會自動寄送
+          <span className="text-amber-300 font-semibold"> 驗證信 </span>
+          至輸入的 Email
         </p>
 
         <form className="space-y-4" onSubmit={onSubmit}>
@@ -123,7 +130,7 @@ export default function NewStorePage() {
             <input
               type="text"
               placeholder="店名"
-              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
+              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 focus:outline-none"
               value={storeName}
               onChange={(e) => setStoreName(e.target.value)}
               required
@@ -136,7 +143,7 @@ export default function NewStorePage() {
             <input
               type="text"
               placeholder="負責人姓名"
-              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
+              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 focus:outline-none"
               value={ownerName}
               onChange={(e) => setOwnerName(e.target.value)}
               disabled={disabled}
@@ -148,7 +155,7 @@ export default function NewStorePage() {
             <input
               type="tel"
               placeholder="電話"
-              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
+              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 focus:outline-none"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               disabled={disabled}
@@ -160,7 +167,7 @@ export default function NewStorePage() {
             <input
               type="email"
               placeholder="email@example.com"
-              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
+              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 focus:outline-none"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
@@ -173,20 +180,18 @@ export default function NewStorePage() {
             <label className="block text-sm text-gray-300 mb-1">密碼</label>
             <input
               type="password"
-              placeholder="設定初始密碼"
-              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 text白 placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-300/40"
+              placeholder="輸入密碼（至少 6 碼）"
+              className="w-full rounded-lg px-3 py-2 bg-white/5 border border-white/15 focus:outline-none"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
               required
               disabled={disabled}
             />
           </div>
 
-          {/* 成功／錯誤提示 */}
           {message && (
             <div className="text-sm text-center rounded-lg px-3 py-2 border text-emerald-200 bg-emerald-600/20 border-emerald-400/30">
-              {message} {trialRange ? `（${trialRange}）` : ''}
+              {message}
             </div>
           )}
           {error && (
@@ -195,20 +200,12 @@ export default function NewStorePage() {
             </div>
           )}
 
-          {/* 轉圈圈動畫（導頁前顯示） */}
-          {redirecting && (
-            <div className="flex justify-center items-center gap-2 text-amber-300">
-              <div className="animate-spin rounded-full h-6 w-6 border-2 border-amber-300 border-t-transparent" aria-label="loading" />
-              <span>即將導向登入頁…</span>
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={disabled}
-            className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow-[0_6px_20px_rgba(255,193,7,.25)] hover:bg-amber-500 hover:shadow-[0_8px_24px_rgba(255,193,7,.35)] focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition"
+            className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 transition"
           >
-            {loading ? '建立中…' : redirecting ? '即將導向…' : '建立帳號'}
+            {loading ? '註冊中…' : '建立帳號'}
           </button>
         </form>
       </div>

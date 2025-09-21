@@ -1,39 +1,45 @@
-// pages/login.tsx
-'use client';
+'use client'
 
-import { useState, type FormEvent } from 'react';
-import Image from 'next/image';
-import { supabase } from '@/lib/supabaseClient';
+import { useState, type FormEvent } from 'react'
+import Image from 'next/image'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [msg, setMsg] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [msg, setMsg] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const handleLogin = async () => {
-    if (loading) return;
-    setMsg('');
-    setLoading(true);
-    let allowRedirect = false;
+    if (loading) return
+    setMsg('')
+    setLoading(true)
+    let allowRedirect = false
 
     try {
       // 清掉舊的本機識別
       try {
-        localStorage.removeItem('store_id');
-        localStorage.removeItem('store_account_id');
+        localStorage.removeItem('store_id')
+        localStorage.removeItem('store_account_id')
       } catch {}
 
-      const cleanedEmail = email.trim().toLowerCase();
+      const cleanedEmail = email.trim().toLowerCase()
 
       // 1) Supabase Auth 登入
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: cleanedEmail,
-        password
-      });
+        password,
+      })
+
       if (loginError || !data?.user) {
-        setMsg('登入失敗，請確認帳號與密碼');
-        return;
+        setMsg('登入失敗，請確認帳號與密碼')
+        return
+      }
+
+      // 🚨 檢查是否已完成 Email 驗證
+      if (!data.user.email_confirmed_at) {
+        setMsg('此帳號尚未完成 Email 驗證，請先到信箱點擊驗證連結')
+        return
       }
 
       // 2) 由 Email 找店家
@@ -41,13 +47,14 @@ export default function LoginPage() {
         .from('stores')
         .select('id')
         .eq('email', cleanedEmail)
-        .maybeSingle();
+        .maybeSingle()
+
       if (storeError || !storeData?.id) {
-        setMsg('此帳號尚未對應到任何店家');
-        return;
+        setMsg('此帳號尚未對應到任何店家')
+        return
       }
       try {
-        localStorage.setItem('store_id', storeData.id);
+        localStorage.setItem('store_id', storeData.id)
       } catch {}
 
       // 3) 檢查 store_accounts
@@ -56,34 +63,35 @@ export default function LoginPage() {
         .select('id')
         .eq('store_id', storeData.id)
         .limit(1)
-        .maybeSingle();
+        .maybeSingle()
+
       if (accountError || !accountData?.id) {
-        setMsg('此店家尚未啟用登入帳號');
-        return;
+        setMsg('此店家尚未啟用登入帳號')
+        return
       }
       try {
-        localStorage.setItem('store_account_id', accountData.id);
+        localStorage.setItem('store_account_id', accountData.id)
       } catch {}
 
-      setMsg('✅ 登入成功，正在導向後台…');
-      allowRedirect = true;
+      setMsg('✅ 登入成功，正在導向後台…')
+      allowRedirect = true
     } catch (err) {
-      console.error('💥 登入流程錯誤:', err);
-      setMsg('發生未知錯誤，請稍後再試');
+      console.error('💥 登入流程錯誤:', err)
+      setMsg('發生未知錯誤，請稍後再試')
     } finally {
-      setLoading(false);
+      setLoading(false)
       if (allowRedirect) {
         setTimeout(() => {
-          window.location.href = '/redirect';
-        }, 250);
+          window.location.href = '/redirect'
+        }, 250)
       }
     }
-  };
+  }
 
   const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    void handleLogin();
-  };
+    e.preventDefault()
+    void handleLogin()
+  }
 
   return (
     <main className="bg-[#0B0B0B] min-h-screen flex items-center justify-center px-4">
@@ -94,7 +102,7 @@ export default function LoginPage() {
         .auth-card select,
         .auth-card option {
           color: #fff !important;
-          background-color: rgba(255, 255, 255, 0.06) !important; /* 與 bg-white/5 對應 */
+          background-color: rgba(255, 255, 255, 0.06) !important;
           -webkit-text-fill-color: #fff !important;
           caret-color: #fff !important;
         }
@@ -111,7 +119,7 @@ export default function LoginPage() {
 
       {/* 登入卡片：半透明灰框 + 玻璃感 */}
       <div className="auth-card w-full max-w-sm rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl text-gray-100 shadow-[0_12px_40px_rgba(0,0,0,.35)] p-6">
-        {/* Logo（建議透明底 PNG/SVG） */}
+        {/* Logo */}
         <div className="flex flex-col items-center gap-4 mb-6">
           <Image
             src="/login-logo.png"
@@ -124,7 +132,6 @@ export default function LoginPage() {
           <h1 className="text-2xl font-extrabold tracking-wide">店家登入</h1>
         </div>
 
-        {/* 表單（暗色半透明控件） */}
         <form className="space-y-3" onSubmit={onSubmit}>
           <div>
             <label className="block text-sm text-gray-300 mb-1">Email</label>
@@ -164,7 +171,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* 主要登入按鈕 */}
           <button
             type="submit"
             className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow-[0_6px_20px_rgba(255,193,7,.25)] hover:bg-amber-500 hover:shadow-[0_8px_24px_rgba(255,193,7,.35)] focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition"
@@ -173,18 +179,17 @@ export default function LoginPage() {
             {loading ? '登入中…' : '登入'}
           </button>
 
-          {/* 新增：創辦帳號（次要按鈕、全寬） */}
+          {/* 改成 /store/new */}
           <a
-            href="https://www.olinex.app/admin/new-store"
+            href="/store/new"
             className="block w-full text-center py-2.5 rounded-xl bg-white/10 text-white border border-white/20 hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-amber-300 transition"
           >
             創辦帳號
           </a>
 
-          {/* 忘記密碼：已改為指定完整網址 */}
           <div className="text-center">
             <a
-              href="https://www.olinex.app/store/forgot-password"
+              href="/store/forgot-password"
               className="text-sm text-gray-400 hover:text-white"
             >
               忘記密碼？
@@ -193,5 +198,5 @@ export default function LoginPage() {
         </form>
       </div>
     </main>
-  );
+  )
 }
