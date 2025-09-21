@@ -1,7 +1,7 @@
 // pages/store/new.tsx
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -15,6 +15,15 @@ export default function NewStoreSignupPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // 防連點冷卻（避免 email rate limit exceeded）
+  const COOLDOWN_SECONDS = 60
+  const [cooldown, setCooldown] = useState<number>(0)
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const t = setInterval(() => setCooldown((s) => s - 1), 1000)
+    return () => clearInterval(t)
+  }, [cooldown])
+
   const router = useRouter()
 
   function isValidEmail(v: string) {
@@ -22,7 +31,7 @@ export default function NewStoreSignupPage() {
   }
 
   const handleSignup = async () => {
-    if (loading) return
+    if (loading || cooldown > 0) return
     setMessage('')
     setError('')
 
@@ -44,7 +53,6 @@ export default function NewStoreSignupPage() {
     setLoading(true)
     try {
       // ✅ 使用 signUp：會自動寄出「驗證信」
-      //    emailRedirectTo：使用者完成驗證後導回的頁面（可改成你要的）
       const { error: signUpError } = await supabase.auth.signUp({
         email: cleanedEmail,
         password,
@@ -61,9 +69,34 @@ export default function NewStoreSignupPage() {
         },
       })
 
-      if (signUpError) throw signUpError
+      if (signUpError) {
+        const raw = (signUpError.message || '').toLowerCase()
+
+        // 常見：限流
+        if (raw.includes('rate limit') || raw.includes('too many') || raw.includes('429')) {
+          setError('寄送太頻繁，請稍後再試（約 1 分鐘後）')
+          setCooldown(COOLDOWN_SECONDS)
+          return
+        }
+        // 常見：Email 已註冊
+        if (
+          raw.includes('already') ||
+          raw.includes('exists') ||
+          raw.includes('registered') ||
+          raw.includes('duplicate')
+        ) {
+          setError('此 Email 已被註冊，請直接登入或使用忘記密碼')
+          return
+        }
+
+        // 其他錯誤
+        console.error('signUp error:', signUpError)
+        setError(signUpError.message || '註冊失敗，請稍後再試')
+        return
+      }
 
       setMessage(`✅ 註冊成功！已寄驗證信到 ${cleanedEmail}，請至信箱完成驗證。`)
+      setCooldown(COOLDOWN_SECONDS) // 成功也先進入冷卻，避免連續測試觸發限流
       // 清空欄位
       setStoreName('')
       setOwnerName('')
@@ -76,7 +109,7 @@ export default function NewStoreSignupPage() {
         router.replace('/login')
       }, 3000)
     } catch (err: unknown) {
-      console.error('signUp error:', err)
+      console.error('signUp exception:', err)
       setError(err instanceof Error ? err.message : '註冊失敗，請稍後再試')
     } finally {
       setLoading(false)
@@ -88,7 +121,7 @@ export default function NewStoreSignupPage() {
     void handleSignup()
   }
 
-  const disabled = loading
+  const disabled = loading || cooldown > 0
 
   return (
     <main className="bg-[#0B0B0B] min-h-screen flex items-center justify-center px-4">
@@ -118,18 +151,20 @@ export default function NewStoreSignupPage() {
         <h1 className="text-2xl font-extrabold tracking-wide text-center mb-2">
           店家自助註冊
         </h1>
-<div className="text-center text-white/70 mb-6 leading-relaxed">
-  <span className="block">
-    建立帳號後，系統會寄
-    <span className="text-amber-300 font-semibold"> 驗證信 </span>
-    至 Email
-  </span>
-  <span className="block mt-1">
-    完成驗證即可獲得
-    <span className="text-amber-300 font-semibold"> 3 天 </span>
-    試用
-  </span>
-</div>
+
+        {/* 兩行固定說明 */}
+        <div className="text-center text-white/70 mb-6 leading-relaxed">
+          <span className="block">
+            建立帳號後，系統會寄
+            <span className="text-amber-300 font-semibold"> 驗證信 </span>
+            至 Email
+          </span>
+          <span className="block mt-1">
+            完成驗證即可獲得
+            <span className="text-amber-300 font-semibold"> 3 天 </span>
+            試用
+          </span>
+        </div>
 
         <form className="space-y-4" onSubmit={onSubmit}>
           <div>
@@ -212,7 +247,11 @@ export default function NewStoreSignupPage() {
             disabled={disabled}
             className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 transition"
           >
-            {loading ? '註冊中…' : '建立帳號'}
+            {loading
+              ? '註冊中…'
+              : cooldown > 0
+              ? `請稍候 ${cooldown} 秒後重試`
+              : '建立帳號'}
           </button>
         </form>
       </div>
