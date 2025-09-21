@@ -57,10 +57,38 @@ const TITLE_MAP: Record<string, string> = {
   '/store/manage-addons': '加料管理',
 }
 
+/** 公開路徑（不需要登入、不應導回 /login） */
+const PUBLIC_ROUTES = new Set<string>([
+  '/', // 若有首頁
+  '/login',
+  '/admin/accept-invite',
+  '/store/new',              // ✅ 註冊頁
+  '/store/forgot-password',  // ✅ 忘記密碼
+  '/store/reset-password',   // ✅ 重設密碼
+])
+
+/** 以「前綴」視為公開（例如 /auth/callback） */
+const PUBLIC_PREFIXES = ['/auth']
+
+/** 需要登入的區段（未登入就導回 /login?next=） */
+const PROTECTED_PREFIXES = ['/store', '/qrcode', '/admin']
+
+/** 由 router.asPath 取出純淨 pathname（去掉查詢與 hash） */
+function pathFromAsPath(asPath: string): string {
+  try {
+    // 給相對路徑加個假域名，方便用 URL 解析
+    const u = new URL(asPath, 'https://dummy.local')
+    return u.pathname
+  } catch {
+    // 後備：手動切
+    return asPath.split('#')[0].split('?')[0]
+  }
+}
+
 export default function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter()
 
-  // ✅ 關鍵：把前端 session 同步成 Cookie，供 API 端讀取
+  // ✅ 把前端 session 同步成 Cookie，供 API 端讀取（保留你的原邏輯）
   useEffect(() => {
     // 1) 首次載入時，如已登入，主動同步一次
     ;(async () => {
@@ -97,6 +125,37 @@ export default function MyApp({ Component, pageProps }: AppProps) {
       data.subscription.unsubscribe()
     }
   }, [])
+
+  // ✅ Client 端保護：只保護「受保護前綴」而且不在公開白名單內的路徑
+  useEffect(() => {
+    const pathname = pathFromAsPath(router.asPath)
+
+    // 命中公開路徑 → 直接放行
+    if (PUBLIC_ROUTES.has(pathname)) return
+    if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return
+
+    // 不是受保護前綴 → 放行
+    if (!PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))) return
+
+    let cancelled = false
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return
+      const hasSession = Boolean(data.session)
+      if (!hasSession) {
+        const next = encodeURIComponent(router.asPath)
+        // 只有在不在 /login 本身時才導回，避免迴圈
+        if (pathname !== '/login') {
+          router.replace(`/login?next=${next}`)
+        }
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+    // 以 asPath 監聽，確保 query/path 變更都會檢查
+  }, [router.asPath])
 
   // 只對「/store」底下的子頁與 /qrcode 套殼；/store 首頁本身已有專屬視覺就不套
   const path = router.pathname
