@@ -122,7 +122,7 @@ export default function NewStoreSignupPage() {
   <span className="block">
     建立帳號後，系統會寄
     <span className="text-amber-300 font-semibold"> 驗證信 </span>
-    至輸入的 Email
+    至 Email
   </span>
   <span className="block mt-1">
     完成驗證即可獲得
