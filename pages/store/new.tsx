@@ -121,10 +121,12 @@ export default function NewStoreSignupPage() {
 <p className="text-center text-white/70 mb-6">
   建立帳號後，系統會自動寄送
   <span className="text-amber-300 font-semibold"> 驗證信 </span>
-  <br className="hidden sm:block" />
-  完成驗證即可獲得
-  <span className="text-amber-300 font-semibold"> 3 天 </span>
-  試用
+  至輸入的 Email
+  <span className="block mt-1">
+    完成驗證即可獲得
+    <span className="text-amber-300 font-semibold"> 3 天 </span>
+    試用
+  </span>
 </p>
 
         <form className="space-y-4" onSubmit={onSubmit}>
