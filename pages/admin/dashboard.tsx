@@ -6,13 +6,24 @@ import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 import type { User } from '@supabase/supabase-js'
 
-/** 店家帳號資料型別 */
-interface StoreAccount {
+/** 店家帳號（store_accounts） */
+interface StoreAccountRow {
   id: string
   email: string
   store_name: string
   is_active: boolean
   created_at: string
+}
+
+/** 功能旗標（store_feature_flags） */
+interface StoreFeatureFlagRow {
+  store_id: string
+  feature_key: 'dine_in' | 'takeout' | string
+  enabled: boolean
+}
+
+/** 前端使用的合併型別（含兩個旗標） */
+interface StoreAccountView extends StoreAccountRow {
   dine_in_enabled: boolean
   takeout_enabled: boolean
 }
@@ -22,7 +33,7 @@ function isStringArray(x: unknown): x is string[] {
   return Array.isArray(x) && x.every((v) => typeof v === 'string')
 }
 
-/** 從 user_metadata / app_metadata 取角色 */
+/** 從 user 取角色 */
 function extractRoleFromUser(user: User): { metaRole?: string; appRoles?: string[] } {
   const metaRoleRaw = (user.user_metadata as Record<string, unknown> | null)?.role
   const metaRole = typeof metaRoleRaw === 'string' ? metaRoleRaw : undefined
@@ -47,7 +58,7 @@ export default function AdminDashboard() {
   const [isAdmin, setIsAdmin] = useState(false)
 
   // 資料與 UI 狀態
-  const [stores, setStores] = useState<StoreAccount[]>([])
+  const [stores, setStores] = useState<StoreAccountView[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [errMsg, setErrMsg] = useState<string>('')
 
@@ -59,7 +70,7 @@ export default function AdminDashboard() {
   // 進行中操作鎖定
   const [mutatingId, setMutatingId] = useState<string | null>(null)
 
-  /** Admin 驗證（修正 user.email 可能為 undefined 的問題） */
+  /** Admin 驗證（安全處理 user.email） */
   const checkAdmin = useCallback(async (): Promise<boolean> => {
     const { data: sessionRes, error: sessionErr } = await supabase.auth.getSession()
     if (sessionErr || !sessionRes.session) return false
@@ -70,14 +81,13 @@ export default function AdminDashboard() {
     const user = userRes.user
     const email = (user.email ?? '').trim()
     if (!email) return false
-
     if (!isEmailConfirmed(user)) return false
 
     const { metaRole, appRoles } = extractRoleFromUser(user)
     if (metaRole === 'admin') return true
     if (appRoles?.includes('admin')) return true
 
-    // 可選：白名單表
+    // 可選：white-list 表
     try {
       const { data: row, error } = await supabase
         .from('platform_admins')
@@ -91,22 +101,56 @@ export default function AdminDashboard() {
     return false
   }, [])
 
-  /** 讀取列表（含 內用/外帶 欄位） */
+  /** 讀取列表（store_accounts + store_feature_flags 合併） */
   const fetchStores = useCallback(async () => {
     setLoading(true)
     setErrMsg('')
-    const { data, error } = await supabase
+
+    // 1) 取 store_accounts
+    const { data: accounts, error: accErr } = await supabase
       .from('store_accounts')
-      .select('id,email,store_name,is_active,created_at,dine_in_enabled,takeout_enabled')
+      .select('id,email,store_name,is_active,created_at')
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('載入失敗', error)
+    if (accErr) {
+      console.error('載入 store_accounts 失敗', accErr)
       setErrMsg('載入失敗，請稍後再試')
       setStores([])
-    } else {
-      setStores((data ?? []) as StoreAccount[])
+      setLoading(false)
+      return
     }
+
+    const accList = (accounts ?? []) as StoreAccountRow[]
+    if (accList.length === 0) {
+      setStores([])
+      setLoading(false)
+      return
+    }
+
+    // 2) 取 store_feature_flags（只抓 dine_in / takeout）
+    const { data: flags, error: flagErr } = await supabase
+      .from('store_feature_flags')
+      .select('store_id,feature_key,enabled')
+
+    if (flagErr) {
+      // 若旗標表查詢失敗，不阻斷流程：用預設 true
+      console.warn('讀取 store_feature_flags 失敗，改用預設 true', flagErr)
+    }
+
+    const flagsList = (flags ?? []) as StoreFeatureFlagRow[]
+
+    // 3) 合併
+    const merged: StoreAccountView[] = accList.map((acc) => {
+      const dine = flagsList.find((f) => f.store_id === acc.id && f.feature_key === 'dine_in')
+      const take = flagsList.find((f) => f.store_id === acc.id && f.feature_key === 'takeout')
+      return {
+        ...acc,
+        dine_in_enabled: dine?.enabled ?? true,
+        takeout_enabled: take?.enabled ?? true,
+      }
+    })
+
+    setStores(merged)
     setLoading(false)
   }, [])
 
@@ -139,7 +183,7 @@ export default function AdminDashboard() {
   }, [checkAdmin, fetchStores, router])
 
   /** 進入行內編輯 */
-  const startEdit = (row: StoreAccount) => {
+  const startEdit = (row: StoreAccountView) => {
     setEditingId(row.id)
     setEditEmail(row.email ?? '')
     setEditStoreName(row.store_name ?? '')
@@ -157,7 +201,7 @@ export default function AdminDashboard() {
     setMutatingId(id)
     setErrMsg('')
 
-    const payload: Partial<StoreAccount> = {
+    const payload: Partial<StoreAccountRow> = {
       email: (editEmail || '').trim(),
       store_name: (editStoreName || '').trim(),
     }
@@ -174,7 +218,7 @@ export default function AdminDashboard() {
     setMutatingId(null)
   }
 
-  /** 啟用 / 停用帳號 */
+  /** 啟用 / 停用帳號（store_accounts） */
   const toggleActive = async (id: string, current: boolean) => {
     setMutatingId(id)
     setErrMsg('')
@@ -188,32 +232,73 @@ export default function AdminDashboard() {
     setMutatingId(null)
   }
 
-  /** 封鎖 / 解除 內用 */
-  const toggleDineIn = async (id: string, currentEnabled: boolean) => {
-    setMutatingId(id)
-    setErrMsg('')
-    const { error } = await supabase.from('store_accounts').update({ dine_in_enabled: !currentEnabled }).eq('id', id)
-    if (error) {
-      console.error('更新內用狀態失敗', error.message)
-      setErrMsg('更新內用狀態失敗，請稍後再試')
-    } else {
-      await fetchStores()
+  /**
+   * 切換旗標（store_feature_flags）
+   * 流程：先 update（eq store_id & feature_key），若 0 筆 → insert（新建旗標）
+   */
+  const upsertFeatureFlag = async (
+    storeId: string,
+    featureKey: 'dine_in' | 'takeout',
+    nextEnabled: boolean
+  ): Promise<void> => {
+    // 先 update
+    const { data: updData, error: updErr } = await supabase
+      .from('store_feature_flags')
+      .update({ enabled: nextEnabled })
+      .eq('store_id', storeId)
+      .eq('feature_key', featureKey)
+      .select('store_id') // 取回受影響筆數
+    if (updErr) {
+      // 若 update 直接出錯，嘗試 insert（多半是無 RLS 或者沒權限，這種情況仍會錯）
+      const { error: insErr } = await supabase.from('store_feature_flags').insert({
+        store_id: storeId,
+        feature_key: featureKey,
+        enabled: nextEnabled,
+      })
+      if (insErr) throw insErr
+      return
     }
-    setMutatingId(null)
+    // 若沒有任何列被改到（長度 0）→ 插入
+    if (!updData || updData.length === 0) {
+      const { error: insErr } = await supabase.from('store_feature_flags').insert({
+        store_id: storeId,
+        feature_key: featureKey,
+        enabled: nextEnabled,
+      })
+      if (insErr) throw insErr
+    }
   }
 
-  /** 封鎖 / 解除 外帶 */
-  const toggleTakeout = async (id: string, currentEnabled: boolean) => {
-    setMutatingId(id)
+  /** 封鎖 / 解除 內用（store_feature_flags） */
+  const toggleDineIn = async (storeId: string, currentEnabled: boolean) => {
+    setMutatingId(storeId)
     setErrMsg('')
-    const { error } = await supabase.from('store_accounts').update({ takeout_enabled: !currentEnabled }).eq('id', id)
-    if (error) {
-      console.error('更新外帶狀態失敗', error.message)
-      setErrMsg('更新外帶狀態失敗，請稍後再試')
-    } else {
+    try {
+      await upsertFeatureFlag(storeId, 'dine_in', !currentEnabled)
       await fetchStores()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('更新內用狀態失敗', msg)
+      setErrMsg('更新內用狀態失敗，請稍後再試')
+    } finally {
+      setMutatingId(null)
     }
-    setMutatingId(null)
+  }
+
+  /** 封鎖 / 解除 外帶（store_feature_flags） */
+  const toggleTakeout = async (storeId: string, currentEnabled: boolean) => {
+    setMutatingId(storeId)
+    setErrMsg('')
+    try {
+      await upsertFeatureFlag(storeId, 'takeout', !currentEnabled)
+      await fetchStores()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error('更新外帶狀態失敗', msg)
+      setErrMsg('更新外帶狀態失敗，請稍後再試')
+    } finally {
+      setMutatingId(null)
+    }
   }
 
   /** 刪除帳號（不可復原） */
@@ -251,7 +336,7 @@ export default function AdminDashboard() {
             <div className="text-2xl">📑</div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">店家帳號管理</h1>
           </div>
-          <button
+        <button
             onClick={() => router.push('/admin/new-store')}
             className="px-4 py-2 rounded bg-amber-400 text-black font-semibold hover:bg-amber-500 transition"
           >
