@@ -1,4 +1,5 @@
 // pages/_app.tsx
+'use client'
 import type { AppProps } from 'next/app'
 import React, { useEffect } from 'react'
 import { useRouter } from 'next/router'
@@ -54,29 +55,30 @@ const TITLE_MAP: Record<string, string> = {
   '/store/manage-addons': '加料管理',
 }
 
-/** 公開路徑（不需要登入、不應導回 /login） */
+/** 公開路徑（不需要登入、不應導回登入頁） */
 const PUBLIC_ROUTES = new Set<string>([
-  '/',
-  '/login',
+  '/', // 若有首頁
+  '/login',               // 店家登入
+  '/admin/login',         // ✅ 管理員登入
   '/admin/accept-invite',
-  '/store/new',              // ✅ 註冊頁
-  '/store/forgot-password',  // ✅ 忘記密碼
-  '/store/reset-password',   // ✅ 重設密碼
+  '/store/new',           // 店家註冊
+  '/store/forgot-password',
+  '/store/reset-password',
 ])
 
 /** 以「前綴」視為公開（例如 /auth/callback） */
 const PUBLIC_PREFIXES = ['/auth']
 
-/** 需要登入的區段（未登入就導回 /login?next=） */
+/** 需要登入的區段 */
 const PROTECTED_PREFIXES = ['/store', '/qrcode', '/admin']
 
-/** 不要套用 StoreShell 的公開路徑（避免殼內的守門機制干擾） */
+/** /store 底下不套 StoreShell 的頁（公開或有自己版型） */
 const STORE_SHELL_EXCLUDE = new Set<string>([
-  '/store',                 // 首頁已有自己外觀
+  '/store',
   '/store/index',
-  '/store/new',             // ✅ 公開
-  '/store/forgot-password', // ✅ 公開
-  '/store/reset-password',  // ✅ 公開
+  '/store/new',
+  '/store/forgot-password',
+  '/store/reset-password',
 ])
 
 function pathFromAsPath(asPath: string): string {
@@ -122,20 +124,33 @@ export default function MyApp({ Component, pageProps }: AppProps) {
     }
   }, [])
 
-  // Client 端保護（白名單放行）
+  // Client 端保護（依區段導向對應的登入頁）
   useEffect(() => {
     const pathname = pathFromAsPath(router.asPath)
+
+    // 白名單：直接放行
     if (PUBLIC_ROUTES.has(pathname)) return
     if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return
+
+    // 不在受保護區段：放行
     if (!PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))) return
 
     let cancelled = false
     supabase.auth.getSession().then(({ data }) => {
       if (cancelled) return
       const hasSession = Boolean(data.session)
-      if (!hasSession && pathname !== '/login') {
+      if (!hasSession) {
         const next = encodeURIComponent(router.asPath)
-        router.replace(`/login?next=${next}`)
+        // 依路徑決定丟到哪個登入頁
+        if (pathname.startsWith('/admin')) {
+          if (pathname !== '/admin/login') {
+            router.replace(`/admin/login?next=${next}`)
+          }
+        } else {
+          if (pathname !== '/login') {
+            router.replace(`/login?next=${next}`)
+          }
+        }
       }
     })
     return () => {
@@ -143,7 +158,7 @@ export default function MyApp({ Component, pageProps }: AppProps) {
     }
   }, [router.asPath])
 
-  // 只對需要的路徑套 StoreShell；**排除公開的 /store 頁**
+  // 只對需要的路徑套 StoreShell；**排除公開 /store 頁**
   const path = pathFromAsPath(router.asPath)
   const useShell =
     (path.startsWith('/store/') && !STORE_SHELL_EXCLUDE.has(path)) ||
