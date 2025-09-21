@@ -4,7 +4,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
+import type { User } from '@supabase/supabase-js'
 
+/** 店家帳號資料型別 */
 interface StoreAccount {
   id: string
   email: string
@@ -13,10 +15,36 @@ interface StoreAccount {
   created_at: string
 }
 
+/** 安全的型別守衛 */
+function isStringArray(x: unknown): x is string[] {
+  return Array.isArray(x) && x.every((v) => typeof v === 'string')
+}
+
+/** 從 user_metadata / app_metadata 取出角色資訊（若有） */
+function extractRoleFromUser(user: User): { metaRole?: string; appRoles?: string[] } {
+  const metaRoleRaw = (user.user_metadata as Record<string, unknown> | null)?.role
+  const metaRole = typeof metaRoleRaw === 'string' ? metaRoleRaw : undefined
+
+  const appRolesRaw = (user.app_metadata as Record<string, unknown> | null)?.roles
+  const appRoles = isStringArray(appRolesRaw) ? appRolesRaw : undefined
+
+  return { metaRole, appRoles }
+}
+
+/** 判斷 email 是否已驗證（以 email_confirmed_at 為主） */
+function isEmailConfirmed(user: User): boolean {
+  // Supabase v2: user.email_confirmed_at 可能為 string | null
+  // 少數專案會自訂 confirmed_at，這裡一併容錯處理
+  const anyUser = user as unknown as Record<string, unknown>
+  const confirmedA = Boolean((user as unknown as { email_confirmed_at?: string | null }).email_confirmed_at)
+  const confirmedB = Boolean((anyUser?.['confirmed_at'] as string | null) ?? null)
+  return confirmedA || confirmedB
+}
+
 export default function AdminDashboard() {
   const router = useRouter()
 
-  // auth 狀態
+  // Auth 與授權狀態
   const [authChecked, setAuthChecked] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
 
@@ -26,35 +54,37 @@ export default function AdminDashboard() {
   const [mutatingId, setMutatingId] = useState<string | null>(null)
   const [errMsg, setErrMsg] = useState<string>('')
 
-  /** 檢查是否為管理員（metadata / app_metadata / platform_admins 任一皆可） */
+  /** 檢查是否為管理員（來源：user_metadata.role 或 app_metadata.roles 或 platform_admins 白名單） */
   const checkAdmin = useCallback(async (): Promise<boolean> => {
     // 1) 先確認是否登入
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-
-    if (!session) return false
+    const { data: sessionRes, error: sessionErr } = await supabase.auth.getSession()
+    if (sessionErr) {
+      console.error('取得 Session 失敗：', sessionErr.message)
+      return false
+    }
+    if (!sessionRes.session) return false
 
     // 2) 取得 user 詳細資料
-    const { data: ures } = await supabase.auth.getUser()
-    const user = ures?.user
-    if (!user?.email) return false
+    const { data: userRes, error: userErr } = await supabase.auth.getUser()
+    if (userErr || !userRes?.user) {
+      if (userErr) console.error('取得 User 失敗：', userErr.message)
+      return false
+    }
+    const user = userRes.user
+    if (!user.email) return false
 
     // 3) email 是否驗證
-    const confirmed =
-      (user as any).email_confirmed_at ||
-      (user as any).confirmed_at ||
-      user.email_confirmed_at
-    if (!confirmed) return false
-
-    // 4) metadata / app_metadata 判斷
-    const metaRole: string | undefined = (user as any)?.user_metadata?.role
-    const appRoles: string[] | undefined = (user as any)?.app_metadata?.roles
-    if (metaRole === 'admin' || (Array.isArray(appRoles) && appRoles.includes('admin'))) {
-      return true
+    if (!isEmailConfirmed(user)) {
+      console.warn('Email 尚未驗證')
+      return false
     }
 
-    // 5) （可選）白名單表 platform_admins（若沒有這張表，查詢失敗會被忽略）
+    // 4) metadata / app_metadata 判斷
+    const { metaRole, appRoles } = extractRoleFromUser(user)
+    if (metaRole === 'admin') return true
+    if (appRoles?.includes('admin')) return true
+
+    // 5) （可選）白名單表 platform_admins（若無此表或 RLS 擋住，失敗就忽略）
     try {
       const { data: row, error } = await supabase
         .from('platform_admins')
@@ -62,8 +92,9 @@ export default function AdminDashboard() {
         .eq('email', user.email.toLowerCase())
         .maybeSingle()
       if (!error && row?.email) return true
-    } catch {
-      // 沒有這張表或 RLS 限制就忽略
+    } catch (e) {
+      // 沒有這張表或 RLS 限制就忽略，不視為錯誤
+      console.info('platform_admins 檢查略過')
     }
 
     return false
@@ -76,7 +107,7 @@ export default function AdminDashboard() {
 
     const { data, error } = await supabase
       .from('store_accounts')
-      .select('*')
+      .select('id,email,store_name,is_active,created_at')
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -84,7 +115,7 @@ export default function AdminDashboard() {
       setErrMsg('載入失敗，請稍後再試')
       setStores([])
     } else {
-      setStores(data || [])
+      setStores((data ?? []) as StoreAccount[])
     }
 
     setLoading(false)
@@ -93,6 +124,7 @@ export default function AdminDashboard() {
   /** 初始流程：先檢查 admin 身份，再載入列表；不是 admin 就導回登入 */
   useEffect(() => {
     let mounted = true
+
     const run = async () => {
       const ok = await checkAdmin()
       if (!mounted) return
@@ -106,17 +138,23 @@ export default function AdminDashboard() {
       }
       await fetchStores()
     }
+
     run()
 
-    // 若登入狀態改變，保持安全
-    const { data } = supabase.auth.onAuthStateChange((_e, session) => {
+    // 監聽登入狀態改變，若登出則導回登入
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) {
         router.replace('/admin/login')
       }
     })
+
     return () => {
       mounted = false
-      data.subscription.unsubscribe()
+      try {
+        sub.subscription.unsubscribe()
+      } catch {
+        // 忽略清理錯誤
+      }
     }
   }, [checkAdmin, fetchStores, router])
 
@@ -124,7 +162,12 @@ export default function AdminDashboard() {
   const toggleActive = async (id: string, current: boolean) => {
     setMutatingId(id)
     setErrMsg('')
-    const { error } = await supabase.from('store_accounts').update({ is_active: !current }).eq('id', id)
+
+    const { error } = await supabase
+      .from('store_accounts')
+      .update({ is_active: !current })
+      .eq('id', id)
+
     if (error) {
       console.error('更新失敗', error.message)
       setErrMsg('更新失敗，請稍後再試')
@@ -134,12 +177,19 @@ export default function AdminDashboard() {
     setMutatingId(null)
   }
 
-  /** 刪除 */
+  /** 刪除（不可復原，請確保後端 RLS / 觸發器會同步清掉關聯資料或以 FK ON DELETE CASCADE 管控） */
   const deleteStore = async (id: string) => {
-    if (!confirm('確定要刪除這個店家帳號嗎？此操作無法復原。')) return
+    const ok = window.confirm('確定要刪除這個店家帳號嗎？此操作無法復原。')
+    if (!ok) return
+
     setMutatingId(id)
     setErrMsg('')
-    const { error } = await supabase.from('store_accounts').delete().eq('id', id)
+
+    const { error } = await supabase
+      .from('store_accounts')
+      .delete()
+      .eq('id', id)
+
     if (error) {
       console.error('刪除失敗', error.message)
       setErrMsg('刪除失敗，請稍後再試')
