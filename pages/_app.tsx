@@ -1,13 +1,14 @@
 // pages/_app.tsx
 'use client'
+
 import type { AppProps } from 'next/app'
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 import StoreShell from '@/components/layouts/StoreShell'
 import '@/styles/globals.css'
 
-// === Error Boundary ===
+// === Error Boundary（保留你的紀錄到 Supabase 的機制）===
 type RBState = { hasError: boolean; msg: string }
 type RBProps = { children: React.ReactNode }
 
@@ -28,7 +29,9 @@ class RootErrorBoundary extends React.Component<RBProps, RBState> {
         url: typeof location !== 'undefined' ? location.href : null,
         user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
       })
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }
   render() {
     if (this.state.hasError) {
@@ -59,7 +62,7 @@ const TITLE_MAP: Record<string, string> = {
 const PUBLIC_ROUTES = new Set<string>([
   '/', // 若有首頁
   '/login',               // 店家登入
-  '/admin/login',         // ✅ 管理員登入
+  '/admin/login',         // 管理員登入
   '/admin/accept-invite',
   '/store/new',           // 店家註冊
   '/store/forgot-password',
@@ -81,6 +84,7 @@ const STORE_SHELL_EXCLUDE = new Set<string>([
   '/store/reset-password',
 ])
 
+/** 從 asPath 解析出乾淨 pathname */
 function pathFromAsPath(asPath: string): string {
   try {
     const u = new URL(asPath, 'https://dummy.local')
@@ -93,76 +97,104 @@ function pathFromAsPath(asPath: string): string {
 export default function MyApp({ Component, pageProps }: AppProps) {
   const router = useRouter()
 
-  // 同步 session -> Cookie（保留你的原邏輯）
+  // === 1) 先同步前端 session -> 後端 Cookie（保留你的原邏輯） ===
+  const lastCallbackAtRef = useRef<number>(0)
   useEffect(() => {
     ;(async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession()
       try {
-        await fetch('/api/auth/callback', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event: 'INITIAL', session }),
-        })
-      } catch {}
+        const now = Date.now()
+        if (now - lastCallbackAtRef.current > 1500) {
+          lastCallbackAtRef.current = now
+          await fetch('/api/auth/callback', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event: 'INITIAL', session }),
+          })
+        }
+      } catch {
+        /* ignore */
+      }
     })()
 
     const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
       try {
-        await fetch('/api/auth/callback', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event, session }),
-        })
-      } catch {}
+        const now = Date.now()
+        if (now - lastCallbackAtRef.current > 1500) {
+          lastCallbackAtRef.current = now
+          await fetch('/api/auth/callback', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event, session }),
+          })
+        }
+      } catch {
+        /* ignore */
+      }
     })
     return () => {
       data.subscription.unsubscribe()
     }
   }, [])
 
-  // Client 端保護（依區段導向對應的登入頁）
+  // === 2) 取得並緩存「是否有 session」；在**拿到結果之前，不做任何導頁**（修正閃回） ===
+  const [authChecked, setAuthChecked] = useState(false)
+  const [hasSession, setHasSession] = useState<boolean>(false)
+
   useEffect(() => {
+    let mounted = true
+
+    const load = async () => {
+      const { data } = await supabase.auth.getSession()
+      if (!mounted) return
+      setHasSession(Boolean(data.session))
+      setAuthChecked(true)
+    }
+    load()
+
+    // 伴隨後續事件變更，也更新 hasSession
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setHasSession(Boolean(session))
+      setAuthChecked(true)
+    })
+
+    return () => {
+      mounted = false
+      data.subscription.unsubscribe()
+    }
+  }, [])
+
+  // === 3) 只有在「authChecked === true」之後，才對受保護路徑做導頁 ===
+  useEffect(() => {
+    if (!authChecked) return // 關鍵：還沒拿到 session 前，不判斷
+
     const pathname = pathFromAsPath(router.asPath)
 
-    // 白名單：直接放行
+    // 白名單直接放行
     if (PUBLIC_ROUTES.has(pathname)) return
     if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return
 
-    // 不在受保護區段：放行
+    // 非受保護前綴也放行
     if (!PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))) return
 
-    let cancelled = false
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return
-      const hasSession = Boolean(data.session)
-      if (!hasSession) {
-        const next = encodeURIComponent(router.asPath)
-        // 依路徑決定丟到哪個登入頁
-        if (pathname.startsWith('/admin')) {
-          if (pathname !== '/admin/login') {
-            router.replace(`/admin/login?next=${next}`)
-          }
-        } else {
-          if (pathname !== '/login') {
-            router.replace(`/login?next=${next}`)
-          }
-        }
+    if (!hasSession) {
+      const next = encodeURIComponent(router.asPath)
+      if (pathname.startsWith('/admin')) {
+        if (pathname !== '/admin/login') router.replace(`/admin/login?next=${next}`)
+      } else {
+        if (pathname !== '/login') router.replace(`/login?next=${next}`)
       }
-    })
-    return () => {
-      cancelled = true
     }
-  }, [router.asPath])
+  }, [authChecked, hasSession, router.asPath])
 
-  // 只對需要的路徑套 StoreShell；**排除公開 /store 頁**
+  // === 4) 決定是否套 StoreShell（與你原本一致，並排除公開 /store 頁） ===
   const path = pathFromAsPath(router.asPath)
   const useShell =
-    (path.startsWith('/store/') && !STORE_SHELL_EXCLUDE.has(path)) ||
-    path === '/qrcode'
+    (path.startsWith('/store/') && !STORE_SHELL_EXCLUDE.has(path)) || path === '/qrcode'
   const title = TITLE_MAP[path]
   const body = <Component {...pageProps} />
 
