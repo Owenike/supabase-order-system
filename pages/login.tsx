@@ -95,7 +95,7 @@ export default function LoginPage() {
 
   return (
     <main className="bg-[#0B0B0B] min-h-screen flex items-center justify-center px-4">
-      {/* 只作用於登入卡片：深色半透明 + Autofill 視覺修正 */}
+      {/* Autofill 修正樣式 */}
       <style jsx global>{`
         .auth-card input,
         .auth-card textarea,
@@ -117,7 +117,6 @@ export default function LoginPage() {
         }
       `}</style>
 
-      {/* 登入卡片：半透明灰框 + 玻璃感 */}
       <div className="auth-card w-full max-w-sm rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl text-gray-100 shadow-[0_12px_40px_rgba(0,0,0,.35)] p-6">
         {/* Logo */}
         <div className="flex flex-col items-center gap-4 mb-6">
@@ -171,6 +170,7 @@ export default function LoginPage() {
             </div>
           )}
 
+          {/* 登入按鈕 */}
           <button
             type="submit"
             className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow-[0_6px_20px_rgba(255,193,7,.25)] hover:bg-amber-500 hover:shadow-[0_8px_24px_rgba(255,193,7,.35)] focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition"
@@ -179,7 +179,7 @@ export default function LoginPage() {
             {loading ? '登入中…' : '登入'}
           </button>
 
-          {/* 改成 /store/new */}
+          {/* 創辦帳號 → 指向 /store/new */}
           <a
             href="/store/new"
             className="block w-full text-center py-2.5 rounded-xl bg-white/10 text-white border border-white/20 hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-amber-300 transition"
@@ -187,6 +187,7 @@ export default function LoginPage() {
             創辦帳號
           </a>
 
+          {/* 忘記密碼 */}
           <div className="text-center">
             <a
               href="/store/forgot-password"
