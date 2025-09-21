@@ -120,7 +120,7 @@ export default function NewStoreSignupPage() {
         </h1>
 <div className="text-center text-white/70 mb-6 leading-relaxed">
   <span className="block">
-    建立帳號後，系統會自動寄送
+    建立帳號後，系統會寄
     <span className="text-amber-300 font-semibold"> 驗證信 </span>
     至輸入的 Email
   </span>
