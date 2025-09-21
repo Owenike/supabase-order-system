@@ -118,16 +118,18 @@ export default function NewStoreSignupPage() {
         <h1 className="text-2xl font-extrabold tracking-wide text-center mb-2">
           店家自助註冊
         </h1>
-<p className="text-center text-white/70 mb-6">
-  建立帳號後，系統會自動寄送
-  <span className="text-amber-300 font-semibold"> 驗證信 </span>
-  至輸入的 Email
+<div className="text-center text-white/70 mb-6 leading-relaxed">
+  <span className="block">
+    建立帳號後，系統會自動寄送
+    <span className="text-amber-300 font-semibold"> 驗證信 </span>
+    至輸入的 Email
+  </span>
   <span className="block mt-1">
     完成驗證即可獲得
     <span className="text-amber-300 font-semibold"> 3 天 </span>
     試用
   </span>
-</p>
+</div>
 
         <form className="space-y-4" onSubmit={onSubmit}>
           <div>
