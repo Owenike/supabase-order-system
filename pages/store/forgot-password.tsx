@@ -1,6 +1,7 @@
+// pages/store/forgot-password.tsx
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, useEffect } from 'react'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -10,14 +11,25 @@ const FORGOT_IMG_SRC = '/auth/forgot-hero.png'
 const FORGOT_IMG_W = 240
 const FORGOT_IMG_H = 160
 
+// 限流冷卻秒數（避免 "email rate limit exceeded"）
+const COOLDOWN_SECONDS = 60
+
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // 冷卻倒數
+  const [cooldown, setCooldown] = useState<number>(0)
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const t = setInterval(() => setCooldown((s) => s - 1), 1000)
+    return () => clearInterval(t)
+  }, [cooldown])
+
   const handleSend = async () => {
-    if (loading) return
+    if (loading || cooldown > 0) return
     setMsg('')
     setErr('')
 
@@ -26,21 +38,44 @@ export default function ForgotPasswordPage() {
       setErr('請輸入註冊 Email')
       return
     }
+    // 基本 email 格式檢查
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleaned)
+    if (!emailOk) {
+      setErr('Email 格式不正確')
+      return
+    }
 
     setLoading(true)
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(cleaned, {
-        redirectTo: `${window.location.origin}/store/reset-password`,
+        redirectTo:
+          typeof window !== 'undefined'
+            ? `${window.location.origin}/store/reset-password`
+            : undefined,
       })
 
       if (error) {
-        console.error('resetPassword error', error)
-        setErr('寄送失敗，請確認 Email 是否存在或稍後再試')
+        const raw = (error.message || '').toLowerCase()
+
+        // 針對限流友善處理
+        if (
+          raw.includes('rate limit') ||
+          raw.includes('too many') ||
+          raw.includes('429')
+        ) {
+          setErr('寄送太頻繁，請稍後再試（約 1 分鐘後）')
+          setCooldown(COOLDOWN_SECONDS)
+        } else {
+          // 其他錯誤（例如 Email 不存在 / SMTP 暫時失敗）
+          setErr('寄送失敗，請確認 Email 是否存在或稍後再試')
+        }
+        console.error('resetPassword error:', error)
       } else {
         setMsg('✅ 重設密碼連結已寄出，請至信箱查收')
+        setCooldown(COOLDOWN_SECONDS) // 成功後也開啟冷卻，避免連續點擊
       }
     } catch (e) {
-      console.error('resetPassword exception', e)
+      console.error('resetPassword exception:', e)
       setErr('系統忙碌，請稍後再試')
     } finally {
       setLoading(false)
@@ -51,6 +86,8 @@ export default function ForgotPasswordPage() {
     e.preventDefault()
     void handleSend()
   }
+
+  const disabled = loading || cooldown > 0
 
   return (
     <>
@@ -126,13 +163,17 @@ export default function ForgotPasswordPage() {
               </div>
             )}
 
-            {/* 按鈕 */}
+            {/* 主要按鈕（含冷卻倒數） */}
             <button
               type="submit"
               className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition"
-              disabled={loading}
+              disabled={disabled}
             >
-              {loading ? '寄送中…' : '寄送重設密碼連結'}
+              {loading
+                ? '寄送中…'
+                : cooldown > 0
+                ? `請稍候 ${cooldown} 秒後重試`
+                : '寄送重設密碼連結'}
             </button>
 
             {/* 底部小連結 */}
