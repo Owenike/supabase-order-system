@@ -11,7 +11,8 @@ import ConfirmPasswordModal from '@/components/ui/ConfirmPasswordModal'
    型別定義
 ===================== */
 interface StoreAccountRow {
-  id: string
+  id: string                    // ← store_account 的主鍵（帳號 id）
+  store_id: string              // ← 關鍵！對應 stores.id
   email: string
   store_name: string
   is_active: boolean
@@ -21,12 +22,20 @@ interface StoreAccountRow {
 }
 
 interface StoreFeatureFlagRow {
-  store_id: string
+  store_id: string              // ← 指向 stores.id
   feature_key: 'dine_in' | 'takeout' | string
   enabled: boolean
 }
 
-interface StoreView extends StoreAccountRow {
+interface StoreView {
+  account_id: string            // ← store_accounts.id（帳號 id）
+  store_id: string              // ← stores.id（flags 用這個）
+  email: string
+  store_name: string
+  is_active: boolean
+  created_at: string
+  trial_start_at: string | null
+  trial_end_at: string | null
   dine_in_enabled: boolean
   takeout_enabled: boolean
 }
@@ -40,11 +49,7 @@ function getErrorMessage(e: unknown): string {
   if (!e) return '未知錯誤'
   if (typeof e === 'string') return e
   if (e instanceof Error) return e.message
-  try {
-    return JSON.stringify(e)
-  } catch {
-    return String(e)
-  }
+  try { return JSON.stringify(e) } catch { return String(e) }
 }
 
 function formatYMD(iso: string | null): string {
@@ -78,20 +83,19 @@ export default function AdminDashboard() {
   const [keyword, setKeyword] = useState<string>('')
 
   // 行內編輯
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null) // ← 存 account_id
   const [editName, setEditName] = useState<string>('')
   const [editStart, setEditStart] = useState<string>('') // yyyy-MM-dd
   const [editEnd, setEditEnd] = useState<string>('')     // yyyy-MM-dd
 
   // 操作鎖定
-  const [mutatingId, setMutatingId] = useState<string | null>(null)
+  const [mutatingKey, setMutatingKey] = useState<string | null>(null) // 可放 account_id 或 store_id
 
   // 刪除二次確認（管理員密碼）
   const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<{ accountId: string; storeId: string } | null>(null)
   const [adminEmail, setAdminEmail] = useState<string>('')
 
-  // 讀取管理員 email（用於刪除時 re-auth）
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => {
       const email = data?.user?.email ?? ''
@@ -100,33 +104,42 @@ export default function AdminDashboard() {
   }, [])
 
   /* ---------------------
-     讀取 accounts + flags
+     讀取 accounts + flags（關鍵：select 要拿到 store_id）
   --------------------- */
   const fetchStores = useCallback(async () => {
     setLoading(true)
     setErr('')
     try {
+      // 1) store_accounts（一定要選出 store_id）
       const { data: acc, error: accErr } = await supabase
         .from('store_accounts')
-        .select('id,email,store_name,is_active,created_at,trial_start_at,trial_end_at')
+        .select('id, store_id, email, store_name, is_active, created_at, trial_start_at, trial_end_at')
         .order('created_at', { ascending: false })
       if (accErr) throw accErr
       const accounts = (acc ?? []) as StoreAccountRow[]
 
+      // 2) flags
       const { data: flg, error: flagErr } = await supabase
         .from('store_feature_flags')
-        .select('store_id,feature_key,enabled')
+        .select('store_id, feature_key, enabled')
       if (flagErr) {
-        // 若旗標表讀不到，不中斷流程：預設 true
         console.warn('read store_feature_flags failed, fallback to defaults', flagErr)
       }
       const flags = (flg ?? []) as StoreFeatureFlagRow[]
 
+      // 3) 合併：用 store_id 對 flags
       const merged: StoreView[] = accounts.map((a) => {
-        const dine = flags.find((f) => f.store_id === a.id && f.feature_key === 'dine_in')
-        const take = flags.find((f) => f.store_id === a.id && f.feature_key === 'takeout')
+        const dine = flags.find((f) => f.store_id === a.store_id && f.feature_key === 'dine_in')
+        const take = flags.find((f) => f.store_id === a.store_id && f.feature_key === 'takeout')
         return {
-          ...a,
+          account_id: a.id,
+          store_id: a.store_id,    // ← 給 flags 用
+          email: a.email,
+          store_name: a.store_name,
+          is_active: a.is_active,
+          created_at: a.created_at,
+          trial_start_at: a.trial_start_at,
+          trial_end_at: a.trial_end_at,
           dine_in_enabled: dine?.enabled ?? true,
           takeout_enabled: take?.enabled ?? true,
         }
@@ -140,15 +153,14 @@ export default function AdminDashboard() {
     }
   }, [])
 
-  useEffect(() => {
-    void fetchStores()
-  }, [fetchStores])
+  useEffect(() => { void fetchStores() }, [fetchStores])
 
   /* ---------------------
-     flags upsert（update→insert）
+     flags upsert（update→insert）以 store_id 為主鍵
   --------------------- */
   const upsertFlag = useCallback(
     async (storeId: string, key: 'dine_in' | 'takeout', nextEnabled: boolean) => {
+      // 先 update
       const { data: upd, error: updErr } = await supabase
         .from('store_feature_flags')
         .update({ enabled: nextEnabled })
@@ -156,12 +168,14 @@ export default function AdminDashboard() {
         .eq('feature_key', key)
         .select('store_id')
       if (updErr) {
+        // 如果 update 因 RLS 以外的錯誤失敗，再嘗試 insert
         const { error: insErr } = await supabase
           .from('store_feature_flags')
           .insert({ store_id: storeId, feature_key: key, enabled: nextEnabled })
         if (insErr) throw insErr
         return
       }
+      // 受影響 0 筆 → insert
       if (!upd || upd.length === 0) {
         const { error: insErr } = await supabase
           .from('store_feature_flags')
@@ -173,10 +187,10 @@ export default function AdminDashboard() {
   )
 
   /* ---------------------
-     互動動作
+     互動：全部改用正確 id
   --------------------- */
   const toggleDineIn = async (storeId: string, current: boolean) => {
-    setMutatingId(storeId)
+    setMutatingKey(`dine:${storeId}`)
     setErr('')
     try {
       await upsertFlag(storeId, 'dine_in', !current)
@@ -184,12 +198,12 @@ export default function AdminDashboard() {
     } catch (e) {
       setErr(getErrorMessage(e))
     } finally {
-      setMutatingId(null)
+      setMutatingKey(null)
     }
   }
 
   const toggleTakeout = async (storeId: string, current: boolean) => {
-    setMutatingId(storeId)
+    setMutatingKey(`takeout:${storeId}`)
     setErr('')
     try {
       await upsertFlag(storeId, 'takeout', !current)
@@ -197,72 +211,77 @@ export default function AdminDashboard() {
     } catch (e) {
       setErr(getErrorMessage(e))
     } finally {
-      setMutatingId(null)
+      setMutatingKey(null)
     }
   }
 
-  const toggleActive = async (id: string, current: boolean) => {
-    setMutatingId(id)
+  const toggleActive = async (accountId: string, current: boolean) => {
+    setMutatingKey(`active:${accountId}`)
     setErr('')
     try {
-      const { error } = await supabase.from('store_accounts').update({ is_active: !current }).eq('id', id)
+      const { error } = await supabase
+        .from('store_accounts')
+        .update({ is_active: !current })
+        .eq('id', accountId)
       if (error) throw error
       await fetchStores()
     } catch (e) {
       setErr(getErrorMessage(e))
     } finally {
-      setMutatingId(null)
+      setMutatingKey(null)
     }
   }
 
-  const requestDelete = (id: string) => {
-    setPendingDeleteId(id)
+  const requestDelete = (accountId: string, storeId: string) => {
+    setPendingDelete({ accountId, storeId })
     setShowDeleteModal(true)
   }
 
   const confirmDeleteWithPassword = async (password: string) => {
-    if (!pendingDeleteId || !adminEmail) {
+    if (!pendingDelete || !adminEmail) {
       setShowDeleteModal(false)
       return
     }
-    setMutatingId(pendingDeleteId)
+    const { accountId, storeId } = pendingDelete
+    setMutatingKey(`delete:${accountId}`)
     setErr('')
     try {
-      // 先用管理員帳密 re-auth（確保是本人）
+      // re-auth
       const { error: loginError } = await supabase.auth.signInWithPassword({
         email: adminEmail,
         password,
       })
       if (loginError) throw loginError
 
-      // 先刪 flags，再刪帳號（若 DB 已設外鍵 cascade，這步可省略）
+      // 先刪該 store 的 flags
       const { error: delFlagErr } = await supabase
         .from('store_feature_flags')
         .delete()
-        .eq('store_id', pendingDeleteId)
+        .eq('store_id', storeId)
       if (delFlagErr) throw delFlagErr
 
+      // 再刪帳號
       const { error: delAccErr } = await supabase
         .from('store_accounts')
         .delete()
-        .eq('id', pendingDeleteId)
+        .eq('id', accountId)
       if (delAccErr) throw delAccErr
 
       setShowDeleteModal(false)
-      setPendingDeleteId(null)
+      setPendingDelete(null)
       await fetchStores()
     } catch (e) {
       setErr(getErrorMessage(e))
     } finally {
-      setMutatingId(null)
+      setMutatingKey(null)
     }
   }
 
   /* ---------------------
-     編輯（店名 + 期限）
+     編輯（店名 + 期限）對 accountId 寫入
   --------------------- */
   const startEdit = (row: StoreView) => {
-    setEditingId(row.id)
+    setEditingId(row.account_id)
     setEditName(row.store_name ?? '')
     setEditStart(row.trial_start_at ? row.trial_start_at.substring(0, 10) : '')
     setEditEnd(row.trial_end_at ? row.trial_end_at.substring(0, 10) : '')
@@ -273,8 +292,8 @@ export default function AdminDashboard() {
     setEditStart('')
     setEditEnd('')
   }
-  const saveEdit = async (id: string) => {
-    setMutatingId(id)
+  const saveEdit = async (accountId: string) => {
+    setMutatingKey(`save:${accountId}`)
     setErr('')
     try {
       const payload = {
@@ -282,14 +301,17 @@ export default function AdminDashboard() {
         trial_start_at: editStart || null,
         trial_end_at: editEnd || null,
       }
-      const { error } = await supabase.from('store_accounts').update(payload).eq('id', id)
+      const { error } = await supabase
+        .from('store_accounts')
+        .update(payload)
+        .eq('id', accountId)
       if (error) throw error
       await fetchStores()
       cancelEdit()
     } catch (e) {
       setErr(getErrorMessage(e))
     } finally {
-      setMutatingId(null)
+      setMutatingKey(null)
     }
   }
 
@@ -325,7 +347,7 @@ export default function AdminDashboard() {
   )
 
   /* =====================
-     UI（深色基調，對齊你的頁面）
+     UI（深色基調）
   ===================== */
   return (
     <main className="min-h-screen bg-[#0B0B0B] text-white">
@@ -374,7 +396,7 @@ export default function AdminDashboard() {
             ))}
           </div>
 
-          {/* 右：深色搜尋框（避免過白） */}
+          {/* 右：搜尋框 */}
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
@@ -384,25 +406,21 @@ export default function AdminDashboard() {
         </div>
 
         {/* 錯誤 / 載入 */}
-        {err && (
-          <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">
-            ❌ {err}
-          </div>
-        )}
+        {err && <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">❌ {err}</div>}
         {loading && <div className="mb-4 text-white/80">讀取中…</div>}
 
         {/* 清單卡片 */}
         <div className="space-y-4">
           {filtered.map((s) => {
-            const busy = mutatingId === s.id
+            const busy = mutatingKey?.includes(s.account_id) || mutatingKey?.includes(s.store_id)
             const expired = isExpired(s.trial_end_at)
 
             return (
               <div
-                key={s.id}
+                key={s.account_id}
                 className="relative bg-[#2B2B2B] text-white rounded-xl shadow-sm border border-white/10 px-5 py-4"
               >
-                {editingId === s.id ? (
+                {editingId === s.account_id ? (
                   // ===== 編輯模式：店名 + 期限 =====
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
                     {/* 店名 */}
@@ -437,10 +455,10 @@ export default function AdminDashboard() {
                     </div>
                     {/* 操作 */}
                     <div className="lg:col-span-2 flex items-end gap-2">
-                      <Button type="button" size="sm" variant="success" disabled={busy} onClick={() => void saveEdit(s.id)}>
+                      <Button type="button" size="sm" variant="success" disabled={!!busy} onClick={() => void saveEdit(s.account_id)}>
                         儲存
                       </Button>
-                      <Button type="button" size="sm" variant="soft" disabled={busy} onClick={cancelEdit}>
+                      <Button type="button" size="sm" variant="soft" disabled={!!busy} onClick={cancelEdit}>
                         取消
                       </Button>
                     </div>
@@ -494,17 +512,17 @@ export default function AdminDashboard() {
                       </span>
                     </div>
 
-                    {/* 下：操作按鈕群 */}
+                    {/* 下：操作按鈕群（注意 id 使用） */}
                     <div className="flex gap-2 flex-wrap relative z-10 pointer-events-auto">
-                      <Button type="button" size="sm" variant="soft" disabled={busy} onClick={() => startEdit(s)}>
+                      <Button type="button" size="sm" variant="soft" disabled={!!busy} onClick={() => startEdit(s)}>
                         編輯
                       </Button>
                       <Button
                         type="button"
                         size="sm"
                         variant="soft"
-                        disabled={busy}
-                        onClick={() => toggleDineIn(s.id, s.dine_in_enabled)}
+                        disabled={!!busy}
+                        onClick={() => toggleDineIn(s.store_id, s.dine_in_enabled)}
                       >
                         {s.dine_in_enabled ? '封鎖內用' : '解除內用'}
                       </Button>
@@ -512,8 +530,8 @@ export default function AdminDashboard() {
                         type="button"
                         size="sm"
                         variant="soft"
-                        disabled={busy}
-                        onClick={() => toggleTakeout(s.id, s.takeout_enabled)}
+                        disabled={!!busy}
+                        onClick={() => toggleTakeout(s.store_id, s.takeout_enabled)}
                       >
                         {s.takeout_enabled ? '封鎖外帶' : '解除外帶'}
                       </Button>
@@ -521,8 +539,8 @@ export default function AdminDashboard() {
                         type="button"
                         size="sm"
                         variant="warning"
-                        disabled={busy}
-                        onClick={() => toggleActive(s.id, s.is_active)}
+                        disabled={!!busy}
+                        onClick={() => toggleActive(s.account_id, s.is_active)}
                       >
                         {s.is_active ? '停用帳號' : '啟用帳號'}
                       </Button>
@@ -530,8 +548,8 @@ export default function AdminDashboard() {
                         type="button"
                         size="sm"
                         variant="destructive"
-                        disabled={busy}
-                        onClick={() => requestDelete(s.id)}
+                        disabled={!!busy}
+                        onClick={() => requestDelete(s.account_id, s.store_id)}
                       >
                         刪除
                       </Button>
@@ -556,7 +574,7 @@ export default function AdminDashboard() {
         <ConfirmPasswordModal
           onCancel={() => {
             setShowDeleteModal(false)
-            setPendingDeleteId(null)
+            setPendingDelete(null)
           }}
           onConfirm={confirmDeleteWithPassword}
         />
