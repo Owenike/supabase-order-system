@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
+import ConfirmPasswordModal from '@/components/ui/ConfirmPasswordModal'
 
 /* =====================
    型別定義
@@ -33,8 +34,19 @@ interface StoreView extends StoreAccountRow {
 type TabKey = 'all' | 'active' | 'expired' | 'blocked'
 
 /* =====================
-   日期工具
+   通用小工具
 ===================== */
+function getErrorMessage(e: unknown): string {
+  if (!e) return '未知錯誤'
+  if (typeof e === 'string') return e
+  if (e instanceof Error) return e.message
+  try {
+    return JSON.stringify(e)
+  } catch {
+    return String(e)
+  }
+}
+
 function formatYMD(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -74,6 +86,19 @@ export default function AdminDashboard() {
   // 操作鎖定
   const [mutatingId, setMutatingId] = useState<string | null>(null)
 
+  // 刪除二次確認（管理員密碼）
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [adminEmail, setAdminEmail] = useState<string>('')
+
+  // 讀取管理員 email（用於刪除時 re-auth）
+  useEffect(() => {
+    void supabase.auth.getUser().then(({ data }) => {
+      const email = data?.user?.email ?? ''
+      if (email) setAdminEmail(email)
+    })
+  }, [])
+
   /* ---------------------
      讀取 accounts + flags
   --------------------- */
@@ -91,7 +116,10 @@ export default function AdminDashboard() {
       const { data: flg, error: flagErr } = await supabase
         .from('store_feature_flags')
         .select('store_id,feature_key,enabled')
-      if (flagErr) console.warn('read store_feature_flags failed, fallback to defaults', flagErr)
+      if (flagErr) {
+        // 若旗標表讀不到，不中斷流程：預設 true
+        console.warn('read store_feature_flags failed, fallback to defaults', flagErr)
+      }
       const flags = (flg ?? []) as StoreFeatureFlagRow[]
 
       const merged: StoreView[] = accounts.map((a) => {
@@ -105,10 +133,8 @@ export default function AdminDashboard() {
       })
 
       setStores(merged)
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      console.error('fetchStores error:', msg)
-      setErr(msg || '載入失敗')
+    } catch (e) {
+      setErr(getErrorMessage(e))
     } finally {
       setLoading(false)
     }
@@ -147,7 +173,7 @@ export default function AdminDashboard() {
   )
 
   /* ---------------------
-     互動動作（加上 z-index 與 pointer-events）
+     互動動作
   --------------------- */
   const toggleDineIn = async (storeId: string, current: boolean) => {
     setMutatingId(storeId)
@@ -155,9 +181,8 @@ export default function AdminDashboard() {
     try {
       await upsertFlag(storeId, 'dine_in', !current)
       await fetchStores()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setErr(msg || '更新內用狀態失敗')
+    } catch (e) {
+      setErr(getErrorMessage(e))
     } finally {
       setMutatingId(null)
     }
@@ -169,9 +194,8 @@ export default function AdminDashboard() {
     try {
       await upsertFlag(storeId, 'takeout', !current)
       await fetchStores()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setErr(msg || '更新外帶狀態失敗')
+    } catch (e) {
+      setErr(getErrorMessage(e))
     } finally {
       setMutatingId(null)
     }
@@ -184,25 +208,51 @@ export default function AdminDashboard() {
       const { error } = await supabase.from('store_accounts').update({ is_active: !current }).eq('id', id)
       if (error) throw error
       await fetchStores()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setErr(msg || '更新帳號狀態失敗')
+    } catch (e) {
+      setErr(getErrorMessage(e))
     } finally {
       setMutatingId(null)
     }
   }
 
-  const deleteStore = async (id: string) => {
-    if (!confirm('確定要刪除這個店家帳號嗎？此操作無法復原。')) return
-    setMutatingId(id)
+  const requestDelete = (id: string) => {
+    setPendingDeleteId(id)
+    setShowDeleteModal(true)
+  }
+
+  const confirmDeleteWithPassword = async (password: string) => {
+    if (!pendingDeleteId || !adminEmail) {
+      setShowDeleteModal(false)
+      return
+    }
+    setMutatingId(pendingDeleteId)
     setErr('')
     try {
-      const { error } = await supabase.from('store_accounts').delete().eq('id', id)
-      if (error) throw error
+      // 先用管理員帳密 re-auth（確保是本人）
+      const { error: loginError } = await supabase.auth.signInWithPassword({
+        email: adminEmail,
+        password,
+      })
+      if (loginError) throw loginError
+
+      // 先刪 flags，再刪帳號（若 DB 已設外鍵 cascade，這步可省略）
+      const { error: delFlagErr } = await supabase
+        .from('store_feature_flags')
+        .delete()
+        .eq('store_id', pendingDeleteId)
+      if (delFlagErr) throw delFlagErr
+
+      const { error: delAccErr } = await supabase
+        .from('store_accounts')
+        .delete()
+        .eq('id', pendingDeleteId)
+      if (delAccErr) throw delAccErr
+
+      setShowDeleteModal(false)
+      setPendingDeleteId(null)
       await fetchStores()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setErr(msg || '刪除失敗')
+    } catch (e) {
+      setErr(getErrorMessage(e))
     } finally {
       setMutatingId(null)
     }
@@ -236,9 +286,8 @@ export default function AdminDashboard() {
       if (error) throw error
       await fetchStores()
       cancelEdit()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setErr(msg || '更新失敗')
+    } catch (e) {
+      setErr(getErrorMessage(e))
     } finally {
       setMutatingId(null)
     }
@@ -276,231 +325,242 @@ export default function AdminDashboard() {
   )
 
   /* =====================
-     UI（對齊 /store/manage-menus 風格）
+     UI（深色基調，對齊你的頁面）
   ===================== */
   return (
-    <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
-      {/* 頁首 */}
-      <div className="flex items-start justify-between pt-2 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="text-yellow-400 text-2xl">📑</div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">店家帳號管理</h1>
-            <p className="text-white/70 text-sm mt-1">管理店家資訊、期限與內用/外帶功能</p>
+    <main className="min-h-screen bg-[#0B0B0B] text-white">
+      <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
+        {/* 頁首 */}
+        <div className="flex items-start justify-between pt-4 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="text-yellow-400 text-2xl">📑</div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">店家帳號管理</h1>
+              <p className="text-white/70 text-sm mt-1">管理店家資訊、期限與內用/外帶功能</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="soft" size="sm" onClick={() => void fetchStores()} startIcon={<RefreshIcon />}>
+              重新整理
+            </Button>
+            <Link href="/admin/new-store">
+              <Button type="button">➕ 新增店家</Button>
+            </Link>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="soft" size="sm" onClick={() => void fetchStores()} startIcon={<RefreshIcon />}>
-            重新整理
-          </Button>
-          <Link href="/admin/new-store">
-            <Button type="button">➕ 新增店家</Button>
-          </Link>
+
+        {/* 膠囊導覽 + 搜尋列 */}
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* 左：膠囊 */}
+          <div className="inline-flex overflow-hidden rounded-full shadow ring-1 ring-black/10">
+            {([
+              { key: 'all', label: '所有名單' },
+              { key: 'active', label: '未過期' },
+              { key: 'expired', label: '已過期' },
+              { key: 'blocked', label: '已封鎖' },
+            ] as { key: TabKey; label: string }[]).map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setActiveTab(t.key)}
+                className={`px-6 py-2 transition ${
+                  activeTab === t.key
+                    ? 'bg-yellow-400 text-black font-semibold'
+                    : 'bg-white/10 text-white hover:bg-white/20 backdrop-blur'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* 右：深色搜尋框（避免過白） */}
+          <input
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="搜尋店名或 Email"
+            className="w-[280px] sm:w-[360px] h-10 rounded-full bg-white/10 text-white placeholder:text-white/50 px-4 outline-none border border-white/10 focus:border-white/30"
+          />
         </div>
-      </div>
 
-      {/* 膠囊導覽 + 搜尋列（同列對齊） */}
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {/* 左：膠囊 */}
-        <div className="inline-flex overflow-hidden rounded-full shadow ring-1 ring-black/10">
-          {([
-            { key: 'all', label: '所有名單' },
-            { key: 'active', label: '未過期' },
-            { key: 'expired', label: '已過期' },
-            { key: 'blocked', label: '已封鎖' },
-          ] as { key: TabKey; label: string }[]).map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setActiveTab(t.key)}
-              className={`px-6 py-2 transition ${
-                activeTab === t.key
-                  ? 'bg-yellow-400 text-black font-semibold'
-                  : 'bg-white/10 text-white hover:bg-white/20 backdrop-blur'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* 右：搜尋框 */}
-        <input
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          placeholder="搜尋店名或 Email"
-          className="w-[280px] sm:w-[360px] h-10 rounded-full bg-white text-gray-900 px-4 outline-none border border-black/10"
-        />
-      </div>
-
-      {/* 錯誤 / 載入 */}
-      {err && <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">❌ {err}</div>}
-      {loading && <div className="mb-4 text-white/80">讀取中…</div>}
-
-      {/* 清單卡片 */}
-      <div className="space-y-4">
-        {filtered.map((s) => {
-          const busy = mutatingId === s.id
-          const expired = isExpired(s.trial_end_at)
-
-          return (
-            <div
-              key={s.id}
-              className="relative bg-[#2B2B2B] text-white rounded-xl shadow-sm border border-white/10 px-5 py-4"
-            >
-              {editingId === s.id ? (
-                // ===== 編輯模式：店名 + 期限 =====
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-                  {/* 店名 */}
-                  <div className="lg:col-span-4">
-                    <label className="block text-xs text-white/60 mb-1">店名</label>
-                    <input
-                      className="w-full border px-3 py-2 rounded bg-white text-gray-900"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      placeholder="店名"
-                    />
-                  </div>
-                  {/* 期限起 */}
-                  <div className="lg:col-span-3">
-                    <label className="block text-xs text-white/60 mb-1">開始日</label>
-                    <input
-                      type="date"
-                      className="w-full border px-3 py-2 rounded bg-white text-gray-900"
-                      value={editStart}
-                      onChange={(e) => setEditStart(e.target.value)}
-                    />
-                  </div>
-                  {/* 期限訖 */}
-                  <div className="lg:col-span-3">
-                    <label className="block text-xs text-white/60 mb-1">結束日</label>
-                    <input
-                      type="date"
-                      className="w-full border px-3 py-2 rounded bg-white text-gray-900"
-                      value={editEnd}
-                      onChange={(e) => setEditEnd(e.target.value)}
-                    />
-                  </div>
-                  {/* 操作 */}
-                  <div className="lg:col-span-2 flex items-end gap-2">
-                    <Button type="button" size="sm" variant="success" disabled={busy} onClick={() => void saveEdit(s.id)}>
-                      儲存
-                    </Button>
-                    <Button type="button" size="sm" variant="soft" disabled={busy} onClick={cancelEdit}>
-                      取消
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                // ===== 顯示模式：上-中-下 三層排版 =====
-                <div className="space-y-3">
-                  {/* 上：店名/Email + 期限（期限不攔截點擊） */}
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
-                    <div className="pointer-events-none md:pointer-events-auto">
-                      <div className="font-semibold text-base md:text-lg">{s.store_name}</div>
-                      <div className="text-sm text-white/70">{s.email}</div>
-                    </div>
-                    <div className="text-xs text-white/70 pointer-events-none">
-                      期限：{formatYMD(s.trial_start_at)} ~ {formatYMD(s.trial_end_at)}
-                      {expired && <span className="ml-2 text-red-400 font-semibold">已過期</span>}
-                    </div>
-                  </div>
-
-                  {/* 中：狀態徽章（帳號 / 內用 / 外帶） */}
-                  <div className="flex gap-2 flex-wrap">
-                    <span
-                      className={`px-2 py-0.5 rounded text-xs border ${
-                        s.is_active
-                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
-                          : 'bg-red-500/15 text-red-300 border-red-400/20'
-                      }`}
-                      title="帳號狀態"
-                    >
-                      {s.is_active ? '啟用中' : '已封鎖'}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded text-xs border ${
-                        s.dine_in_enabled
-                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
-                          : 'bg-red-500/15 text-red-300 border-red-400/20'
-                      }`}
-                      title="內用狀態"
-                    >
-                      內用{s.dine_in_enabled ? '開啟' : '封鎖'}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded text-xs border ${
-                        s.takeout_enabled
-                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
-                          : 'bg-red-500/15 text-red-300 border-red-400/20'
-                      }`}
-                      title="外帶狀態"
-                    >
-                      外帶{s.takeout_enabled ? '開啟' : '封鎖'}
-                    </span>
-                  </div>
-
-                  {/* 下：操作按鈕群（確保可點擊） */}
-                  <div className="flex gap-2 flex-wrap relative z-10 pointer-events-auto">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="soft"
-                      disabled={busy}
-                      onClick={() => startEdit(s)}
-                    >
-                      編輯
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="soft"
-                      disabled={busy}
-                      onClick={() => toggleDineIn(s.id, s.dine_in_enabled)}
-                    >
-                      {s.dine_in_enabled ? '封鎖內用' : '解除內用'}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="soft"
-                      disabled={busy}
-                      onClick={() => toggleTakeout(s.id, s.takeout_enabled)}
-                    >
-                      {s.takeout_enabled ? '封鎖外帶' : '解除外帶'}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="warning"
-                      disabled={busy}
-                      onClick={() => toggleActive(s.id, s.is_active)}
-                    >
-                      {s.is_active ? '停用帳號' : '啟用帳號'}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="destructive"
-                      disabled={busy}
-                      onClick={() => deleteStore(s.id)}
-                    >
-                      刪除
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        })}
-
-        {/* 無資料時 */}
-        {!loading && filtered.length === 0 && (
-          <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
-            <p className="text-white/70">沒有符合條件的店家。</p>
+        {/* 錯誤 / 載入 */}
+        {err && (
+          <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">
+            ❌ {err}
           </div>
         )}
+        {loading && <div className="mb-4 text-white/80">讀取中…</div>}
+
+        {/* 清單卡片 */}
+        <div className="space-y-4">
+          {filtered.map((s) => {
+            const busy = mutatingId === s.id
+            const expired = isExpired(s.trial_end_at)
+
+            return (
+              <div
+                key={s.id}
+                className="relative bg-[#2B2B2B] text-white rounded-xl shadow-sm border border-white/10 px-5 py-4"
+              >
+                {editingId === s.id ? (
+                  // ===== 編輯模式：店名 + 期限 =====
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                    {/* 店名 */}
+                    <div className="lg:col-span-4">
+                      <label className="block text-xs text-white/60 mb-1">店名</label>
+                      <input
+                        className="w-full border px-3 py-2 rounded bg-white text-gray-900"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        placeholder="店名"
+                      />
+                    </div>
+                    {/* 期限起 */}
+                    <div className="lg:col-span-3">
+                      <label className="block text-xs text-white/60 mb-1">開始日</label>
+                      <input
+                        type="date"
+                        className="w-full border px-3 py-2 rounded bg-white text-gray-900"
+                        value={editStart}
+                        onChange={(e) => setEditStart(e.target.value)}
+                      />
+                    </div>
+                    {/* 期限訖 */}
+                    <div className="lg:col-span-3">
+                      <label className="block text-xs text-white/60 mb-1">結束日</label>
+                      <input
+                        type="date"
+                        className="w-full border px-3 py-2 rounded bg-white text-gray-900"
+                        value={editEnd}
+                        onChange={(e) => setEditEnd(e.target.value)}
+                      />
+                    </div>
+                    {/* 操作 */}
+                    <div className="lg:col-span-2 flex items-end gap-2">
+                      <Button type="button" size="sm" variant="success" disabled={busy} onClick={() => void saveEdit(s.id)}>
+                        儲存
+                      </Button>
+                      <Button type="button" size="sm" variant="soft" disabled={busy} onClick={cancelEdit}>
+                        取消
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  // ===== 顯示模式：上-中-下 三層排版 =====
+                  <div className="space-y-3">
+                    {/* 上：店名/Email + 期限 */}
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
+                      <div className="pointer-events-none md:pointer-events-auto">
+                        <div className="font-semibold text-base md:text-lg">{s.store_name}</div>
+                        <div className="text-sm text-white/70">{s.email}</div>
+                      </div>
+                      <div className="text-xs text-white/70 pointer-events-none">
+                        期限：{formatYMD(s.trial_start_at)} ~ {formatYMD(s.trial_end_at)}
+                        {expired && <span className="ml-2 text-red-400 font-semibold">已過期</span>}
+                      </div>
+                    </div>
+
+                    {/* 中：狀態徽章（帳號 / 內用 / 外帶） */}
+                    <div className="flex gap-2 flex-wrap">
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs border ${
+                          s.is_active
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
+                            : 'bg-red-500/15 text-red-300 border-red-400/20'
+                        }`}
+                        title="帳號狀態"
+                      >
+                        {s.is_active ? '啟用中' : '已封鎖'}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs border ${
+                          s.dine_in_enabled
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
+                            : 'bg-red-500/15 text-red-300 border-red-400/20'
+                        }`}
+                        title="內用狀態"
+                      >
+                        內用{s.dine_in_enabled ? '開啟' : '封鎖'}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded text-xs border ${
+                          s.takeout_enabled
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
+                            : 'bg-red-500/15 text-red-300 border-red-400/20'
+                        }`}
+                        title="外帶狀態"
+                      >
+                        外帶{s.takeout_enabled ? '開啟' : '封鎖'}
+                      </span>
+                    </div>
+
+                    {/* 下：操作按鈕群 */}
+                    <div className="flex gap-2 flex-wrap relative z-10 pointer-events-auto">
+                      <Button type="button" size="sm" variant="soft" disabled={busy} onClick={() => startEdit(s)}>
+                        編輯
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="soft"
+                        disabled={busy}
+                        onClick={() => toggleDineIn(s.id, s.dine_in_enabled)}
+                      >
+                        {s.dine_in_enabled ? '封鎖內用' : '解除內用'}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="soft"
+                        disabled={busy}
+                        onClick={() => toggleTakeout(s.id, s.takeout_enabled)}
+                      >
+                        {s.takeout_enabled ? '封鎖外帶' : '解除外帶'}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="warning"
+                        disabled={busy}
+                        onClick={() => toggleActive(s.id, s.is_active)}
+                      >
+                        {s.is_active ? '停用帳號' : '啟用帳號'}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        disabled={busy}
+                        onClick={() => requestDelete(s.id)}
+                      >
+                        刪除
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {/* 無資料時 */}
+          {!loading && filtered.length === 0 && (
+            <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
+              <p className="text-white/70">沒有符合條件的店家。</p>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* 刪除二次確認（輸入管理員密碼） */}
+      {showDeleteModal && (
+        <ConfirmPasswordModal
+          onCancel={() => {
+            setShowDeleteModal(false)
+            setPendingDeleteId(null)
+          }}
+          onConfirm={confirmDeleteWithPassword}
+        />
+      )}
+    </main>
   )
 }
