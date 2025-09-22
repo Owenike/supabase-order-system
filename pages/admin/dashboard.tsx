@@ -33,9 +33,8 @@ interface StoreView extends StoreAccountRow {
 type TabKey = 'all' | 'active' | 'expired' | 'blocked'
 
 /* =====================
-   小工具（日期顯示與判斷）
+   日期工具
 ===================== */
-// 將 ISO 或可被 new Date() 解析的字串轉為「YYYY/MM/DD」，空值回傳 '—'
 function formatYMD(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -43,7 +42,6 @@ function formatYMD(iso: string | null): string {
   return d.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
 
-// 僅以日期（不含時分秒）判斷是否過期（end < 今天）
 function isExpired(end: string | null): boolean {
   if (!end) return false
   const endDate = new Date(end)
@@ -77,13 +75,12 @@ export default function AdminDashboard() {
   const [mutatingId, setMutatingId] = useState<string | null>(null)
 
   /* ---------------------
-     讀取：accounts + flags
+     讀取 accounts + flags
   --------------------- */
   const fetchStores = useCallback(async () => {
     setLoading(true)
     setErr('')
     try {
-      // 1) store_accounts
       const { data: acc, error: accErr } = await supabase
         .from('store_accounts')
         .select('id,email,store_name,is_active,created_at,trial_start_at,trial_end_at')
@@ -91,22 +88,12 @@ export default function AdminDashboard() {
       if (accErr) throw accErr
       const accounts = (acc ?? []) as StoreAccountRow[]
 
-      if (accounts.length === 0) {
-        setStores([])
-        return
-      }
-
-      // 2) store_feature_flags
       const { data: flg, error: flagErr } = await supabase
         .from('store_feature_flags')
         .select('store_id,feature_key,enabled')
-      if (flagErr) {
-        // 若旗標表讀不到，不中斷流程：預設 true
-        console.warn('read store_feature_flags failed, fallback to defaults', flagErr)
-      }
+      if (flagErr) console.warn('read store_feature_flags failed, fallback to defaults', flagErr)
       const flags = (flg ?? []) as StoreFeatureFlagRow[]
 
-      // 3) 合併
       const merged: StoreView[] = accounts.map((a) => {
         const dine = flags.find((f) => f.store_id === a.id && f.feature_key === 'dine_in')
         const take = flags.find((f) => f.store_id === a.id && f.feature_key === 'takeout')
@@ -132,7 +119,7 @@ export default function AdminDashboard() {
   }, [fetchStores])
 
   /* ---------------------
-     旗標寫入：先 update，0 筆則 insert
+     flags upsert（update→insert）
   --------------------- */
   const upsertFlag = useCallback(
     async (storeId: string, key: 'dine_in' | 'takeout', nextEnabled: boolean) => {
@@ -160,7 +147,7 @@ export default function AdminDashboard() {
   )
 
   /* ---------------------
-     互動動作
+     互動動作（加上 z-index 與 pointer-events）
   --------------------- */
   const toggleDineIn = async (storeId: string, current: boolean) => {
     setMutatingId(storeId)
@@ -227,7 +214,6 @@ export default function AdminDashboard() {
   const startEdit = (row: StoreView) => {
     setEditingId(row.id)
     setEditName(row.store_name ?? '')
-    // 將 DB 儲存的日期 (ISO/date) 轉成 input[type="date"] 可用的 yyyy-MM-dd
     setEditStart(row.trial_start_at ? row.trial_start_at.substring(0, 10) : '')
     setEditEnd(row.trial_end_at ? row.trial_end_at.substring(0, 10) : '')
   }
@@ -241,11 +227,10 @@ export default function AdminDashboard() {
     setMutatingId(id)
     setErr('')
     try {
-      // 空字串改成 null，避免傳入無效日期造成顯示錯亂
       const payload = {
         store_name: editName.trim(),
-        trial_start_at: editStart ? editStart : null,
-        trial_end_at: editEnd ? editEnd : null,
+        trial_start_at: editStart || null,
+        trial_end_at: editEnd || null,
       }
       const { error } = await supabase.from('store_accounts').update(payload).eq('id', id)
       if (error) throw error
@@ -266,7 +251,6 @@ export default function AdminDashboard() {
     const now = new Date()
     const kw = keyword.trim().toLowerCase()
     return stores.filter((s) => {
-      // 膠囊篩選
       if (activeTab === 'active') {
         if (s.trial_end_at) {
           const end = new Date(s.trial_end_at)
@@ -277,7 +261,6 @@ export default function AdminDashboard() {
       } else if (activeTab === 'blocked') {
         if (s.is_active) return false
       }
-      // 關鍵字（店名 / Email）
       if (!kw) return true
       return (s.store_name ?? '').toLowerCase().includes(kw) || (s.email ?? '').toLowerCase().includes(kw)
     })
@@ -307,11 +290,11 @@ export default function AdminDashboard() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="soft" size="sm" onClick={() => void fetchStores()} startIcon={<RefreshIcon />}>
+          <Button type="button" variant="soft" size="sm" onClick={() => void fetchStores()} startIcon={<RefreshIcon />}>
             重新整理
           </Button>
           <Link href="/admin/new-store">
-            <Button>➕ 新增店家</Button>
+            <Button type="button">➕ 新增店家</Button>
           </Link>
         </div>
       </div>
@@ -328,6 +311,7 @@ export default function AdminDashboard() {
           ] as { key: TabKey; label: string }[]).map((t) => (
             <button
               key={t.key}
+              type="button"
               onClick={() => setActiveTab(t.key)}
               className={`px-6 py-2 transition ${
                 activeTab === t.key
@@ -362,7 +346,7 @@ export default function AdminDashboard() {
           return (
             <div
               key={s.id}
-              className="bg-[#2B2B2B] text-white rounded-xl shadow-sm border border-white/10 px-5 py-4"
+              className="relative bg-[#2B2B2B] text-white rounded-xl shadow-sm border border-white/10 px-5 py-4"
             >
               {editingId === s.id ? (
                 // ===== 編輯模式：店名 + 期限 =====
@@ -399,24 +383,24 @@ export default function AdminDashboard() {
                   </div>
                   {/* 操作 */}
                   <div className="lg:col-span-2 flex items-end gap-2">
-                    <Button size="sm" variant="success" disabled={busy} onClick={() => void saveEdit(s.id)}>
+                    <Button type="button" size="sm" variant="success" disabled={busy} onClick={() => void saveEdit(s.id)}>
                       儲存
                     </Button>
-                    <Button size="sm" variant="soft" disabled={busy} onClick={cancelEdit}>
+                    <Button type="button" size="sm" variant="soft" disabled={busy} onClick={cancelEdit}>
                       取消
                     </Button>
                   </div>
                 </div>
               ) : (
-                // ===== 顯示模式：上-中-下 三區塊 =====
+                // ===== 顯示模式：上-中-下 三層排版 =====
                 <div className="space-y-3">
-                  {/* 上：店名/Email/期限（期限獨立一行，過期紅字） */}
+                  {/* 上：店名/Email + 期限（期限不攔截點擊） */}
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
-                    <div>
+                    <div className="pointer-events-none md:pointer-events-auto">
                       <div className="font-semibold text-base md:text-lg">{s.store_name}</div>
                       <div className="text-sm text-white/70">{s.email}</div>
                     </div>
-                    <div className="text-xs text-white/70">
+                    <div className="text-xs text-white/70 pointer-events-none">
                       期限：{formatYMD(s.trial_start_at)} ~ {formatYMD(s.trial_end_at)}
                       {expired && <span className="ml-2 text-red-400 font-semibold">已過期</span>}
                     </div>
@@ -456,40 +440,50 @@ export default function AdminDashboard() {
                     </span>
                   </div>
 
-                  {/* 下：操作按鈕群（分組與間距） */}
-                  <div className="flex gap-2 flex-wrap">
-                    <Button size="sm" variant="soft" disabled={busy} onClick={() => startEdit(s)}>
-                      編輯
-                    </Button>
+                  {/* 下：操作按鈕群（確保可點擊） */}
+                  <div className="flex gap-2 flex-wrap relative z-10 pointer-events-auto">
                     <Button
+                      type="button"
                       size="sm"
                       variant="soft"
                       disabled={busy}
-                      onClick={() => void toggleDineIn(s.id, s.dine_in_enabled)}
+                      onClick={() => startEdit(s)}
+                    >
+                      編輯
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="soft"
+                      disabled={busy}
+                      onClick={() => toggleDineIn(s.id, s.dine_in_enabled)}
                     >
                       {s.dine_in_enabled ? '封鎖內用' : '解除內用'}
                     </Button>
                     <Button
+                      type="button"
                       size="sm"
                       variant="soft"
                       disabled={busy}
-                      onClick={() => void toggleTakeout(s.id, s.takeout_enabled)}
+                      onClick={() => toggleTakeout(s.id, s.takeout_enabled)}
                     >
                       {s.takeout_enabled ? '封鎖外帶' : '解除外帶'}
                     </Button>
                     <Button
+                      type="button"
                       size="sm"
                       variant="warning"
                       disabled={busy}
-                      onClick={() => void toggleActive(s.id, s.is_active)}
+                      onClick={() => toggleActive(s.id, s.is_active)}
                     >
                       {s.is_active ? '停用帳號' : '啟用帳號'}
                     </Button>
                     <Button
+                      type="button"
                       size="sm"
                       variant="destructive"
                       disabled={busy}
-                      onClick={() => void deleteStore(s.id)}
+                      onClick={() => deleteStore(s.id)}
                     >
                       刪除
                     </Button>
