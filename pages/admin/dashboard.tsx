@@ -38,7 +38,6 @@ const isExpired = (end: string | null): boolean => {
   if (!end) return false
   const endDate = new Date(end)
   const today = new Date()
-  // 只比日期，不看時分秒
   endDate.setHours(0, 0, 0, 0)
   today.setHours(0, 0, 0, 0)
   return endDate < today
@@ -126,7 +125,6 @@ export default function AdminDashboard() {
         .eq('feature_key', key)
         .select('store_id')
       if (updErr) {
-        // 嘗試直接 insert
         const { error: insErr } = await supabase
           .from('store_feature_flags')
           .insert({ store_id: storeId, feature_key: key, enabled: nextEnabled })
@@ -245,7 +243,6 @@ export default function AdminDashboard() {
     const now = new Date()
     const kw = keyword.trim().toLowerCase()
     return stores.filter((s) => {
-      // tab 過濾
       if (activeTab === 'active') {
         if (s.trial_end_at && new Date(s.trial_end_at) < now) return false
       } else if (activeTab === 'expired') {
@@ -253,13 +250,12 @@ export default function AdminDashboard() {
       } else if (activeTab === 'blocked') {
         if (s.is_active) return false
       }
-      // 關鍵字過濾（店名/Email）
       if (!kw) return true
       return (s.store_name ?? '').toLowerCase().includes(kw) || (s.email ?? '').toLowerCase().includes(kw)
     })
   }, [stores, activeTab, keyword])
 
-  /** ---- Icons（與你那頁一致的簡化 SVG） ---- */
+  /** ---- Icons ---- */
   const RefreshIcon = () => (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M20 12a8 8 0 10-2.34 5.66M20 12v5h-5" />
@@ -268,7 +264,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
-      {/* 頁首（深色、與 /store/manage-menus 保持一致語氣與版型） */}
+      {/* 頁首（同 /store/manage-menus 語感） */}
       <div className="flex items-start justify-between pt-2 pb-4">
         <div className="flex items-center gap-3">
           <div className="text-yellow-400 text-2xl">📑</div>
@@ -287,36 +283,37 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 膠囊導覽 + 搜尋框（外觀同你那頁的膠囊風格） */}
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start">
-        <div className="inline-flex overflow-hidden rounded-full shadow ring-1 ring-black/10">
-          {([
-            { key: 'all', label: '所有名單' },
-            { key: 'active', label: '未過期' },
-            { key: 'expired', label: '已過期' },
-            { key: 'blocked', label: '已封鎖' },
-          ] as { key: TabKey; label: string }[]).map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={`px-6 py-2 transition ${
-                activeTab === t.key
-                  ? 'bg-yellow-400 text-black font-semibold'
-                  : 'bg-white/10 text-white hover:bg-white/20 backdrop-blur'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+      {/* 膠囊導覽 + 搜尋列（同一列，間距一致） */}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="inline-flex overflow-hidden rounded-full shadow ring-1 ring-black/10">
+            {([
+              { key: 'all', label: '所有名單' },
+              { key: 'active', label: '未過期' },
+              { key: 'expired', label: '已過期' },
+              { key: 'blocked', label: '已封鎖' },
+            ] as { key: TabKey; label: string }[]).map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key)}
+                className={`px-6 py-2 transition ${
+                  activeTab === t.key
+                    ? 'bg-yellow-400 text-black font-semibold'
+                    : 'bg-white/10 text-white hover:bg-white/20 backdrop-blur'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* 搜尋輸入框（圓角白底，貼齊你那頁的樣式語感） */}
-        <div className="sm:ml-3">
+        <div className="flex items-center gap-3">
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="搜尋店名或 Email"
-            className="w-[280px] sm:w-[360px] rounded-full bg-white text-gray-900 px-4 py-2 outline-none border border-black/10"
+            className="w-[280px] sm:w-[360px] h-10 rounded-full bg-white text-gray-900 px-4 outline-none border border-black/10"
           />
         </div>
       </div>
@@ -325,7 +322,7 @@ export default function AdminDashboard() {
       {err && <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">❌ {err}</div>}
       {loading && <div className="mb-4 text-white/80">讀取中…</div>}
 
-      {/* 清單卡片（深色卡片 + 細邊 + 圓角，與你那頁一致） */}
+      {/* 清單卡片（輕量深色卡片） */}
       <div className="space-y-4">
         {filtered.map((s) => {
           const busy = mutatingId === s.id
@@ -334,32 +331,43 @@ export default function AdminDashboard() {
           return (
             <div
               key={s.id}
-              className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 px-4 py-4"
+              className="bg-[#2B2B2B] text-white rounded-xl shadow-sm border border-white/10 px-5 py-4"
             >
               {editingId === s.id ? (
                 // ---- 編輯模式：店名 + 期限(起/訖) + 儲存/取消 ----
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                  <input
-                    className="border px-3 py-2 rounded bg-white text-gray-900 md:col-span-2"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    placeholder="店名"
-                  />
-                  <input
-                    type="date"
-                    className="border px-3 py-2 rounded bg-white text-gray-900"
-                    value={editStart}
-                    onChange={(e) => setEditStart(e.target.value)}
-                    placeholder="開始日"
-                  />
-                  <input
-                    type="date"
-                    className="border px-3 py-2 rounded bg-white text-gray-900"
-                    value={editEnd}
-                    onChange={(e) => setEditEnd(e.target.value)}
-                    placeholder="結束日"
-                  />
-                  <div className="flex gap-2">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                  {/* 店名 */}
+                  <div className="lg:col-span-4">
+                    <label className="block text-xs text-white/60 mb-1">店名</label>
+                    <input
+                      className="w-full border px-3 py-2 rounded bg-white text-gray-900"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="店名"
+                    />
+                  </div>
+                  {/* 期限起 */}
+                  <div className="lg:col-span-3">
+                    <label className="block text-xs text-white/60 mb-1">開始日</label>
+                    <input
+                      type="date"
+                      className="w-full border px-3 py-2 rounded bg-white text-gray-900"
+                      value={editStart}
+                      onChange={(e) => setEditStart(e.target.value)}
+                    />
+                  </div>
+                  {/* 期限訖 */}
+                  <div className="lg:col-span-3">
+                    <label className="block text-xs text-white/60 mb-1">結束日</label>
+                    <input
+                      type="date"
+                      className="w-full border px-3 py-2 rounded bg-white text-gray-900"
+                      value={editEnd}
+                      onChange={(e) => setEditEnd(e.target.value)}
+                    />
+                  </div>
+                  {/* 操作 */}
+                  <div className="lg:col-span-2 flex items-end gap-2">
                     <Button size="sm" variant="success" disabled={busy} onClick={() => void saveEdit(s.id)}>
                       儲存
                     </Button>
@@ -369,26 +377,23 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               ) : (
-                // ---- 顯示模式：左側資訊 + 中間徽章 + 右側操作 ----
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                  {/* 左：店名 / Email / 期限 */}
-                  <div>
-                    <div className="font-semibold text-base md:text-lg">{s.store_name}</div>
+                // ---- 顯示模式：三區塊排版 ----
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                  {/* 左：店名 / Email */}
+                  <div className="lg:col-span-4">
+                    <div className="font-semibold text-base lg:text-lg">{s.store_name}</div>
                     <div className="text-sm text-white/70">{s.email}</div>
-                    <div className="text-xs text-white/60 mt-1">
-                      期限：{fmtDate(s.trial_start_at)} ~ {fmtDate(s.trial_end_at)}
-                      {expired && <span className="ml-2 text-red-400 font-semibold">已過期</span>}
-                    </div>
                   </div>
 
-                  {/* 中：狀態徽章（與 /store/manage-menus 的 badge 配色一致） */}
-                  <div className="flex gap-2 flex-wrap">
+                  {/* 中：狀態徽章（帳號/內用/外帶） */}
+                  <div className="lg:col-span-4 flex items-center gap-2 flex-wrap">
                     <span
                       className={`px-2 py-0.5 rounded text-xs border ${
                         s.is_active
                           ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
                           : 'bg-red-500/15 text-red-300 border-red-400/20'
                       }`}
+                      title="帳號狀態"
                     >
                       {s.is_active ? '啟用中' : '已封鎖'}
                     </span>
@@ -398,6 +403,7 @@ export default function AdminDashboard() {
                           ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
                           : 'bg-red-500/15 text-red-300 border-red-400/20'
                       }`}
+                      title="內用狀態"
                     >
                       內用{s.dine_in_enabled ? '開啟' : '封鎖'}
                     </span>
@@ -407,13 +413,20 @@ export default function AdminDashboard() {
                           ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
                           : 'bg-red-500/15 text-red-300 border-red-400/20'
                       }`}
+                      title="外帶狀態"
                     >
                       外帶{s.takeout_enabled ? '開啟' : '封鎖'}
                     </span>
+
+                    {/* 期限（置中區顯示，清楚對齊） */}
+                    <span className="ml-2 text-xs text-white/70">
+                      期限：{fmtDate(s.trial_start_at)} ~ {fmtDate(s.trial_end_at)}
+                      {expired && <span className="ml-2 text-red-400 font-semibold">已過期</span>}
+                    </span>
                   </div>
 
-                  {/* 右：操作按鈕群（樣式沿用你的 Button variants） */}
-                  <div className="flex gap-2 flex-wrap">
+                  {/* 右：操作按鈕群 */}
+                  <div className="lg:col-span-4 flex items-center justify-start lg:justify-end gap-2 flex-wrap">
                     <Button size="sm" variant="soft" disabled={busy} onClick={() => startEdit(s)}>
                       編輯
                     </Button>
@@ -456,7 +469,7 @@ export default function AdminDashboard() {
           )
         })}
 
-        {/* 無資料時提示（與你的語感一致） */}
+        {/* 無資料時 */}
         {!loading && filtered.length === 0 && (
           <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
             <p className="text-white/70">沒有符合條件的店家。</p>
