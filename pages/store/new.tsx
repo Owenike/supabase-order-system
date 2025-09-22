@@ -52,15 +52,16 @@ export default function NewStoreSignupPage() {
 
     setLoading(true)
     try {
-      // ✅ 使用 signUp：會自動寄出「驗證信」
-      const { error: signUpError } = await supabase.auth.signUp({
+      // ✅ signUp 會自動寄出「驗證信」
+      //    這裡的 redirect 必須與 Supabase Auth → URL configuration 白名單一致
+      const emailRedirectTo =
+        typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : undefined
+
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email: cleanedEmail,
         password,
         options: {
-          emailRedirectTo:
-            typeof window !== 'undefined'
-              ? `${window.location.origin}/login`
-              : undefined,
+          emailRedirectTo,
           data: {
             store_name: storeName,
             owner_name: ownerName || null,
@@ -95,8 +96,16 @@ export default function NewStoreSignupPage() {
         return
       }
 
+      // 明確檢查：成功通常會回傳 user（尚未確認 email）
+      if (!data?.user?.email) {
+        setError('註冊流程異常，未取得使用者資訊。請稍後再試。')
+        return
+      }
+
+      // ✅ 只在真的成功時顯示「已寄出」
       setMessage(`✅ 註冊成功！已寄驗證信到 ${cleanedEmail}，請至信箱完成驗證。`)
-      setCooldown(COOLDOWN_SECONDS) // 成功也先進入冷卻，避免連續測試觸發限流
+      setCooldown(COOLDOWN_SECONDS)
+
       // 清空欄位
       setStoreName('')
       setOwnerName('')
@@ -104,7 +113,7 @@ export default function NewStoreSignupPage() {
       setEmail('')
       setPassword('')
 
-      // 3 秒後導回登入頁
+      // 3 秒後導回登入頁（你原本的行為）
       setTimeout(() => {
         router.replace('/login')
       }, 3000)
@@ -180,7 +189,7 @@ export default function NewStoreSignupPage() {
             />
           </div>
 
-          <div>
+        <div>
             <label className="block text-sm text-gray-300 mb-1">負責人姓名</label>
             <input
               type="text"
