@@ -1,24 +1,19 @@
 // /lib/supabaseClient.ts
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string | undefined
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string | undefined
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  // 嚴格模式：缺變數就直接 throw，避免你在正式環境踩到空值
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   throw new Error('❌ 缺少 NEXT_PUBLIC_SUPABASE_URL 或 NEXT_PUBLIC_SUPABASE_ANON_KEY 環境變數。')
 }
 
-/**
- * 前端用的 Supabase Client
- * - persistSession: 保留使用者登入
- * - autoRefreshToken: 自動刷新
- * - detectSessionInUrl: 交給 /auth/callback 手動處理（避免與手動 exchange 重複）
- */
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+// 確保類型已被窄化為 string，避免嚴格 TS 設定下的提示
+export const supabase = createClient(SUPABASE_URL as string, SUPABASE_ANON_KEY as string, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: false,
+    // 行動郵件常用 #access_token 回跳，必須開啟，讓 SDK 自動解析
+    detectSessionInUrl: true,
   },
 })
