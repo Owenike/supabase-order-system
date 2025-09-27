@@ -4,17 +4,19 @@ import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabaseClient'
 
 /**
- * 前提（請確認 DB 已備好）：
- * - stores(user_id uuid unique, email text unique, name text, owner_name text, phone text)
- * - store_accounts(store_id uuid unique, email text, store_name text, is_active bool, trial_* timestamps)
- * - RLS 若啟用，需允許：本人 insert/select；且允許「user_id IS NULL 的列」被本人 update 以完成認領（見文末）
+ * 前提（請確認 DB 已備好，否則 upsert/更新會失敗）：
+ * 1) stores: user_id uuid UNIQUE, email text UNIQUE, 其餘欄位自由
+ * 2) store_accounts: store_id uuid UNIQUE（或唯一索引），email text UNIQUE（全域唯一）
+ * 3) 若啟用 RLS：
+ *    - stores：本人可 select/insert/update；且允許「user_id IS NULL 的列」被本人認領（前面你已設定）
+ *    - store_accounts：暫時放寬 for all using(true) 以測通；要收斂見文末 B-1
  */
 
 type ViewState =
   | { status: 'idle' }
-  | { status: 'exchanging' }
-  | { status: 'waiting' }
-  | { status: 'inserting' }
+  | { status: 'exchanging' }   // 以 ?code= 交換 session
+  | { status: 'waiting' }      // 等 SDK 解析 #access_token
+  | { status: 'inserting' }    // 建立/同步 stores + store_accounts
   | { status: 'success'; message: string }
   | { status: 'error'; message: string }
 
@@ -40,9 +42,11 @@ export default function AuthCallbackPage() {
     return Array.isArray(v) ? v[0] : v ?? null
   }, [router.isReady, router.query.error_description])
 
-  // —— 補齊：先以 user_id 找；沒有再以 email 認領；最後新增；再 upsert store_accounts ——
+  /**
+   * 建立/同步：stores（以 user_id）→ 取回 store_id → 建立/同步 store_accounts（先查再更新，最後插入）
+   */
   const bootstrapStoreAndAccount = async (isCancelled: () => boolean) => {
-    // 取使用者
+    // 取得使用者
     const { data: ures, error: uerr } = await supabase.auth.getUser()
     if (isCancelled()) return
     if (uerr || !ures?.user) throw new Error(uerr?.message || '取得使用者失敗')
@@ -55,87 +59,102 @@ export default function AuthCallbackPage() {
       phone?: string
     }
 
-    // 1) 先看 user_id 是否已有 stores
-    const { data: byUid, error: findByUidErr } = await supabase
+    // 1) upsert stores by user_id
+    const storePayload = {
+      user_id: user.id,
+      name: meta.store_name ?? '未命名店家',
+      owner_name: meta.owner_name ?? null,
+      phone: meta.phone ?? null,
+      email,
+    }
+
+    const { error: storeUpsertErr } = await supabase
+      .from('stores')
+      .upsert([storePayload], { onConflict: 'user_id', ignoreDuplicates: false })
+    if (isCancelled()) return
+    if (storeUpsertErr) throw new Error(`建立門市失敗：${storeUpsertErr.message}`)
+
+    // 2) 取回 store_id
+    const { data: storeRow, error: findStoreErr } = await supabase
       .from('stores')
       .select('id, name')
       .eq('user_id', user.id)
       .maybeSingle()
     if (isCancelled()) return
-    if (findByUidErr) throw new Error(`查詢門市(user_id)失敗：${findByUidErr.message}`)
+    if (findStoreErr || !storeRow?.id) throw new Error(`查詢門市失敗：${findStoreErr?.message || '未取得 store_id'}`)
 
-    let storeId: string | null = byUid?.id ?? null
-    let storeName: string | null = byUid?.name ?? null
+    const storeId = storeRow.id
+    const storeName = storeRow.name ?? meta.store_name ?? '未命名店家'
 
-    if (!storeId) {
-      // 2) 沒有的話，用 email 尋找可能的舊資料（尚未綁 user_id 的列）
-      const { data: byEmail, error: findByEmailErr } = await supabase
-        .from('stores')
-        .select('id, name, user_id')
-        .eq('email', email)
-        .maybeSingle()
-      if (isCancelled()) return
-      if (findByEmailErr) throw new Error(`查詢門市(email)失敗：${findByEmailErr.message}`)
+    // 3) store_accounts：先查 store_id
+    const { data: accByStore, error: findAccByStoreErr } = await supabase
+      .from('store_accounts')
+      .select('id')
+      .eq('store_id', storeId)
+      .maybeSingle()
+    if (isCancelled()) return
+    if (findAccByStoreErr) throw new Error(`查詢店家帳號失敗：${findAccByStoreErr.message}`)
 
-      if (byEmail?.id) {
-        // 2-1) 找到同 email 既有列 → 直接認領（update user_id 與基本資訊）
-        const { error: claimErr } = await supabase
-          .from('stores')
-          .update({
-            user_id: user.id,
-            name: byEmail.name ?? meta.store_name ?? '未命名店家',
-            owner_name: meta.owner_name ?? null,
-            phone: meta.phone ?? null,
-          })
-          .eq('id', byEmail.id)
-        if (isCancelled()) return
-        if (claimErr) throw new Error(`認領既有門市失敗：${claimErr.message}`)
-
-        storeId = byEmail.id
-        storeName = byEmail.name ?? meta.store_name ?? '未命名店家'
-      } else {
-        // 3) 真的都沒有 → 新增（onConflict 對 user_id）
-        const payload = {
-          user_id: user.id,
-          name: meta.store_name ?? '未命名店家',
-          owner_name: meta.owner_name ?? null,
-          phone: meta.phone ?? null,
+    if (accByStore?.id) {
+      // 3-1) 已有同 store_id 的帳號 → 直接更新為啟用
+      const { error: updErr } = await supabase
+        .from('store_accounts')
+        .update({
           email,
-        }
-        const { data: ins, error: insErr } = await supabase
-          .from('stores')
-          .upsert([payload], { onConflict: 'user_id', ignoreDuplicates: false })
-          .select('id, name')
-          .maybeSingle()
-        if (isCancelled()) return
-        if (insErr) throw new Error(`建立門市失敗：${insErr.message}`)
-        storeId = ins?.id ?? null
-        storeName = ins?.name ?? (meta.store_name ?? '未命名店家')
-      }
+          store_name: storeName,
+          is_active: true,
+        })
+        .eq('id', accByStore.id)
+      if (isCancelled()) return
+      if (updErr) throw new Error(`更新店家帳號失敗：${updErr.message}`)
+      return
     }
 
-    if (!storeId) throw new Error('未能取得 store_id')
-
-    // 4) upsert store_accounts by store_id（啟用帳號，供登入檢查）
-    const { error: accErr } = await supabase
+    // 4) 再查 email（避免撞到 UNIQUE(email)）
+    const { data: accByEmail, error: findAccByEmailErr } = await supabase
       .from('store_accounts')
-      .upsert(
-        [{
-          store_id: storeId,
-          email,
-          store_name: storeName ?? meta.store_name ?? '未命名店家',
-          is_active: true,
-          trial_start_at: null,
-          trial_end_at: null,
-        }],
-        { onConflict: 'store_id', ignoreDuplicates: false }
-      )
+      .select('id, store_id')
+      .eq('email', email)
+      .maybeSingle()
     if (isCancelled()) return
-    if (accErr) throw new Error(`建立店家帳號失敗：${accErr.message}`)
+    if (findAccByEmailErr) throw new Error(`查詢帳號(email)失敗：${findAccByEmailErr.message}`)
+
+    if (accByEmail?.id) {
+      // 4-1) 有同 email 的舊資料 → 認領/對齊到本 store_id
+      const { error: claimErr } = await supabase
+        .from('store_accounts')
+        .update({
+          store_id: storeId,
+          store_name: storeName,
+          is_active: true,
+        })
+        .eq('id', accByEmail.id)
+      if (isCancelled()) return
+      if (claimErr) throw new Error(`認領店家帳號失敗：${claimErr.message}`)
+      return
+    }
+
+    // 5) 兩者都沒有 → 插入新帳號（此時不會撞到 UNIQUE(email)）
+    const { error: insAccErr } = await supabase
+      .from('store_accounts')
+      .insert({
+        store_id: storeId,
+        email,
+        store_name: storeName,
+        is_active: true,
+        trial_start_at: null,
+        trial_end_at: null,
+      })
+    if (isCancelled()) return
+    if (insAccErr) throw new Error(`建立店家帳號失敗：${insAccErr.message}`)
   }
 
+  const [stateOnce, setStateOnce] = useState(false)
+
   useEffect(() => {
-    if (!router.isReady) return
+    if (!router.isReady || stateOnce) return
+    setStateOnce(true)
+
     let cancelled = false
     const isCancelled = () => cancelled
 
@@ -186,7 +205,7 @@ export default function AuthCallbackPage() {
           setTimeout(() => { if (!isCancelled()) router.replace('/login') }, 800)
           return
         }
-        await new Promise(r => setTimeout(r, 150))
+        await new Promise((r) => setTimeout(r, 150))
       }
 
       setState({
@@ -197,7 +216,7 @@ export default function AuthCallbackPage() {
 
     void run()
     return () => { cancelled = true }
-  }, [router.isReady, code, errorDescription, router])
+  }, [router.isReady, code, errorDescription, router, stateOnce])
 
   // --- UI ---
   const boxClass =
