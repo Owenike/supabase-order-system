@@ -1,4 +1,4 @@
-// pages/admin/dashboard.tsx
+// /pages/admin/dashboard.tsx
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
@@ -190,6 +190,7 @@ export default function AdminDashboard() {
 
   /* ---------------------
      flags upsert（update→insert）
+     ※ 如欲最佳化，可改成 upsert + onConflict，這裡維持你原本流程
   --------------------- */
   const upsertFlag = useCallback(
     async (storeId: string, key: 'dine_in' | 'takeout', nextEnabled: boolean) => {
@@ -357,7 +358,6 @@ export default function AdminDashboard() {
       })
       const j = await resp.json()
       if (!resp.ok) throw new Error(j?.error || '重寄失敗')
-      // 成功後重新抓一次（若使用者在此刻完成驗證，下一次刷新就會看到已驗證）
       await fetchStores()
       alert('✅ 已請求重寄驗證信')
     } catch (e) {
@@ -375,11 +375,13 @@ export default function AdminDashboard() {
     const kw = keyword.trim().toLowerCase()
     return stores.filter((s) => {
       if (activeTab === 'active') {
+        // 未過期
         if (s.trial_end_at) {
           const end = new Date(s.trial_end_at)
           if (!Number.isNaN(end.getTime()) && end < now) return false
         }
       } else if (activeTab === 'expired') {
+        // 已過期
         if (!(s.trial_end_at && new Date(s.trial_end_at) < now)) return false
       } else if (activeTab === 'blocked') {
         if (s.is_active) return false
@@ -411,8 +413,8 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button type="button" variant="soft" size="sm" onClick={() => void fetchStores()} startIcon={<RefreshIcon />}>
-              重新整理
+            <Button type="button" variant="soft" size="sm" onClick={() => void fetchStores()}>
+              <RefreshIcon /> 重新整理
             </Button>
             <Link href="/admin/new-store">
               <Button type="button">➕ 新增店家</Button>
@@ -512,19 +514,19 @@ export default function AdminDashboard() {
                 ) : (
                   // 顯示模式
                   <div className="space-y-3">
-                    {/* 上：店名/Email + 期限 */}
+                    {/* 上：店名/Email + 期限（字體放大） */}
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
                       <div className="pointer-events-none md:pointer-events-auto">
                         <div className="font-semibold text-base md:text-lg">{s.store_name}</div>
                         <div className="text-sm text-white/70">{s.email}</div>
                       </div>
-                      <div className="text-xs text-white/70 pointer-events-none">
+                      <div className="text-sm text-white/70 pointer-events-none">
                         期限：{formatYMD(s.trial_start_at)} ~ {formatYMD(s.trial_end_at)}
-                        {expired && <span className="ml-2 text-red-400 font-semibold">已過期</span>}
+                        {/* ⛔️ 已移除：右側顯示的「已過期」徽章 */}
                       </div>
                     </div>
 
-                    {/* 中：狀態徽章（帳號 / 內用 / 外帶 / 驗證） */}
+                    {/* 中：狀態徽章（帳號 / 內用 / 外帶 / 驗證 / 已過期） */}
                     <div className="flex gap-2 flex-wrap">
                       <span
                         className={`px-2 py-0.5 rounded text-xs border ${
@@ -557,7 +559,7 @@ export default function AdminDashboard() {
                         外帶{s.takeout_enabled ? '開啟' : '封鎖'}
                       </span>
 
-                      {/* 新增：驗證狀態 badge */}
+                      {/* 驗證狀態 */}
                       <span
                         className={`px-2 py-0.5 rounded text-xs border ${
                           s.email_confirmed
@@ -568,6 +570,16 @@ export default function AdminDashboard() {
                       >
                         {s.email_confirmed ? '已驗證' : '未驗證'}
                       </span>
+
+                      {/* ✅ 依你需求：把「已過期」徽章移到左側、緊貼驗證徽章右邊 */}
+                      {expired && (
+                        <span
+                          className="px-2 py-0.5 rounded text-xs border bg-red-500/15 text-red-300 border-red-400/20"
+                          title="方案已過期"
+                        >
+                          已過期
+                        </span>
+                      )}
                     </div>
 
                     {/* 下：操作按鈕群（含重寄驗證信） */}
