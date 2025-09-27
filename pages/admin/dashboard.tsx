@@ -11,8 +11,8 @@ import ConfirmPasswordModal from '@/components/ui/ConfirmPasswordModal'
    型別定義
 ===================== */
 interface StoreAccountRow {
-  id: string              // 帳號 id（store_accounts 主鍵）
-  store_id: string        // 關聯 stores.id（用於 feature flags）
+  id: string
+  store_id: string
   email: string
   store_name: string
   is_active: boolean
@@ -20,14 +20,11 @@ interface StoreAccountRow {
   trial_start_at: string | null
   trial_end_at: string | null
 }
-
 interface StoreFeatureFlagRow {
   store_id: string
   feature_key: 'dine_in' | 'takeout' | string
   enabled: boolean
 }
-
-/** 介面層資料（合併 flags 與驗證狀態） */
 interface StoreView {
   account_id: string
   store_id: string
@@ -39,15 +36,13 @@ interface StoreView {
   trial_end_at: string | null
   dine_in_enabled: boolean
   takeout_enabled: boolean
-  // 新增：驗證狀態
   email_confirmed: boolean
   email_confirmed_at: string | null
 }
-
 type TabKey = 'all' | 'active' | 'expired' | 'blocked'
 
 /* =====================
-   共用工具：日期/錯誤
+   共用工具
 ===================== */
 function getErrorMessage(e: unknown): string {
   if (!e) return '未知錯誤'
@@ -55,14 +50,12 @@ function getErrorMessage(e: unknown): string {
   if (e instanceof Error) return e.message
   try { return JSON.stringify(e) } catch { return String(e) }
 }
-
 function formatYMD(iso: string | null): string {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })
 }
-
 function isExpired(end: string | null): boolean {
   if (!end) return false
   const endDate = new Date(end)
@@ -108,13 +101,12 @@ export default function AdminDashboard() {
   }, [])
 
   /* ---------------------
-     讀取 accounts + flags（務必帶 store_id）
+     讀取 accounts + flags
   --------------------- */
   const fetchStores = useCallback(async () => {
     setLoading(true)
     setErr('')
     try {
-      // 1) store_accounts
       const { data: acc, error: accErr } = await supabase
         .from('store_accounts')
         .select('id, store_id, email, store_name, is_active, created_at, trial_start_at, trial_end_at')
@@ -122,16 +114,12 @@ export default function AdminDashboard() {
       if (accErr) throw accErr
       const accounts = (acc ?? []) as StoreAccountRow[]
 
-      // 2) flags
       const { data: flg, error: flagErr } = await supabase
         .from('store_feature_flags')
         .select('store_id, feature_key, enabled')
-      if (flagErr) {
-        console.warn('read store_feature_flags failed, fallback to defaults', flagErr)
-      }
+      if (flagErr) console.warn('read store_feature_flags failed, fallback to defaults', flagErr)
       const flags = (flg ?? []) as StoreFeatureFlagRow[]
 
-      // 3) 合併（先不含驗證）
       const mergedBase = accounts.map<StoreView>((a) => {
         const dine = flags.find((f) => f.store_id === a.store_id && f.feature_key === 'dine_in')
         const take = flags.find((f) => f.store_id === a.store_id && f.feature_key === 'takeout')
@@ -146,21 +134,19 @@ export default function AdminDashboard() {
           trial_end_at: a.trial_end_at,
           dine_in_enabled: dine?.enabled ?? true,
           takeout_enabled: take?.enabled ?? true,
-          email_confirmed: false,          // 先預設
+          email_confirmed: false,
           email_confirmed_at: null,
         }
       })
 
-      // 4) 取得驗證狀態（新增）
+      // 取得驗證狀態
       const emails = mergedBase.map((r) => r.email)
       const resp = await fetch('/api/admin/user-confirmations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ emails }),
       })
-      if (!resp.ok) {
-        console.warn('user-confirmations failed', await resp.text())
-      } else {
+      if (resp.ok) {
         const j = await resp.json()
         const map = new Map<string, { confirmed: boolean; email_confirmed_at: string | null }>()
         ;(j.rows as any[]).forEach((row) =>
@@ -176,6 +162,8 @@ export default function AdminDashboard() {
             r.email_confirmed_at = m.email_confirmed_at
           }
         })
+      } else {
+        console.warn('user-confirmations failed', await resp.text())
       }
 
       setStores(mergedBase)
@@ -185,12 +173,10 @@ export default function AdminDashboard() {
       setLoading(false)
     }
   }, [])
-
   useEffect(() => { void fetchStores() }, [fetchStores])
 
   /* ---------------------
      flags upsert（update→insert）
-     ※ 如欲最佳化，可改成 upsert + onConflict，這裡維持你原本流程
   --------------------- */
   const upsertFlag = useCallback(
     async (storeId: string, key: 'dine_in' | 'takeout', nextEnabled: boolean) => {
@@ -218,7 +204,33 @@ export default function AdminDashboard() {
   )
 
   /* ---------------------
-     互動動作（flags / 啟用 / 刪除 / 編輯）
+     重寄驗證信（新增：useCallback 包起來）
+  --------------------- */
+  const resendSignupEmail = useCallback(async (email: string) => {
+    setMutatingKey(`resend:${email}`)
+    setErr('')
+    try {
+      const resp = await fetch('/api/auth-resend-signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          redirectTo: `${window.location.origin}/auth/callback`,
+        }),
+      })
+      const j = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(j?.error || '重寄失敗')
+      await fetchStores()
+      alert('✅ 已請求重寄驗證信')
+    } catch (e) {
+      alert(`❌ 重寄失敗：${getErrorMessage(e)}`)
+    } finally {
+      setMutatingKey(null)
+    }
+  }, [fetchStores])
+
+  /* ---------------------
+     互動動作（flags / 啟用 / 刪除 / 編輯 / 一鍵修復）
   --------------------- */
   const toggleDineIn = async (storeId: string, current: boolean) => {
     setMutatingKey(`dine:${storeId}`)
@@ -341,47 +353,49 @@ export default function AdminDashboard() {
     }
   }
 
-  /* ---------------------
-     重寄驗證信（呼叫 /api/auth-resend-signup）
-  --------------------- */
-  const resendSignupEmail = async (email: string) => {
-    setMutatingKey(`resend:${email}`)
+  // ✅ 一鍵修復（呼叫 /api/admin/repair-account）
+  const repairAccount = async (email: string) => {
+    setMutatingKey(`repair:${email}`)
     setErr('')
     try {
-      const resp = await fetch('/api/auth-resend-signup', {
+      const resp = await fetch('/api/admin/repair-account', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-email': adminEmail || '',
+        },
         body: JSON.stringify({
           email,
-          redirectTo: `${window.location.origin}/auth/callback`,
+          autoCreateStore: true,
+          deleteDuplicateAccounts: false,
         }),
       })
-      const j = await resp.json()
-      if (!resp.ok) throw new Error(j?.error || '重寄失敗')
+      const j = await resp.json().catch(() => ({}))
+      if (!resp.ok) throw new Error(j?.error || resp.statusText || '修復失敗')
       await fetchStores()
-      alert('✅ 已請求重寄驗證信')
+      alert('✅ 修復完成')
     } catch (e) {
-      alert(`❌ 重寄失敗：${getErrorMessage(e)}`)
+      const msg = getErrorMessage(e)
+      setErr(msg)
+      alert(`❌ 修復失敗：${msg}`)
     } finally {
       setMutatingKey(null)
     }
   }
 
   /* ---------------------
-     前端篩選（膠囊 + 關鍵字）
+     前端篩選
   --------------------- */
   const filtered = useMemo(() => {
     const now = new Date()
     const kw = keyword.trim().toLowerCase()
     return stores.filter((s) => {
       if (activeTab === 'active') {
-        // 未過期
         if (s.trial_end_at) {
           const end = new Date(s.trial_end_at)
           if (!Number.isNaN(end.getTime()) && end < now) return false
         }
       } else if (activeTab === 'expired') {
-        // 已過期
         if (!(s.trial_end_at && new Date(s.trial_end_at) < now)) return false
       } else if (activeTab === 'blocked') {
         if (s.is_active) return false
@@ -392,7 +406,7 @@ export default function AdminDashboard() {
   }, [stores, activeTab, keyword])
 
   /* ---------------------
-     UI（深色基調）
+     UI
   --------------------- */
   const RefreshIcon = () => (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
@@ -464,7 +478,8 @@ export default function AdminDashboard() {
             const busy =
               mutatingKey?.includes(s.account_id) ||
               mutatingKey?.includes(s.store_id) ||
-              mutatingKey === `resend:${s.email}`
+              mutatingKey === `resend:${s.email}` ||
+              mutatingKey === `repair:${s.email}`
             const expired = isExpired(s.trial_end_at)
 
             return (
@@ -522,67 +537,31 @@ export default function AdminDashboard() {
                       </div>
                       <div className="text-sm text-white/70 pointer-events-none">
                         期限：{formatYMD(s.trial_start_at)} ~ {formatYMD(s.trial_end_at)}
-                        {/* ⛔️ 已移除：右側顯示的「已過期」徽章 */}
                       </div>
                     </div>
 
-                    {/* 中：狀態徽章（帳號 / 內用 / 外帶 / 驗證 / 已過期） */}
+                    {/* 中：狀態徽章 */}
                     <div className="flex gap-2 flex-wrap">
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs border ${
-                          s.is_active
-                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
-                            : 'bg-red-500/15 text-red-300 border-red-400/20'
-                        }`}
-                        title="帳號狀態"
-                      >
+                      <span className={`px-2 py-0.5 rounded text-xs border ${s.is_active ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20' : 'bg-red-500/15 text-red-300 border-red-400/20'}`}>
                         {s.is_active ? '啟用中' : '已封鎖'}
                       </span>
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs border ${
-                          s.dine_in_enabled
-                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
-                            : 'bg-red-500/15 text-red-300 border-red-400/20'
-                        }`}
-                        title="內用狀態"
-                      >
+                      <span className={`px-2 py-0.5 rounded text-xs border ${s.dine_in_enabled ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20' : 'bg-red-500/15 text-red-300 border-red-400/20'}`}>
                         內用{s.dine_in_enabled ? '開啟' : '封鎖'}
                       </span>
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs border ${
-                          s.takeout_enabled
-                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
-                            : 'bg-red-500/15 text-red-300 border-red-400/20'
-                        }`}
-                        title="外帶狀態"
-                      >
+                      <span className={`px-2 py-0.5 rounded text-xs border ${s.takeout_enabled ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20' : 'bg-red-500/15 text-red-300 border-red-400/20'}`}>
                         外帶{s.takeout_enabled ? '開啟' : '封鎖'}
                       </span>
-
-                      {/* 驗證狀態 */}
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs border ${
-                          s.email_confirmed
-                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
-                            : 'bg-yellow-500/15 text-yellow-200 border-yellow-400/20'
-                        }`}
-                        title={s.email_confirmed ? 'Email 已驗證' : 'Email 未驗證'}
-                      >
+                      <span className={`px-2 py-0.5 rounded text-xs border ${s.email_confirmed ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20' : 'bg-yellow-500/15 text-yellow-200 border-yellow-400/20'}`}>
                         {s.email_confirmed ? '已驗證' : '未驗證'}
                       </span>
-
-                      {/* ✅ 依你需求：把「已過期」徽章移到左側、緊貼驗證徽章右邊 */}
-                      {expired && (
-                        <span
-                          className="px-2 py-0.5 rounded text-xs border bg-red-500/15 text-red-300 border-red-400/20"
-                          title="方案已過期"
-                        >
+                      {isExpired(s.trial_end_at) && (
+                        <span className="px-2 py-0.5 rounded text-xs border bg-red-500/15 text-red-300 border-red-400/20">
                           已過期
                         </span>
                       )}
                     </div>
 
-                    {/* 下：操作按鈕群（含重寄驗證信） */}
+                    {/* 下：操作按鈕群（含重寄驗證信 & 一鍵修復） */}
                     <div className="flex gap-2 flex-wrap relative z-10 pointer-events-auto">
                       {!s.email_confirmed && (
                         <Button
@@ -593,47 +572,34 @@ export default function AdminDashboard() {
                           onClick={() => resendSignupEmail(s.email)}
                           title="重寄註冊確認信"
                         >
-                          重寄驗證信
+                          {mutatingKey === `resend:${s.email}` ? '寄送中…' : '重寄驗證信'}
                         </Button>
                       )}
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="soft"
+                        disabled={!!busy || !adminEmail}
+                        onClick={() => void repairAccount(s.email)}
+                        title="一鍵修復（改綁到正確門市並啟用）"
+                      >
+                        {mutatingKey === `repair:${s.email}` ? '修復中…' : '一鍵修復'}
+                      </Button>
 
                       <Button type="button" size="sm" variant="soft" disabled={!!busy} onClick={() => startEdit(s)}>
                         編輯
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="soft"
-                        disabled={!!busy}
-                        onClick={() => toggleDineIn(s.store_id, s.dine_in_enabled)}
-                      >
+                      <Button type="button" size="sm" variant="soft" disabled={!!busy} onClick={() => toggleDineIn(s.store_id, s.dine_in_enabled)}>
                         {s.dine_in_enabled ? '封鎖內用' : '解除內用'}
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="soft"
-                        disabled={!!busy}
-                        onClick={() => toggleTakeout(s.store_id, s.takeout_enabled)}
-                      >
+                      <Button type="button" size="sm" variant="soft" disabled={!!busy} onClick={() => toggleTakeout(s.store_id, s.takeout_enabled)}>
                         {s.takeout_enabled ? '封鎖外帶' : '解除外帶'}
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="warning"
-                        disabled={!!busy}
-                        onClick={() => toggleActive(s.account_id, s.is_active)}
-                      >
+                      <Button type="button" size="sm" variant="warning" disabled={!!busy} onClick={() => toggleActive(s.account_id, s.is_active)}>
                         {s.is_active ? '停用帳號' : '啟用帳號'}
                       </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="destructive"
-                        disabled={!!busy}
-                        onClick={() => requestDelete(s.account_id, s.store_id)}
-                      >
+                      <Button type="button" size="sm" variant="destructive" disabled={!!busy} onClick={() => requestDelete(s.account_id, s.store_id)}>
                         刪除
                       </Button>
                     </div>
