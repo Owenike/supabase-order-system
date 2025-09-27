@@ -1,16 +1,19 @@
+// /pages/login.tsx
 'use client'
 
 import { useState, type FormEvent } from 'react'
 import Image from 'next/image'
+import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
 export default function LoginPage() {
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [msg, setMsg] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleLogin = async () => {
+  const handleLogin = async (): Promise<void> => {
     if (loading) return
     setMsg('')
     setLoading(true)
@@ -32,7 +35,7 @@ export default function LoginPage() {
       })
 
       if (loginError || !data?.user) {
-        setMsg('登入失敗，請確認帳號與密碼')
+        setMsg(loginError?.message || '登入失敗，請確認帳號與密碼')
         return
       }
 
@@ -82,7 +85,9 @@ export default function LoginPage() {
       setLoading(false)
       if (allowRedirect) {
         setTimeout(() => {
-          window.location.href = '/redirect'
+          // 你原本寫 window.location.href = '/redirect'
+          // 建議改成 router.replace('/store')，更符合 Next.js 流程
+          router.replace('/store')
         }, 250)
       }
     }

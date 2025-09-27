@@ -1,4 +1,4 @@
-// pages/store/new.tsx
+// /pages/store/new.tsx
 'use client'
 
 import { useState, type FormEvent, useEffect } from 'react'
@@ -30,7 +30,7 @@ export default function NewStoreSignupPage() {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
   }
 
-  const handleSignup = async () => {
+  const handleSignup = async (): Promise<void> => {
     if (loading || cooldown > 0) return
     setMessage('')
     setError('')
@@ -89,8 +89,14 @@ export default function NewStoreSignupPage() {
           setError('此 Email 已被註冊，請直接登入或使用忘記密碼')
           return
         }
+        // 密碼強度
+        if (raw.includes('weak')) {
+          setError('密碼強度不足，請換一個更安全的密碼')
+          return
+        }
 
         // 其他錯誤
+        // eslint-disable-next-line no-console
         console.error('signUp error:', signUpError)
         setError(signUpError.message || '註冊失敗，請稍後再試')
         return
@@ -113,11 +119,12 @@ export default function NewStoreSignupPage() {
       setEmail('')
       setPassword('')
 
-      // 3 秒後導回登入頁（你原本的行為）
+      // 3 秒後導回登入頁（這裡不要 return 清理函式，避免 ts(2322)）
       setTimeout(() => {
         router.replace('/login')
       }, 3000)
     } catch (err: unknown) {
+      // eslint-disable-next-line no-console
       console.error('signUp exception:', err)
       setError(err instanceof Error ? err.message : '註冊失敗，請稍後再試')
     } finally {
@@ -189,7 +196,7 @@ export default function NewStoreSignupPage() {
             />
           </div>
 
-        <div>
+          <div>
             <label className="block text-sm text-gray-300 mb-1">負責人姓名</label>
             <input
               type="text"
