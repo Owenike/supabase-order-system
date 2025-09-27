@@ -5,9 +5,9 @@ import { supabase } from '../../lib/supabaseClient'
 
 type ViewState =
   | { status: 'idle' }
-  | { status: 'exchanging' }  // 用 ?code= 換 session
-  | { status: 'waiting' }     // 等 SDK 解析 #access_token
-  | { status: 'inserting' }   // 正在補齊 stores
+  | { status: 'exchanging' }   // 用 ?code= 換 session
+  | { status: 'waiting' }      // 等 SDK 解析 #access_token
+  | { status: 'inserting' }    // 建立/同步 stores
   | { status: 'success'; message: string }
   | { status: 'error'; message: string }
 
@@ -15,7 +15,7 @@ export default function AuthCallbackPage() {
   const router = useRouter()
   const [state, setState] = useState<ViewState>({ status: 'idle' })
 
-  // Supabase 可能帶 ?code=...&type=...；部分客戶端改用 #access_token 回傳
+  // 可能帶 ?code=...&type=...；部分客戶端用 #access_token 回傳
   const code = useMemo(() => {
     if (!router.isReady) return null
     const v = router.query.code
@@ -34,14 +34,15 @@ export default function AuthCallbackPage() {
     return Array.isArray(v) ? v[0] : v ?? null
   }, [router.isReady, router.query.error_description])
 
-  // ---- 將補齊 stores 的邏輯抽成函式（兩條路徑都會用到） ----
-  const bootstrapStore = async (cancelledRef: () => boolean) => {
-    // 取最新使用者
+  /**
+   * 以 user_id 為唯一鍵補齊 stores
+   * 前提：DB 已有 UNIQUE(user_id) ；RLS 允許本人 insert/select
+   */
+  const bootstrapStoreByUserId = async (isCancelled: () => boolean) => {
+    // 取目前使用者
     const { data: userRes, error: userErr } = await supabase.auth.getUser()
-    if (cancelledRef()) return
-    if (userErr || !userRes?.user) {
-      throw new Error(userErr?.message || '取得使用者失敗')
-    }
+    if (isCancelled()) return
+    if (userErr || !userRes?.user) throw new Error(userErr?.message || '取得使用者失敗')
 
     const user = userRes.user
     const meta = (user.user_metadata ?? {}) as {
@@ -50,30 +51,31 @@ export default function AuthCallbackPage() {
       phone?: string
     }
 
-    // 檢查是否已有 store（以 user_id 或 email 當唯一）
+    // 先看是否已存在（只用 user_id）
     const { data: exists, error: findErr } = await supabase
       .from('stores')
       .select('id')
-      .or(`user_id.eq.${user.id},email.eq.${user.email ?? ''}`)
+      .eq('user_id', user.id)
       .maybeSingle()
 
-    if (cancelledRef()) return
+    if (isCancelled()) return
     if (findErr) throw new Error(`查詢門市失敗：${findErr.message}`)
 
+    // 沒有就建立（onConflict 對應 UNIQUE(user_id)）
     if (!exists) {
       const payload = {
+        user_id: user.id,
         name: meta.store_name ?? '未命名店家',
         owner_name: meta.owner_name ?? null,
         phone: meta.phone ?? null,
         email: user.email ?? null,
-        user_id: user.id,
       }
 
       const { error: insErr } = await supabase
         .from('stores')
         .upsert([payload], { onConflict: 'user_id', ignoreDuplicates: false })
 
-      if (cancelledRef()) return
+      if (isCancelled()) return
       if (insErr) throw new Error(`建立門市失敗：${insErr.message}`)
     }
   }
@@ -84,13 +86,13 @@ export default function AuthCallbackPage() {
     const isCancelled = () => cancelled
 
     const run = async () => {
-      // 帶錯誤參數時，直接顯示
+      // URL 帶錯誤時直接顯示
       if (errorDescription) {
         setState({ status: 'error', message: decodeURIComponent(errorDescription) })
         return
       }
 
-      // 1) 有 ?code= → 用 code 交換 session
+      // 1) 有 ?code= → 換 session
       if (code) {
         setState({ status: 'exchanging' })
         const { error: exErr } = await supabase.auth.exchangeCodeForSession(code)
@@ -100,36 +102,31 @@ export default function AuthCallbackPage() {
           return
         }
 
-        // 交換成功 → 補齊 stores
+        // 換成功 → 建立/同步 stores
         try {
           setState({ status: 'inserting' })
-          await bootstrapStore(isCancelled)
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : '補齊資料時發生未知錯誤'
-          setState({ status: 'error', message: msg })
+          await bootstrapStoreByUserId(isCancelled)
+        } catch (e: any) {
+          setState({ status: 'error', message: e?.message || '補齊資料時發生未知錯誤' })
           return
         }
 
         setState({ status: 'success', message: '驗證成功，資料已建立/同步，正在導向登入頁…' })
-        setTimeout(() => { if (!isCancelled()) router.replace('/login') }, 1200)
+        setTimeout(() => { if (!isCancelled()) router.replace('/login') }, 1000)
         return
       }
 
-      // 2) 沒有 ?code= → 多數行動郵件用 #access_token 回跳
-      //    由於 /lib/supabaseClient.ts 設了 detectSessionInUrl:true，
-      //    SDK 會自動解析 hash 並建立 session；這裡等他一下。
+      // 2) 沒有 ?code= → 等 SDK 解析 #access_token（detectSessionInUrl:true）
       setState({ status: 'waiting' })
       const deadline = Date.now() + 3000
       while (!isCancelled() && Date.now() < deadline) {
         const { data } = await supabase.auth.getSession()
         if (data.session) {
-          // 已有 session → 補齊 stores
           try {
             setState({ status: 'inserting' })
-            await bootstrapStore(isCancelled)
-          } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : '補齊資料時發生未知錯誤'
-            setState({ status: 'error', message: msg })
+            await bootstrapStoreByUserId(isCancelled)
+          } catch (e: any) {
+            setState({ status: 'error', message: e?.message || '補齊資料時發生未知錯誤' })
             return
           }
 
@@ -140,7 +137,7 @@ export default function AuthCallbackPage() {
         await new Promise((r) => setTimeout(r, 150))
       }
 
-      // 3) 還是沒有 session → 視為連結失效或被預抓破壞
+      // 3) 仍無 session → 視為連結無效或被預抓破壞
       setState({
         status: 'error',
         message: '驗證代碼遺失或連結無效，請回到註冊/登入頁重新取得驗證信。',
