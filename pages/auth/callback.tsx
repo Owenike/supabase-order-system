@@ -3,11 +3,22 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '../../lib/supabaseClient'
 
+/**
+ * 前提（請確認 DB 已備好，否則 upsert 會失敗）：
+ * 1) stores 表包含欄位：user_id uuid, name text, owner_name text, phone text, email text
+ * 2) stores.user_id 有唯一鍵（或唯一索引），例：
+ *    alter table public.stores add constraint stores_user_id_key unique (user_id);
+ * 3) store_accounts 表包含欄位：store_id uuid, email text, store_name text, is_active bool, trial_start_at timestamptz, trial_end_at timestamptz
+ * 4) store_accounts.store_id 有唯一索引（或唯一鍵），例：
+ *    create unique index if not exists store_accounts_store_id_key_idx on public.store_accounts (store_id);
+ * 5) 若開 RLS，需允許本人 insert/select 對這兩張表
+ */
+
 type ViewState =
   | { status: 'idle' }
-  | { status: 'exchanging' }   // 用 ?code= 換 session
+  | { status: 'exchanging' }   // 以 ?code= 交換 session
   | { status: 'waiting' }      // 等 SDK 解析 #access_token
-  | { status: 'inserting' }    // 建立/同步 stores
+  | { status: 'inserting' }    // 建立/同步 stores + store_accounts
   | { status: 'success'; message: string }
   | { status: 'error'; message: string }
 
@@ -35,49 +46,60 @@ export default function AuthCallbackPage() {
   }, [router.isReady, router.query.error_description])
 
   /**
-   * 以 user_id 為唯一鍵補齊 stores
-   * 前提：DB 已有 UNIQUE(user_id) ；RLS 允許本人 insert/select
+   * 建立/同步：stores（以 user_id）→ 取回 store_id → 建立/同步 store_accounts（以 store_id）
    */
-  const bootstrapStoreByUserId = async (isCancelled: () => boolean) => {
-    // 取目前使用者
-    const { data: userRes, error: userErr } = await supabase.auth.getUser()
+  const bootstrapStoreAndAccount = async (isCancelled: () => boolean) => {
+    // 取得使用者
+    const { data: ures, error: uerr } = await supabase.auth.getUser()
     if (isCancelled()) return
-    if (userErr || !userRes?.user) throw new Error(userErr?.message || '取得使用者失敗')
+    if (uerr || !ures?.user) throw new Error(uerr?.message || '取得使用者失敗')
 
-    const user = userRes.user
+    const user = ures.user
     const meta = (user.user_metadata ?? {}) as {
       store_name?: string
       owner_name?: string
       phone?: string
     }
 
-    // 先看是否已存在（只用 user_id）
-    const { data: exists, error: findErr } = await supabase
+    // 1) upsert stores by user_id
+    const storePayload = {
+      user_id: user.id,
+      name: meta.store_name ?? '未命名店家',
+      owner_name: meta.owner_name ?? null,
+      phone: meta.phone ?? null,
+      email: user.email ?? null,
+    }
+
+    const { error: storeUpsertErr } = await supabase
       .from('stores')
-      .select('id')
+      .upsert([storePayload], { onConflict: 'user_id', ignoreDuplicates: false })
+    if (isCancelled()) return
+    if (storeUpsertErr) throw new Error(`建立門市失敗：${storeUpsertErr.message}`)
+
+    // 2) 取回 store_id
+    const { data: storeRow, error: findStoreErr } = await supabase
+      .from('stores')
+      .select('id, name')
       .eq('user_id', user.id)
       .maybeSingle()
-
     if (isCancelled()) return
-    if (findErr) throw new Error(`查詢門市失敗：${findErr.message}`)
+    if (findStoreErr || !storeRow?.id) throw new Error(`查詢門市失敗：${findStoreErr?.message || '未取得 store_id'}`)
 
-    // 沒有就建立（onConflict 對應 UNIQUE(user_id)）
-    if (!exists) {
-      const payload = {
-        user_id: user.id,
-        name: meta.store_name ?? '未命名店家',
-        owner_name: meta.owner_name ?? null,
-        phone: meta.phone ?? null,
-        email: user.email ?? null,
-      }
-
-      const { error: insErr } = await supabase
-        .from('stores')
-        .upsert([payload], { onConflict: 'user_id', ignoreDuplicates: false })
-
-      if (isCancelled()) return
-      if (insErr) throw new Error(`建立門市失敗：${insErr.message}`)
+    // 3) upsert store_accounts by store_id（確保登入頁能查到帳號且啟用）
+    const accountPayload = {
+      store_id: storeRow.id,
+      email: user.email ?? null,
+      store_name: storeRow.name ?? meta.store_name ?? '未命名店家',
+      is_active: true,
+      trial_start_at: null,
+      trial_end_at: null,
     }
+
+    const { error: accErr } = await supabase
+      .from('store_accounts')
+      .upsert([accountPayload], { onConflict: 'store_id', ignoreDuplicates: false })
+    if (isCancelled()) return
+    if (accErr) throw new Error(`建立店家帳號失敗：${accErr.message}`)
   }
 
   useEffect(() => {
@@ -102,21 +124,20 @@ export default function AuthCallbackPage() {
           return
         }
 
-        // 換成功 → 建立/同步 stores
         try {
           setState({ status: 'inserting' })
-          await bootstrapStoreByUserId(isCancelled)
+          await bootstrapStoreAndAccount(isCancelled)
         } catch (e: any) {
-          setState({ status: 'error', message: e?.message || '補齊資料時發生未知錯誤' })
+          setState({ status: 'error', message: e?.message || '資料同步失敗' })
           return
         }
 
-        setState({ status: 'success', message: '驗證成功，資料已建立/同步，正在導向登入頁…' })
-        setTimeout(() => { if (!isCancelled()) router.replace('/login') }, 1000)
+        setState({ status: 'success', message: '驗證成功，資料已建立，正在導向登入頁…' })
+        setTimeout(() => { if (!isCancelled()) router.replace('/login') }, 900)
         return
       }
 
-      // 2) 沒有 ?code= → 等 SDK 解析 #access_token（detectSessionInUrl:true）
+      // 2) 沒有 ?code= → 等 SDK 解析 #access_token（/lib/supabaseClient.ts 已開 detectSessionInUrl）
       setState({ status: 'waiting' })
       const deadline = Date.now() + 3000
       while (!isCancelled() && Date.now() < deadline) {
@@ -124,9 +145,9 @@ export default function AuthCallbackPage() {
         if (data.session) {
           try {
             setState({ status: 'inserting' })
-            await bootstrapStoreByUserId(isCancelled)
+            await bootstrapStoreAndAccount(isCancelled)
           } catch (e: any) {
-            setState({ status: 'error', message: e?.message || '補齊資料時發生未知錯誤' })
+            setState({ status: 'error', message: e?.message || '資料同步失敗' })
             return
           }
 
@@ -137,7 +158,7 @@ export default function AuthCallbackPage() {
         await new Promise((r) => setTimeout(r, 150))
       }
 
-      // 3) 仍無 session → 視為連結無效或被預抓破壞
+      // 3) 仍無 session → 視為連結無效或被預抓
       setState({
         status: 'error',
         message: '驗證代碼遺失或連結無效，請回到註冊/登入頁重新取得驗證信。',
