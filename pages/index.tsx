@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useRouter } from 'next/router'
+import { useRouter } from 'next/router' // ⚠️ 如果專案是 Next.js App Router 要改用 next/navigation
 import { supabase } from '@/lib/supabaseClient'
 import Image from 'next/image'
 import type { RealtimePostgresInsertPayload } from '@supabase/supabase-js'
@@ -12,6 +12,9 @@ interface OrderItem {
 }
 
 interface Order {
+  id: string
+  created_at: string
+  store_id: string
   table_number: string
   spicy_level?: string
   items?: OrderItem[]
@@ -39,7 +42,9 @@ export default function StoreHomePage() {
   }, [router])
 
   const fetchStoreInfo = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
     if (!session || !session.user) {
       setError('尚未登入')
       router.replace('/login')
@@ -71,10 +76,11 @@ export default function StoreHomePage() {
 
     setStoreName(storeData.name)
 
+    // ✅ 改用 store_id 查詢，避免用 name 對應
     const { data: accountData, error: accountErr } = await supabase
       .from('store_accounts')
       .select('id')
-      .eq('store_name', storeData.name)
+      .eq('store_id', storeId)
       .single()
 
     if (!accountData?.id || accountErr) {
@@ -109,7 +115,9 @@ export default function StoreHomePage() {
         },
         (payload: RealtimePostgresInsertPayload<Order>) => {
           setLatestOrder(payload.new)
-          audioRef.current?.play()
+          audioRef.current?.play().catch(() => {
+            // 忽略瀏覽器自動播放限制錯誤
+          })
         }
       )
       .subscribe()
@@ -155,7 +163,9 @@ export default function StoreHomePage() {
             🔔 新訂單：桌號 {latestOrder.table_number}
           </p>
           {latestOrder.spicy_level && (
-            <p className="text-sm text-red-700">辣度：{latestOrder.spicy_level}</p>
+            <p className="text-sm text-red-700">
+              辣度：{latestOrder.spicy_level}
+            </p>
           )}
           <p className="text-sm text-gray-700">
             品項：
