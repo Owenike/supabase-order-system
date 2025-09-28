@@ -38,6 +38,8 @@ const langMap = {
     inactive: '此帳號已被停用，請聯繫管理員',
     storeNamePrefix: '您的店家名稱：',
     periodPrefix: '期限：',
+    loadError:
+      '讀取店家資料失敗。請稍後再試或聯繫管理員（F12 查看詳細錯誤）。',
   },
   en: {
     pageTitle: 'From New to Loyal Customers — Omnichannel Membership Ops',
@@ -58,6 +60,8 @@ const langMap = {
     inactive: 'This account has been deactivated. Please contact admin.',
     storeNamePrefix: 'Store Name: ',
     periodPrefix: 'Period: ',
+    loadError:
+      'Failed to load store data. Please try again or contact admin (open DevTools for details).',
   },
 } as const
 
@@ -70,15 +74,14 @@ export default function StoreHomePage() {
   const [showAlert, setShowAlert] = useState(false)
   const [loading, setLoading] = useState(true)
   const [storeInfo, setStoreInfo] = useState<StoreRow | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
 
   const t = langMap[lang]
 
-  // 民國年格式轉換
   const toMinguo = (iso: string | null) => {
     if (!iso) return '-'
     const d = new Date(iso)
-    // 若後端為 UTC，顯示僅取日期，不做時區位移修正
     const y = d.getFullYear() - 1911
     const mm = String(d.getMonth() + 1).padStart(2, '0')
     const dd = String(d.getDate()).padStart(2, '0')
@@ -87,116 +90,128 @@ export default function StoreHomePage() {
 
   useEffect(() => {
     const init = async () => {
-      // 1) Auth 檢查
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      if (!session || !session.user) {
-        router.replace('/login')
-        return
-      }
+      try {
+        // 1) Auth 檢查
+        const {
+          data: { session },
+          error: sErr,
+        } = await supabase.auth.getSession()
+        if (sErr) {
+          console.error('[auth.getSession] error:', sErr)
+        }
+        if (!session || !session.user) {
+          router.replace('/login')
+          return
+        }
 
-      // 2) store_id 檢查（從你現行流程沿用）
-      const storeId = localStorage.getItem('store_id')
-      if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
-        localStorage.clear()
-        router.replace('/login')
-        return
-      }
+        // 2) store_id 檢查
+        const storeId = localStorage.getItem('store_id')
+        if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
+          console.warn('[store] invalid or empty store_id in localStorage:', storeId)
+          localStorage.clear()
+          router.replace('/login')
+          return
+        }
 
-      // 3) 帳號啟用檢查（以 store_id 找任一關聯帳號；避免 maybeSingle 多筆行為不一）
-      const { data: accountRows, error: accErr } = await supabase
-        .from('store_accounts')
-        .select('id, is_active')
-        .eq('store_id', storeId)
-        .limit(1)
+        // 3) 帳號啟用檢查
+        const { data: accountRows, error: accErr } = await supabase
+          .from('store_accounts')
+          .select('id, is_active')
+          .eq('store_id', storeId)
+          .limit(1)
 
-      if (accErr || !accountRows || accountRows.length === 0) {
-        localStorage.clear()
-        router.replace('/login')
-        return
-      }
-      const account = accountRows[0]
-      if (!account.is_active) {
-        alert(t.inactive)
-        await supabase.auth.signOut()
-        localStorage.clear()
-        router.replace('/login')
-        return
-      }
-      localStorage.setItem('store_account_id', account.id)
+        if (accErr) {
+          console.error('[store_accounts] select error:', accErr)
+          setErrorMsg(t.loadError)
+          setLoading(false)
+          return
+        }
 
-      // 4) 讀取 stores 表的店名與到期日（單一真實來源）
-      const { data: s, error: sErr } = await supabase
-        .from('stores')
-        .select('name, license_start_at, license_end_at')
-        .eq('id', storeId)
-        .single()
+        if (!accountRows || accountRows.length === 0) {
+          console.warn('[store_accounts] no rows for store_id:', storeId)
+          localStorage.clear()
+          router.replace('/login')
+          return
+        }
 
-      if (!s || sErr) {
-        // 若查不到 store，視同未授權
-        localStorage.clear()
-        router.replace('/login')
-        return
-      }
-      setStoreInfo(s as StoreRow)
+        const account = accountRows[0]
+        if (!account.is_active) {
+          alert(t.inactive)
+          await supabase.auth.signOut()
+          localStorage.clear()
+          router.replace('/login')
+          return
+        }
+        localStorage.setItem('store_account_id', account.id)
 
-      setLoading(false)
+        // 4) 讀取 stores（單一真實來源）
+        const { data: s, error: sErr2, status } = await supabase
+          .from('stores')
+          .select('name, license_start_at, license_end_at')
+          .eq('id', storeId)
+          .single()
 
-      // 5) 新訂單通知（Realtime）
-      const orderChannel = supabase
-        .channel(`order_notifications_${storeId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'orders',
-            filter: `store_id=eq.${storeId}`,
-          },
-          (payload) => {
-            setLatestOrder(payload.new as Order)
-            audioRef.current?.play()
-            setShowAlert(true)
-            setTimeout(() => setShowAlert(false), 3000)
-          }
-        )
-        .subscribe()
+        if (sErr2) {
+          console.error(`[stores] select error (status ${status}):`, sErr2)
+          setErrorMsg(t.loadError)
+          setLoading(false)
+          return
+        }
 
-      // 6) stores 的即時訂閱：Admin 更新到期日 / 店名即時反映
-      const storeChannel = supabase
-        .channel(`stores_watch_${storeId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'stores',
-            filter: `id=eq.${storeId}`,
-          },
-          async () => {
-            const { data: s2 } = await supabase
-              .from('stores')
-              .select('name, license_start_at, license_end_at')
-              .eq('id', storeId)
-              .single()
-            if (s2) setStoreInfo(s2 as StoreRow)
-          }
-        )
-        .subscribe()
+        setStoreInfo(s as StoreRow)
+        setLoading(false)
 
-      return () => {
-        supabase.removeChannel(orderChannel)
-        supabase.removeChannel(storeChannel)
+        // 5) 新訂單通知（Realtime）
+        const orderChannel = supabase
+          .channel(`order_notifications_${storeId}`)
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'orders', filter: `store_id=eq.${storeId}` },
+            (payload) => {
+              setLatestOrder(payload.new as Order)
+              audioRef.current?.play()
+              setShowAlert(true)
+              setTimeout(() => setShowAlert(false), 3000)
+            }
+          )
+          .subscribe()
+
+        // 6) stores 即時更新
+        const storeChannel = supabase
+          .channel(`stores_watch_${storeId}`)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'stores', filter: `id=eq.${storeId}` },
+            async () => {
+              const { data: s2, error: s2Err } = await supabase
+                .from('stores')
+                .select('name, license_start_at, license_end_at')
+                .eq('id', storeId)
+                .single()
+              if (s2Err) {
+                console.error('[stores] realtime refresh error:', s2Err)
+              } else {
+                setStoreInfo(s2 as StoreRow)
+              }
+            }
+          )
+          .subscribe()
+
+        return () => {
+          supabase.removeChannel(orderChannel)
+          supabase.removeChannel(storeChannel)
+        }
+      } catch (e) {
+        console.error('[store init] unexpected error:', e)
+        setErrorMsg(t.loadError)
+        setLoading(false)
       }
     }
 
     void init()
-  }, [router, t.inactive])
+  }, [router, t.inactive, t.loadError])
 
-  const go = (path: string) => {
-    router.push(path)
-  }
+  const go = (path: string) => router.push(path)
 
   const Card = ({
     icon,
@@ -241,17 +256,22 @@ export default function StoreHomePage() {
 
   return (
     <StoreShell title={t.pageTitle}>
+      {/* 若讀取 stores 失敗，顯示錯誤訊息（避免直接踢回登入看不到原因） */}
+      {errorMsg && (
+        <div className="mx-4 sm:mx-6 md:mx-10 mt-4 rounded-md bg-red-600/20 border border-red-500/50 text-red-200 px-4 py-3">
+          {errorMsg}
+        </div>
+      )}
+
       {/* 頂部：店名 + 期限（民國年） */}
       <div className="px-4 sm:px-6 md:px-10 pt-4">
         <div className="flex flex-wrap items-center gap-3 text-sm text-white/90">
           <span className="inline-flex items-center gap-2">
-            <span className="opacity-80">{t.storeNamePrefix}</span>
-            <span className="font-semibold">
-              {storeInfo?.name ?? '-'}
-            </span>
+            <span className="opacity-80">{langMap[lang].storeNamePrefix}</span>
+            <span className="font-semibold">{storeInfo?.name ?? '-'}</span>
           </span>
           <span className="inline-flex items-center gap-2">
-            <span className="opacity-80">{t.periodPrefix}</span>
+            <span className="opacity-80">{langMap[lang].periodPrefix}</span>
             <span className="rounded-md bg-yellow-500/20 text-yellow-300 px-2 py-0.5">
               {toMinguo(storeInfo?.license_start_at ?? null)} ～ {toMinguo(storeInfo?.license_end_at ?? null)}
             </span>
@@ -262,86 +282,58 @@ export default function StoreHomePage() {
       {/* 新訂單提醒 */}
       {showAlert && (
         <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg animate-pulse z-50">
-          {t.newOrder}
+          {langMap[lang].newOrder}
         </div>
       )}
 
       {/* 內容卡片（2×2） */}
       <main className="px-4 sm:px-6 md:px-10 pb-16">
         <div className="grid gap-6 sm:gap-7 md:gap-8 grid-cols-1 md:grid-cols-2 max-w-6xl mx-auto">
-          {/* 1. 分類與菜單管理 */}
           <Card
             ariaLabel="manage-menus"
             onClick={() => go('/store/manage-menus')}
-            title={t.manageTitle}
-            desc={t.manageDesc}
+            title={langMap[lang].manageTitle}
+            desc={langMap[lang].manageDesc}
             icon={
-              <svg
-                viewBox="0 0 24 24"
-                className="h-12 w-12 text-yellow-400"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
+              <svg viewBox="0 0 24 24" className="h-12 w-12 text-yellow-400" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <rect x="3" y="5" width="18" height="14" rx="2" />
                 <path d="M7 9h10M7 13h6" />
               </svg>
             }
           />
 
-          {/* 2. 訂單管理 */}
           <Card
             ariaLabel="orders"
             onClick={() => go('/store/orders')}
-            title={t.ordersTitle}
-            desc={t.ordersDesc}
+            title={langMap[lang].ordersTitle}
+            desc={langMap[lang].ordersDesc}
             icon={
-              <svg
-                viewBox="0 0 24 24"
-                className="h-12 w-12 text-yellow-400"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
+              <svg viewBox="0 0 24 24" className="h-12 w-12 text-yellow-400" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M4 7h16M4 12h16M4 17h10" />
                 <circle cx="18" cy="17" r="0.8" fill="currentColor" />
               </svg>
             }
           />
 
-          {/* 3. 銷售報表 */}
           <Card
             ariaLabel="stats"
             onClick={() => go('/store/stats')}
-            title={t.statsTitle}
-            desc={t.statsDesc}
+            title={langMap[lang].statsTitle}
+            desc={langMap[lang].statsDesc}
             icon={
-              <svg
-                viewBox="0 0 24 24"
-                className="h-12 w-12 text-yellow-400"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
+              <svg viewBox="0 0 24 24" className="h-12 w-12 text-yellow-400" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M4 19V5M8 19v-6M12 19v-9M16 19V8M20 19V4" />
               </svg>
             }
           />
 
-          {/* 4. 產生 QRCode */}
           <Card
             ariaLabel="qrcode"
             onClick={() => go('/qrcode')}
-            title={t.qrcodeTitle}
-            desc={t.qrcodeDesc}
+            title={langMap[lang].qrcodeTitle}
+            desc={langMap[lang].qrcodeDesc}
             icon={
-              <svg
-                viewBox="0 0 24 24"
-                className="h-12 w-12 text-yellow-400"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
+              <svg viewBox="0 0 24 24" className="h-12 w-12 text-yellow-400" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <rect x="3" y="3" width="7" height="7" />
                 <rect x="14" y="3" width="7" height="7" />
                 <rect x="3" y="14" width="7" height="7" />
