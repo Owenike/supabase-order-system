@@ -1,12 +1,12 @@
-// components/Layout/StoreShell.tsx
+// components/layouts/StoreShell.tsx
 'use client'
 
 import { useEffect, useState, type ReactNode } from 'react'
-import { useRouter } from 'next/router'
 import Link from 'next/link'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabaseClient'
-import { formatROCRange } from '@/lib/date' // ✅ 新增：民國年日期格式
+import { useGuardStoreAccount } from '@/lib/guards/useGuardStoreAccount'
+import { formatROCRange } from '@/lib/date' // 民國年區間格式：formatROCRange(startISO, endISO)
 
 type Lang = 'zh' | 'en'
 
@@ -16,7 +16,6 @@ const i18n = {
     langSwitch: 'EN',
     langSwitchEn: '中',
     logout: '登出',
-    inactive: '此帳號已被停用，請聯繫管理員',
     line: 'LINE',
     expired: '（試用已到期）',
   },
@@ -25,30 +24,19 @@ const i18n = {
     langSwitch: '中',
     langSwitchEn: 'EN',
     logout: 'Logout',
-    inactive: 'This account has been deactivated. Please contact admin.',
     line: 'LINE',
     expired: '(Trial expired)',
   },
 } as const
 
-// ✅ /store 底下「不需登入即可存取」的路徑白名單
-const PUBLIC_STORE_PATHS = new Set<string>([
-  '/store/forgot-password',
-  '/store/reset-password',
-  '/store/login',
-])
+// LINE 官方連結（可用環境變數覆蓋）
+const LINE_URL = process.env.NEXT_PUBLIC_LINE_URL || 'https://lin.ee/m8vO3XI'
 
-function isPublicStoreAuthPath(path: string): boolean {
-  for (const p of PUBLIC_STORE_PATHS) {
-    if (path.startsWith(p)) return true
-  }
-  return false
+type AccountRow = {
+  store_name: string | null
+  trial_start_at: string | null
+  trial_end_at: string | null
 }
-
-// ✅ LINE 連結（可用環境變數覆蓋）
-const LINE_URL =
-  process.env.NEXT_PUBLIC_LINE_URL ||
-  'https://lin.ee/m8vO3XI'
 
 export default function StoreShell({
   title,
@@ -57,123 +45,71 @@ export default function StoreShell({
   title?: string
   children: ReactNode
 }) {
-  const router = useRouter()
-  const [storeName, setStoreName] = useState('')
+  // ✅ 用守門 hook：未登入/停用/到期會自動導回 /login；通過後提供 storeId
+  const { guarding, storeId } = useGuardStoreAccount()
+
   const [lang, setLang] = useState<Lang>('zh')
   const t = i18n[lang]
-  const [booted, setBooted] = useState(false)
 
-  // ✅ 新增：試用區間（民國年）與是否過期
+  const [info, setInfo] = useState<AccountRow>({
+    store_name: null,
+    trial_start_at: null,
+    trial_end_at: null,
+  })
   const [trialRange, setTrialRange] = useState<string | null>(null)
-  const [expired, setExpired] = useState(false)
+  const [expired, setExpired] = useState<boolean>(false)
 
+  // 統一從「store_accounts」讀取店名與期限（不要再從 stores 表讀）
   useEffect(() => {
-    let cancelled = false
-
-    const init = async () => {
-      const currentPath = router.asPath || router.pathname
-
-      // ✅ 白名單頁面：直接放行
-      if (isPublicStoreAuthPath(currentPath)) {
-        if (!cancelled) setBooted(true)
-        return
-      }
-
-      // 其餘 /store/* 需登入
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      if (!session || !session.user) {
-        if (!cancelled) {
-          const next = encodeURIComponent(currentPath)
-          router.replace(`/login?next=${next}`)
-        }
-        return
-      }
-
-      const storeId =
-        typeof window !== 'undefined' ? localStorage.getItem('store_id') : null
-      if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
-        try {
-          if (typeof window !== 'undefined') localStorage.clear()
-        } catch {}
-        if (!cancelled) router.replace('/login')
-        return
-      }
-
-      // 讀店名 + 試用區間
-      const { data: storeData } = await supabase
-        .from('stores')
-        .select('name, trial_start_at, trial_end_at')
-        .eq('id', storeId)
+    const run = async () => {
+      if (!storeId || guarding) return
+      const { data, error } = await supabase
+        .from('store_accounts')
+        .select('store_name, trial_start_at, trial_end_at')
+        .eq('store_id', storeId)
         .maybeSingle()
 
-      if (!cancelled) {
-        setStoreName(storeData?.name || '')
-        if (storeData?.trial_start_at && storeData?.trial_end_at) {
-          setTrialRange(formatROCRange(storeData.trial_start_at, storeData.trial_end_at))
-          setExpired(Date.now() > new Date(storeData.trial_end_at).getTime())
+      if (!error && data) {
+        const next: AccountRow = {
+          store_name: data.store_name ?? null,
+          trial_start_at: data.trial_start_at ?? null,
+          trial_end_at: data.trial_end_at ?? null,
+        }
+        setInfo(next)
+
+        if (next.trial_start_at && next.trial_end_at) {
+          setTrialRange(formatROCRange(next.trial_start_at, next.trial_end_at))
+          // 到期日當天仍可用：用日期比較（把時間歸零）
+          const end = new Date(next.trial_end_at)
+          const today = new Date()
+          end.setHours(0, 0, 0, 0)
+          today.setHours(0, 0, 0, 0)
+          setExpired(end < today)
         } else {
           setTrialRange(null)
           setExpired(false)
         }
       }
-
-      // 檢查帳號是否啟用
-      const { data: accountData } = await supabase
-        .from('store_accounts')
-        .select('id, is_active')
-        .eq('store_id', storeId)
-        .maybeSingle()
-
-      if (!accountData?.id) {
-        try {
-          if (typeof window !== 'undefined') localStorage.clear()
-        } catch {}
-        if (!cancelled) router.replace('/login')
-        return
-      }
-      if (!accountData.is_active) {
-        alert(t.inactive)
-        await supabase.auth.signOut()
-        try {
-          if (typeof window !== 'undefined') localStorage.clear()
-        } catch {}
-        if (!cancelled) router.replace('/login')
-        return
-      }
-
-      try {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('store_account_id', accountData.id)
-        }
-      } catch {}
-
-      if (!cancelled) setBooted(true)
     }
-
-    void init()
-
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.asPath, router.pathname])
+    void run()
+  }, [storeId, guarding])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     try {
       if (typeof window !== 'undefined') localStorage.clear()
     } catch {}
-    router.push('/login')
+    // 用瀏覽器導頁，避免 router 沒注入時的問題
+    if (typeof window !== 'undefined') window.location.href = '/login'
   }
 
-  if (!booted) return null
+  // 守門中先不渲染，避免閃爍
+  if (guarding) return null
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      {/* 頂部：左上 LOGO/店名（可點回 /store），右上語言/LINE/登出 */}
-      <header className="flex items-center justify-between px-4 sm:px-6 md:px-10 py-6 md:py-8">
+    <div className="min-h-screen bg-[#0B0B0B] text-white">
+      {/* 頂部：左店名與期限徽章；右語系/LINE/登出 */}
+      <header className="flex items-center justify-between px-4 sm:px-6 md:px-10 py-6 md:py-8 max-w-6xl mx-auto">
         <Link
           href="/store"
           className="flex items-center gap-4 sm:gap-5 group"
@@ -192,17 +128,23 @@ export default function StoreShell({
             <div className="text-lg sm:text-xl md:text-2xl text-white/90 leading-tight flex items-center gap-2 flex-wrap">
               <span>
                 {t.brandSubtitle}{' '}
-                <span className="font-semibold text-white">{storeName}</span>
+                <span className="font-semibold text-white">
+                  {info.store_name || '—'}
+                </span>
               </span>
 
-              {/* ✅ 店名右側的期限徽章（只有有資料才顯示） */}
+              {/* 期限徽章（從 store_accounts 來） */}
               {trialRange && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-md border border-amber-300/40 bg-amber-500/15 text-amber-200 text-xs sm:text-sm">
-                  期限{trialRange}
+                  期限：{trialRange}
                 </span>
               )}
+
+              {/* 已到期提示（僅顯示文案；實際擋停用/到期由 hook 負責） */}
               {expired && (
-                <span className="text-red-400 text-xs sm:text-sm">{t.expired}</span>
+                <span className="text-red-400 text-xs sm:text-sm">
+                  {t.expired}
+                </span>
               )}
             </div>
           </div>
@@ -217,7 +159,7 @@ export default function StoreShell({
             {lang === 'zh' ? t.langSwitch : t.langSwitchEn}
           </button>
 
-          {/* ✅ LINE 綠色按鈕 */}
+          {/* LINE 綠色按鈕 */}
           <a
             href={LINE_URL}
             target="_blank"
@@ -242,14 +184,14 @@ export default function StoreShell({
           {/* 登出 */}
           <button
             onClick={handleLogout}
-            className="text-xs sm:text-sm text-white/90 border border-white/20 px-3 py-1.5 rounded-md hover:bg白/10"
+            className="text-xs sm:text-sm text-white/90 border border-white/20 px-3 py-1.5 rounded-md hover:bg-white/10"
           >
             {t.logout}
           </button>
         </div>
       </header>
 
-      {/* 可選：頁面標題 */}
+      {/* 可選：置中頁面標題 */}
       {title ? (
         <section className="px-4 sm:px-6 md:px-10 pt-2 pb-4 text-center">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight">

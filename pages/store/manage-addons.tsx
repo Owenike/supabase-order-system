@@ -1,9 +1,12 @@
+// /pages/store/manage-addons.tsx
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
+import StoreShell from '@/components/layouts/StoreShell'
+import { useGuardStoreAccount } from '@/lib/guards/useGuardStoreAccount'
 
 type AddonDB = { label: string; value: string; price_delta?: number }
 type AddonUI = { label: string; price_delta?: number }
@@ -37,8 +40,10 @@ function toCode(label: string): string {
 }
 
 export default function StoreManageAddonsPage() {
+  // ✅ 改用守門 hook：未通過會自動導回 /login；通過後提供 storeId
+  const { guarding, storeId } = useGuardStoreAccount()
+
   // ---- 基本狀態 ----
-  const [storeId, setStoreId] = useState<string | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [menus, setMenus] = useState<MenuItem[]>([])
 
@@ -57,22 +62,24 @@ export default function StoreManageAddonsPage() {
 
   const [filterCat, setFilterCat] = useState<string>('ALL')
 
-  // ---- 初始化 ----
+  // ---- 初始化（放行且有 storeId 才載入）----
   useEffect(() => {
-    const storedId = typeof window !== 'undefined' ? localStorage.getItem('store_id') : null
-    if (!storedId) return
-    setStoreId(storedId)
-    void loadAll(storedId)
-  }, [])
+    if (guarding || !storeId) return
+    void loadAll(storeId)
+  }, [guarding, storeId])
 
   const loadAll = useCallback(async (sid: string) => {
     setLoading(true)
     setErr('')
     try {
       await Promise.all([fetchCategories(sid), fetchMenus(sid)])
-      const id = await ensureAddonsOption(sid) // 確保有「加料」這個 option（多選）
+      const id = await ensureAddonsOption(sid) // 確保有「加料」這個 option（multi）
       setAddonsOptionId(id)
-      await Promise.all([fetchAddonsValues(id), fetchCategoryAddonBindings(id), fetchItemAddonBindings(id)])
+      await Promise.all([
+        fetchAddonsValues(id),
+        fetchCategoryAddonBindings(id),
+        fetchItemAddonBindings(id),
+      ])
     } catch (e: any) {
       setErr(e?.message || '載入失敗')
     } finally {
@@ -126,15 +133,23 @@ export default function StoreManageAddonsPage() {
       store_id: sid,
       name: '加料',
       input_type: 'multi',
-      values: [] as AddonDB[]
+      values: [] as AddonDB[],
     }
-    const { data: ins, error: insErr } = await supabase.from('options').insert(payload).select('id').single()
+    const { data: ins, error: insErr } = await supabase
+      .from('options')
+      .insert(payload)
+      .select('id')
+      .single()
     if (insErr || !ins?.id) throw new Error(insErr?.message || '建立「加料」選項失敗')
     return ins.id as string
   }
 
   const fetchAddonsValues = async (optionId: string) => {
-    const { data, error } = await supabase.from('options').select('values').eq('id', optionId).maybeSingle()
+    const { data, error } = await supabase
+      .from('options')
+      .select('values')
+      .eq('id', optionId)
+      .maybeSingle()
     if (error) {
       console.error('fetchAddonsValues error:', error.message)
       return
@@ -143,7 +158,12 @@ export default function StoreManageAddonsPage() {
     if (vals.length === 0) {
       setAddons([{ label: '', price_delta: 0 }])
     } else {
-      setAddons(vals.map((v) => ({ label: v.label || '', price_delta: Number(v.price_delta || 0) })))
+      setAddons(
+        vals.map((v) => ({
+          label: v.label || '',
+          price_delta: Number(v.price_delta || 0),
+        }))
+      )
     }
   }
 
@@ -154,11 +174,14 @@ export default function StoreManageAddonsPage() {
       .map((v) => ({
         label: (v.label || '').trim(),
         value: toCode((v.label || '').trim()),
-        price_delta: Number(v.price_delta || 0)
+        price_delta: Number(v.price_delta || 0),
       }))
       .filter((v) => v.label)
 
-    const { error } = await supabase.from('options').update({ values: cleaned }).eq('id', addonsOptionId)
+    const { error } = await supabase
+      .from('options')
+      .update({ values: cleaned })
+      .eq('id', addonsOptionId)
     if (error) {
       alert('儲存失敗：' + error.message)
       return
@@ -213,10 +236,10 @@ export default function StoreManageAddonsPage() {
           category_id: categoryId,
           option_id: addonsOptionId,
           enabled,
-          required: false // 加料不需要必填
-        })
+          required: false, // 加料不需要必填
+        }),
       })
-      const json = await res.json()
+      const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error || '更新失敗')
     } catch (e: any) {
       alert('分類加料設定失敗：' + (e?.message || 'Unknown error'))
@@ -237,10 +260,10 @@ export default function StoreManageAddonsPage() {
           item_id: itemId,
           option_id: addonsOptionId,
           enabled,
-          required: false
-        })
+          required: false,
+        }),
       })
-      const json = await res.json()
+      const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json?.error || '更新失敗')
     } catch (e: any) {
       alert('單品加料設定失敗：' + (e?.message || 'Unknown error'))
@@ -286,210 +309,219 @@ export default function StoreManageAddonsPage() {
   )
 
   const handleRefresh = () => {
-    if (storeId) void loadAll(storeId)
+    if (!guarding && storeId) void loadAll(storeId)
   }
 
+  // 守門中先不渲染內容，避免閃爍
+  if (guarding) return null
+
   return (
-    <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
-      {/* 頁首（深色、與首頁一致） */}
-      <div className="flex items-start justify-between pt-2 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="text-yellow-400 text-2xl">🧂</div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">加料管理</h1>
-            <p className="text-white/70 text-sm mt-1">設定多選加料與分類／單品開關</p>
+    <StoreShell title="加料管理">
+      <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
+        {/* 頁首操作列 */}
+        <div className="flex items-start justify-between pt-2 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="text-yellow-400 text-2xl">🧂</div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">加料管理</h1>
+              <p className="text-white/70 text-sm mt-1">設定多選加料與分類／單品開關</p>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="soft" size="sm" onClick={handleRefresh} startIcon={<RefreshIcon />}>
-            重新整理
-          </Button>
-        </div>
-      </div>
-
-      {/* 膠囊導覽（黃底高亮當前頁） */}
-      <div className="mb-6">
-        <div className="inline-flex overflow-hidden rounded-full shadow ring-1 ring-black/10">
-          <Link
-            href="/store/manage-addons"
-            className="px-6 py-2 bg-yellow-400 text-black font-semibold"
-          >
-            加料管理
-          </Link>
-          <Link
-            href="/store/manage-menus"
-            className="px-6 py-2 bg-white/10 text-white hover:bg-white/20 backdrop-blur transition"
-          >
-            新增分類與菜單
-          </Link>
-        </div>
-      </div>
-
-      {err && <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">❌ {err}</div>}
-      {loading && <div className="mb-4 text-white/80">讀取中…</div>}
-
-      {/* ---- 加料管理 ---- */}
-      <section className="mb-6 bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
-        <div className="px-4 py-3 border-b border-white/10">
-          <h2 className="text-lg font-semibold">加料項目（例如:珍珠 / 5(元)）</h2>
-          <p className="text-sm text-white/60 mt-1">
-            在這裡設定「加料」選項內容；<span className="font-medium text-white/80">甜度 / 冰塊 / 容量</span> 由系統固定顯示，且不影響價格。
-          </p>
-        </div>
-
-        <div className="p-4">
-          <div className="text-sm font-medium mb-2">加料項目</div>
-
-          <div className="space-y-2">
-            {addons.map((row, idx) => (
-              <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                <input
-                  className="border px-2 py-2 rounded bg-white text-gray-900"
-                  placeholder="顯示名稱（例：珍珠）"
-                  value={row.label}
-                  onChange={(e) => updateAddonRow(idx, 'label', e.target.value)}
-                />
-                <input
-                  type="number"
-                  className="border px-2 py-2 rounded bg-white text-gray-900"
-                  placeholder="價差（例：10）"
-                  value={String(row.price_delta ?? 0)}
-                  onChange={(e) => updateAddonRow(idx, 'price_delta', e.target.value)}
-                />
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => removeAddonRow(idx)}
-                  >
-                    刪除此列
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-3 flex items-center gap-2">
-            <Button variant="soft" size="sm" onClick={addAddonRow} startIcon={<PlusIcon />}>
-              新增一列
-            </Button>
-            <Button
-              variant="success"
-              size="sm"
-              onClick={upsertAddonsValues}
-              disabled={!addonsOptionId}
-              startIcon={<SaveIcon />}
-            >
-              儲存加料
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* ---- 分類層級：啟用/停用「加料」 ---- */}
-      <section className="mb-6 bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
-        <div className="px-4 py-3 border-b border-white/10">
-          <h2 className="text-lg font-semibold">分類加料開關</h2>
-        </div>
-
-        <div className="p-4 overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead className="bg-white/10 text-white">
-              <tr>
-                <th className="p-2 text-left w-48">分類</th>
-                <th className="p-2 text-left">是否啟用「加料」</th>
-              </tr>
-            </thead>
-            <tbody>
-              {categories.map((cat) => (
-                <tr key={cat.id} className="border-t border-white/10">
-                  <td className="p-2 font-medium">{cat.name}</td>
-                  <td className="p-2">
-                    <label className="inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={!!catAddonEnabled[cat.id]}
-                        onChange={(e) => toggleCategoryAddon(cat.id, e.target.checked)}
-                        disabled={!addonsOptionId}
-                      />
-                      <span>啟用加料</span>
-                    </label>
-                  </td>
-                </tr>
-              ))}
-              {categories.length === 0 && (
-                <tr>
-                  <td className="p-2 text-white/70" colSpan={2}>
-                    尚無分類
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* ---- 單品覆蓋（特例） ---- */}
-      <section className="mb-6 bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
-        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">單品加料開關</h2>
           <div className="flex items-center gap-2">
-            <label className="text-sm">分類篩選</label>
-            <select
-              className="border px-2 py-1 rounded bg-white text-gray-900"
-              value={filterCat}
-              onChange={(e) => setFilterCat(e.target.value)}
-            >
-              <option value="ALL">全部</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <Button variant="soft" size="sm" onClick={handleRefresh} startIcon={<RefreshIcon />}>
+              重新整理
+            </Button>
           </div>
         </div>
 
-        <div className="p-4 overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead className="bg-white/10 text-white">
-              <tr>
-                <th className="p-2 text-left w-64">品名</th>
-                <th className="p-2 text-left">是否啟用「加料」</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItems.map((item) => (
-                <tr key={item.id} className="border-t border-white/10">
-                  <td className="p-2">
-                    <div className="font-medium">{item.name}</div>
-                    <div className="text-xs text-white/60">NT$ {item.price}</div>
-                  </td>
-                  <td className="p-2">
-                    <label className="inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={!!itemAddonEnabled[item.id]}
-                        onChange={(e) => toggleItemAddon(item.id, e.target.checked)}
-                        disabled={!addonsOptionId}
-                      />
-                      <span>啟用加料</span>
-                    </label>
-                    <div className="text-xs text-white/60 mt-1"></div>
-                  </td>
-                </tr>
-              ))}
-              {filteredItems.length === 0 && (
-                <tr>
-                  <td className="p-2 text-white/70" colSpan={2}>
-                    此分類尚無商品
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        {/* 膠囊導覽（黃底高亮當前頁） */}
+        <div className="mb-6">
+          <div className="inline-flex overflow-hidden rounded-full shadow ring-1 ring-black/10">
+            <Link
+              href="/store/manage-addons"
+              className="px-6 py-2 bg-yellow-400 text-black font-semibold"
+            >
+              加料管理
+            </Link>
+            <Link
+              href="/store/manage-menus"
+              className="px-6 py-2 bg-white/10 text-white hover:bg-white/20 backdrop-blur transition"
+            >
+              新增分類與菜單
+            </Link>
+          </div>
         </div>
-      </section>
-    </div>
+
+        {err && (
+          <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">
+            ❌ {err}
+          </div>
+        )}
+        {loading && <div className="mb-4 text-white/80">讀取中…</div>}
+
+        {/* ---- 加料管理 ---- */}
+        <section className="mb-6 bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
+          <div className="px-4 py-3 border-b border-white/10">
+            <h2 className="text-lg font-semibold">加料項目（例如：珍珠 / 5 元）</h2>
+            <p className="text-sm text-white/60 mt-1">
+              在這裡設定「加料」選項內容；<span className="font-medium text-white/80">甜度 / 冰塊 / 容量</span> 由系統固定顯示，且不影響價格。
+            </p>
+          </div>
+
+          <div className="p-4">
+            <div className="text-sm font-medium mb-2">加料項目</div>
+
+            <div className="space-y-2">
+              {addons.map((row, idx) => (
+                <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <input
+                    className="border px-2 py-2 rounded bg-white text-gray-900"
+                    placeholder="顯示名稱（例：珍珠）"
+                    value={row.label}
+                    onChange={(e) => updateAddonRow(idx, 'label', e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    className="border px-2 py-2 rounded bg-white text-gray-900"
+                    placeholder="價差（例：10）"
+                    value={String(row.price_delta ?? 0)}
+                    onChange={(e) => updateAddonRow(idx, 'price_delta', e.target.value)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => removeAddonRow(idx)}
+                    >
+                      刪除此列
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <Button variant="soft" size="sm" onClick={addAddonRow} startIcon={<PlusIcon />}>
+                新增一列
+              </Button>
+              <Button
+                variant="success"
+                size="sm"
+                onClick={upsertAddonsValues}
+                disabled={!addonsOptionId}
+                startIcon={<SaveIcon />}
+              >
+                儲存加料
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        {/* ---- 分類層級：啟用/停用「加料」 ---- */}
+        <section className="mb-6 bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
+          <div className="px-4 py-3 border-b border-white/10">
+            <h2 className="text-lg font-semibold">分類加料開關</h2>
+          </div>
+
+          <div className="p-4 overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead className="bg-white/10 text-white">
+                <tr>
+                  <th className="p-2 text-left w-48">分類</th>
+                  <th className="p-2 text-left">是否啟用「加料」</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.map((cat) => (
+                  <tr key={cat.id} className="border-t border-white/10">
+                    <td className="p-2 font-medium">{cat.name}</td>
+                    <td className="p-2">
+                      <label className="inline-flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={!!catAddonEnabled[cat.id]}
+                          onChange={(e) => toggleCategoryAddon(cat.id, e.target.checked)}
+                          disabled={!addonsOptionId}
+                        />
+                        <span>啟用加料</span>
+                      </label>
+                    </td>
+                  </tr>
+                ))}
+                {categories.length === 0 && (
+                  <tr>
+                    <td className="p-2 text-white/70" colSpan={2}>
+                      尚無分類
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* ---- 單品覆蓋（特例） ---- */}
+        <section className="mb-6 bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
+          <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">單品加料開關</h2>
+            <div className="flex items-center gap-2">
+              <label className="text-sm">分類篩選</label>
+              <select
+                className="border px-2 py-1 rounded bg-white text-gray-900"
+                value={filterCat}
+                onChange={(e) => setFilterCat(e.target.value)}
+              >
+                <option value="ALL">全部</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="p-4 overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead className="bg-white/10 text-white">
+                <tr>
+                  <th className="p-2 text-left w-64">品名</th>
+                  <th className="p-2 text-left">是否啟用「加料」</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredItems.map((item) => (
+                  <tr key={item.id} className="border-t border-white/10">
+                    <td className="p-2">
+                      <div className="font-medium">{item.name}</div>
+                      <div className="text-xs text-white/60">NT$ {item.price}</div>
+                    </td>
+                    <td className="p-2">
+                      <label className="inline-flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={!!itemAddonEnabled[item.id]}
+                          onChange={(e) => toggleItemAddon(item.id, e.target.checked)}
+                          disabled={!addonsOptionId}
+                        />
+                        <span>啟用加料</span>
+                      </label>
+                      <div className="text-xs text-white/60 mt-1"></div>
+                    </td>
+                  </tr>
+                ))}
+                {filteredItems.length === 0 && (
+                  <tr>
+                    <td className="p-2 text-white/70" colSpan={2}>
+                      此分類尚無商品
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </StoreShell>
   )
 }

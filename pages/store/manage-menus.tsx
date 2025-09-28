@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import ConfirmPasswordModal from '@/components/ui/ConfirmPasswordModal'
 import { Button } from '@/components/ui/button'
+import StoreShell from '@/components/layouts/StoreShell'
 import { useGuardStoreAccount } from '@/lib/guards/useGuardStoreAccount'
 
 interface Category {
@@ -27,7 +28,7 @@ interface MenuItem {
 }
 
 export default function StoreManageMenusPage() {
-  // ✅ 改用守門 hook：未通過會自動導回 /login；通過後提供 storeId
+  // ✅ 守門：未通過會自動導回 /login；通過後提供 storeId
   const { guarding, storeId } = useGuardStoreAccount()
 
   const [categories, setCategories] = useState<Category[]>([])
@@ -241,245 +242,230 @@ export default function StoreManageMenusPage() {
     </svg>
   )
 
-  // 守門中先不渲染內容，避免閃爍
   if (guarding) return null
 
   return (
-    <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
-      {/* 頁首（深色、與首頁一致） */}
-      <div className="flex items-start justify-between pt-2 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="text-yellow-400 text-2xl">📋</div>
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">分類與菜單管理</h1>
-            <p className="text-white/70 text-sm mt-1">快速新增分類、餐點與上下架</p>
+    <StoreShell title="分類與菜單管理">
+      <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
+        {/* 膠囊導覽（黃底高亮當前頁） */}
+        <div className="mb-6">
+          <div className="inline-flex overflow-hidden rounded-full shadow ring-1 ring-black/10">
+            <Link
+              href="/store/manage-addons"
+              className="px-6 py-2 bg-white/10 text-white hover:bg-white/20 backdrop-blur transition"
+            >
+              加料管理
+            </Link>
+            <Link
+              href="/store/manage-menus"
+              className="px-6 py-2 bg-yellow-400 text-black font-semibold"
+            >
+              新增分類與菜單
+            </Link>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="soft" size="sm" onClick={handleRefresh} startIcon={<RefreshIcon />}>
-            重新整理
-          </Button>
-        </div>
-      </div>
 
-      {/* 膠囊導覽（黃底高亮當前頁） */}
-      <div className="mb-6">
-        <div className="inline-flex overflow-hidden rounded-full shadow ring-1 ring-black/10">
-          <Link
-            href="/store/manage-addons"
-            className="px-6 py-2 bg-white/10 text-white hover:bg-white/20 backdrop-blur transition"
-          >
-            加料管理
-          </Link>
-          <Link
-            href="/store/manage-menus"
-            className="px-6 py-2 bg-yellow-400 text-black font-semibold"
-          >
-            新增分類與菜單
-          </Link>
-        </div>
-      </div>
+        {/* 錯誤 / 載入 */}
+        {err && <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">❌ {err}</div>}
+        {loading && <div className="mb-4 text-white/80">讀取中…</div>}
 
-      {/* 錯誤 / 載入 */}
-      {err && <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">❌ {err}</div>}
-      {loading && <div className="mb-4 text-white/80">讀取中…</div>}
-
-      {/* ---- 新增分類 ---- */}
-      <div className="bg-[#2B2B2B] text白 rounded-lg shadow border border-white/10 mb-6">
-        <div className="px-4 py-3 border-b border白/10">
-          <h2 className="text-lg font-semibold">新增分類</h2>
+        {/* ---- 新增分類 ---- */}
+        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
+          <div className="px-4 py-3 border-b border-white/10">
+            <h2 className="text-lg font-semibold">新增分類</h2>
+          </div>
+          <div className="p-4">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="border px-3 py-2 rounded w-full bg-white text-gray-900"
+                placeholder="分類名稱"
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
+              />
+              <Button onClick={handleAddCategory} startIcon={<PlusIcon />}>
+                新增
+              </Button>
+            </div>
+          </div>
         </div>
-        <div className="p-4">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              className="border px-3 py-2 rounded w-full bg-white text-gray-900"
-              placeholder="分類名稱"
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-            />
-            <Button onClick={handleAddCategory} startIcon={<PlusIcon />}>
-              新增
+
+        {/* ---- 新增菜單 ---- */}
+        <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
+          <div className="px-4 py-3 border-b border-white/10">
+            <h2 className="text-lg font-semibold">新增菜單</h2>
+          </div>
+          <div className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+              <input
+                type="text"
+                className="border px-3 py-2 rounded bg-white text-gray-900"
+                placeholder="菜名"
+                value={newMenu.name}
+                onChange={(e) => setNewMenu({ ...newMenu, name: e.target.value })}
+              />
+              <input
+                type="number"
+                className="border px-3 py-2 rounded bg-white text-gray-900"
+                placeholder="價格"
+                value={newMenu.price}
+                onChange={(e) => setNewMenu({ ...newMenu, price: e.target.value })}
+              />
+              <input
+                type="text"
+                className="border px-3 py-2 rounded bg-white text-gray-900"
+                placeholder="描述（選填）"
+                value={newMenu.description}
+                onChange={(e) => setNewMenu({ ...newMenu, description: e.target.value })}
+              />
+              <select
+                className="border px-3 py-2 rounded bg-white text-gray-900"
+                value={newMenu.categoryId}
+                onChange={(e) => setNewMenu({ ...newMenu, categoryId: e.target.value })}
+              >
+                <option value="">選擇分類</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button className="mt-3" variant="success" onClick={handleAddMenu} startIcon={<PlusIcon />}>
+              新增菜單
             </Button>
           </div>
         </div>
-      </div>
 
-      {/* ---- 新增菜單 ---- */}
-      <div className="bg-[#2B2B2B] text白 rounded-lg shadow border border白/10 mb-6">
-        <div className="px-4 py-3 border-b border白/10">
-          <h2 className="text-lg font-semibold">新增菜單</h2>
-        </div>
-        <div className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-            <input
-              type="text"
-              className="border px-3 py-2 rounded bg-white text-gray-900"
-              placeholder="菜名"
-              value={newMenu.name}
-              onChange={(e) => setNewMenu({ ...newMenu, name: e.target.value })}
-            />
-            <input
-              type="number"
-              className="border px-3 py-2 rounded bg-white text-gray-900"
-              placeholder="價格"
-              value={newMenu.price}
-              onChange={(e) => setNewMenu({ ...newMenu, price: e.target.value })}
-            />
-            <input
-              type="text"
-              className="border px-3 py-2 rounded bg白 text-gray-900"
-              placeholder="描述（選填）"
-              value={newMenu.description}
-              onChange={(e) => setNewMenu({ ...newMenu, description: e.target.value })}
-            />
-            <select
-              className="border px-3 py-2 rounded bg-white text-gray-900"
-              value={newMenu.categoryId}
-              onChange={(e) => setNewMenu({ ...newMenu, categoryId: e.target.value })}
-            >
-              <option value="">選擇分類</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <Button className="mt-3" variant="success" onClick={handleAddMenu} startIcon={<PlusIcon />}>
-            新增菜單
-          </Button>
-        </div>
-      </div>
+        {/* ---- 現有分類與菜單清單 ---- */}
+        <div className="space-y-4">
+          <h2 className="text-white font-semibold">現有分類與菜單</h2>
 
-      {/* ---- 現有分類與菜單清單 ---- */}
-      <div className="space-y-4">
-        <h2 className="text-white font-semibold">現有分類與菜單</h2>
+          {categories.length === 0 && !loading && (
+            <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
+              <p className="text-white/70">目前尚無分類，請先於上方新增分類。</p>
+            </div>
+          )}
 
-        {categories.length === 0 && !loading && (
-          <div className="bg-[#2B2B2B] text-white rounded-lg border border白/10 shadow p-4">
-            <p className="text-white/70">目前尚無分類，請先於上方新增分類。</p>
-          </div>
-        )}
-
-        {categories.map((cat) => (
-          <div key={cat.id} className="bg-[#2B2B2B] text-white rounded-lg shadow border border白/10">
-            {/* 分類列 */}
-            <div className="px-4 py-3 border-b border白/10 flex items-center justify-between">
-              {editingCategoryId === cat.id ? (
-                <div className="flex gap-2 items-center w-full">
-                  <input
-                    className="border px-2 py-1 rounded w-full bg-white text-gray-900"
-                    value={editingCategoryName}
-                    onChange={(e) => setEditingCategoryName(e.target.value)}
-                  />
-                  <Button size="sm" variant="success" onClick={() => handleSaveCategory(cat.id)}>
-                    儲存
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  <h3 className="text-lg font-bold">{cat.name}</h3>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="soft" startIcon={<EditIcon />} onClick={() => handleEditCategory(cat.id, cat.name)}>
-                      編輯
-                    </Button>
-                    <Button size="sm" variant="destructive" startIcon={<TrashIcon />} onClick={() => handleDeleteCategory(cat.id)}>
-                      刪除
+          {categories.map((cat) => (
+            <div key={cat.id} className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10">
+              {/* 分類列 */}
+              <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+                {editingCategoryId === cat.id ? (
+                  <div className="flex gap-2 items-center w-full">
+                    <input
+                      className="border px-2 py-1 rounded w-full bg-white text-gray-900"
+                      value={editingCategoryName}
+                      onChange={(e) => setEditingCategoryName(e.target.value)}
+                    />
+                    <Button size="sm" variant="success" onClick={() => handleSaveCategory(cat.id)}>
+                      儲存
                     </Button>
                   </div>
-                </>
-              )}
-            </div>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-bold">{cat.name}</h3>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="soft" startIcon={<EditIcon />} onClick={() => handleEditCategory(cat.id, cat.name)}>
+                        編輯
+                      </Button>
+                      <Button size="sm" variant="destructive" startIcon={<TrashIcon />} onClick={() => handleDeleteCategory(cat.id)}>
+                        刪除
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
 
-            {/* 該分類的菜單列表 */}
-            <ul className="p-4 space-y-2">
-              {menus.filter((m) => m.category_id === cat.id).length === 0 && (
-                <li className="text-sm text-white/70">此分類尚無菜單。</li>
-              )}
+              {/* 該分類的菜單列表 */}
+              <ul className="p-4 space-y-2">
+                {menus.filter((m) => m.category_id === cat.id).length === 0 && (
+                  <li className="text-sm text-white/70">此分類尚無菜單。</li>
+                )}
 
-              {menus
-                .filter((menu) => menu.category_id === cat.id)
-                .map((menu) => (
-                  <li key={menu.id} className="border border白/10 rounded-lg p-3">
-                    {editingMenuId === menu.id ? (
-                      <div className="flex flex-col w-full gap-2">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                          <input
-                            className="border px-2 py-1 rounded bg白 text-gray-900"
-                            value={editingMenu.name}
-                            onChange={(e) => setEditingMenu({ ...editingMenu, name: e.target.value })}
-                          />
-                          <input
-                            className="border px-2 py-1 rounded bg白 text-gray-900"
-                            value={editingMenu.price}
-                            onChange={(e) => setEditingMenu({ ...editingMenu, price: e.target.value })}
-                          />
-                          <input
-                            className="border px-2 py-1 rounded bg白 text-gray-900"
-                            value={editingMenu.description}
-                            onChange={(e) => setEditingMenu({ ...editingMenu, description: e.target.value })}
-                          />
-                        </div>
-                        <div className="flex justify-end">
-                          <Button size="sm" variant="success" onClick={() => handleSaveMenu(menu.id)}>
-                            儲存
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex justify-between items-start gap-4">
-                        <div>
-                          <div className="font-semibold">
-                            🍴 {menu.name}{' '}
-                            <span className="text-white/60">（NT$ {menu.price}）</span>
+                {menus
+                  .filter((menu) => menu.category_id === cat.id)
+                  .map((menu) => (
+                    <li key={menu.id} className="border border-white/10 rounded-lg p-3">
+                      {editingMenuId === menu.id ? (
+                        <div className="flex flex-col w-full gap-2">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            <input
+                              className="border px-2 py-1 rounded bg-white text-gray-900"
+                              value={editingMenu.name}
+                              onChange={(e) => setEditingMenu({ ...editingMenu, name: e.target.value })}
+                            />
+                            <input
+                              className="border px-2 py-1 rounded bg-white text-gray-900"
+                              value={editingMenu.price}
+                              onChange={(e) => setEditingMenu({ ...editingMenu, price: e.target.value })}
+                            />
+                            <input
+                              className="border px-2 py-1 rounded bg-white text-gray-900"
+                              value={editingMenu.description}
+                              onChange={(e) => setEditingMenu({ ...editingMenu, description: e.target.value })}
+                            />
                           </div>
-                          {menu.description && (
-                            <div className="text-xs text-white/60 mt-0.5">{menu.description}</div>
-                          )}
-                          <span
-                            className={`inline-flex items-center mt-1 px-2 py-0.5 rounded text-xs border ${
-                              menu.is_available
-                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
-                                : 'bg-red-500/15 text-red-300 border-red-400/20'
-                            }`}
-                          >
-                            {menu.is_available ? '販售中' : '停售中'}
-                          </span>
+                          <div className="flex justify-end">
+                            <Button size="sm" variant="success" onClick={() => handleSaveMenu(menu.id)}>
+                              儲存
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex gap-2 items-center shrink-0">
-                          <Button size="sm" variant="soft" startIcon={<EditIcon />} onClick={() => handleEditMenu(menu)}>
-                            編輯
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={menu.is_available ? 'warning' : 'success'}
-                            onClick={() => handleToggleAvailable(menu.id, menu.is_available)}
-                          >
-                            {menu.is_available ? '停售' : '上架'}
-                          </Button>
-                          <Button size="sm" variant="destructive" startIcon={<TrashIcon />} onClick={() => handleDeleteMenu(menu.id)}>
-                            刪除
-                          </Button>
+                      ) : (
+                        <div className="flex justify-between items-start gap-4">
+                          <div>
+                            <div className="font-semibold">
+                              🍴 {menu.name}{' '}
+                              <span className="text-white/60">（NT$ {menu.price}）</span>
+                            </div>
+                            {menu.description && (
+                              <div className="text-xs text-white/60 mt-0.5">{menu.description}</div>
+                            )}
+                            <span
+                              className={`inline-flex items-center mt-1 px-2 py-0.5 rounded text-xs border ${
+                                menu.is_available
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20'
+                                  : 'bg-red-500/15 text-red-300 border-red-400/20'
+                              }`}
+                            >
+                              {menu.is_available ? '販售中' : '停售中'}
+                            </span>
+                          </div>
+                          <div className="flex gap-2 items-center shrink-0">
+                            <Button size="sm" variant="soft" startIcon={<EditIcon />} onClick={() => handleEditMenu(menu)}>
+                              編輯
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant={menu.is_available ? 'warning' : 'success'}
+                              onClick={() => handleToggleAvailable(menu.id, menu.is_available)}
+                            >
+                              {menu.is_available ? '停售' : '上架'}
+                            </Button>
+                            <Button size="sm" variant="destructive" startIcon={<TrashIcon />} onClick={() => handleDeleteMenu(menu.id)}>
+                              刪除
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                  </li>
-                ))}
-            </ul>
-          </div>
-        ))}
-      </div>
+                      )}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          ))}
+        </div>
 
-      {showConfirmModal && (
-        <ConfirmPasswordModal
-          onCancel={() => {
-            setShowConfirmModal(false)
-            setPendingDeleteId(null)
-          }}
-          onConfirm={handleConfirmedDelete}
-        />
-      )}
-    </div>
+        {showConfirmModal && (
+          <ConfirmPasswordModal
+            onCancel={() => {
+              setShowConfirmModal(false)
+              setPendingDeleteId(null)
+            }}
+            onConfirm={handleConfirmedDelete}
+          />
+        )}
+      </div>
+    </StoreShell>
   )
 }
