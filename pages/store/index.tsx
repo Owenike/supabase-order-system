@@ -14,6 +14,12 @@ interface Order {
   note?: string
 }
 
+interface StoreRow {
+  name: string | null
+  license_start_at: string | null
+  license_end_at: string | null
+}
+
 const langMap = {
   zh: {
     pageTitle: '從新客到熟客，營收成長看得見',
@@ -30,6 +36,8 @@ const langMap = {
     logoutMessage: '✅ 已成功登出',
     newOrder: '🛎️ 新訂單來囉！',
     inactive: '此帳號已被停用，請聯繫管理員',
+    storeNamePrefix: '您的店家名稱：',
+    periodPrefix: '期限：',
   },
   en: {
     pageTitle: 'From New to Loyal Customers — Omnichannel Membership Ops',
@@ -48,6 +56,8 @@ const langMap = {
     logoutMessage: '✅ Logged out successfully',
     newOrder: '🛎️ New Order Received!',
     inactive: 'This account has been deactivated. Please contact admin.',
+    storeNamePrefix: 'Store Name: ',
+    periodPrefix: 'Period: ',
   },
 } as const
 
@@ -59,9 +69,21 @@ export default function StoreHomePage() {
   const [lang] = useState<Lang>('zh') // 首頁文案使用本地狀態；Header 語系由 StoreShell 控制
   const [showAlert, setShowAlert] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [storeInfo, setStoreInfo] = useState<StoreRow | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
 
   const t = langMap[lang]
+
+  // 民國年格式轉換
+  const toMinguo = (iso: string | null) => {
+    if (!iso) return '-'
+    const d = new Date(iso)
+    // 若後端為 UTC，顯示僅取日期，不做時區位移修正
+    const y = d.getFullYear() - 1911
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${y}/${mm}/${dd}`
+  }
 
   useEffect(() => {
     const init = async () => {
@@ -74,7 +96,7 @@ export default function StoreHomePage() {
         return
       }
 
-      // 2) store_id 檢查
+      // 2) store_id 檢查（從你現行流程沿用）
       const storeId = localStorage.getItem('store_id')
       if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
         localStorage.clear()
@@ -82,33 +104,48 @@ export default function StoreHomePage() {
         return
       }
 
-      // 3) 帳號啟用檢查
-      const { data: accountData } = await supabase
+      // 3) 帳號啟用檢查（以 store_id 找任一關聯帳號；避免 maybeSingle 多筆行為不一）
+      const { data: accountRows, error: accErr } = await supabase
         .from('store_accounts')
         .select('id, is_active')
         .eq('store_id', storeId)
-        .maybeSingle()
+        .limit(1)
 
-      if (!accountData?.id) {
+      if (accErr || !accountRows || accountRows.length === 0) {
         localStorage.clear()
         router.replace('/login')
         return
       }
-      if (!accountData.is_active) {
+      const account = accountRows[0]
+      if (!account.is_active) {
         alert(t.inactive)
         await supabase.auth.signOut()
         localStorage.clear()
         router.replace('/login')
         return
       }
+      localStorage.setItem('store_account_id', account.id)
 
-      localStorage.setItem('store_account_id', accountData.id)
+      // 4) 讀取 stores 表的店名與到期日（單一真實來源）
+      const { data: s, error: sErr } = await supabase
+        .from('stores')
+        .select('name, license_start_at, license_end_at')
+        .eq('id', storeId)
+        .single()
+
+      if (!s || sErr) {
+        // 若查不到 store，視同未授權
+        localStorage.clear()
+        router.replace('/login')
+        return
+      }
+      setStoreInfo(s as StoreRow)
 
       setLoading(false)
 
-      // 4) 新訂單通知（Realtime）
-      const channel = supabase
-        .channel('order_notifications')
+      // 5) 新訂單通知（Realtime）
+      const orderChannel = supabase
+        .channel(`order_notifications_${storeId}`)
         .on(
           'postgres_changes',
           {
@@ -126,8 +163,31 @@ export default function StoreHomePage() {
         )
         .subscribe()
 
+      // 6) stores 的即時訂閱：Admin 更新到期日 / 店名即時反映
+      const storeChannel = supabase
+        .channel(`stores_watch_${storeId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'stores',
+            filter: `id=eq.${storeId}`,
+          },
+          async () => {
+            const { data: s2 } = await supabase
+              .from('stores')
+              .select('name, license_start_at, license_end_at')
+              .eq('id', storeId)
+              .single()
+            if (s2) setStoreInfo(s2 as StoreRow)
+          }
+        )
+        .subscribe()
+
       return () => {
-        supabase.removeChannel(channel)
+        supabase.removeChannel(orderChannel)
+        supabase.removeChannel(storeChannel)
       }
     }
 
@@ -181,6 +241,24 @@ export default function StoreHomePage() {
 
   return (
     <StoreShell title={t.pageTitle}>
+      {/* 頂部：店名 + 期限（民國年） */}
+      <div className="px-4 sm:px-6 md:px-10 pt-4">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-white/90">
+          <span className="inline-flex items-center gap-2">
+            <span className="opacity-80">{t.storeNamePrefix}</span>
+            <span className="font-semibold">
+              {storeInfo?.name ?? '-'}
+            </span>
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <span className="opacity-80">{t.periodPrefix}</span>
+            <span className="rounded-md bg-yellow-500/20 text-yellow-300 px-2 py-0.5">
+              {toMinguo(storeInfo?.license_start_at ?? null)} ～ {toMinguo(storeInfo?.license_end_at ?? null)}
+            </span>
+          </span>
+        </div>
+      </div>
+
       {/* 新訂單提醒 */}
       {showAlert && (
         <div className="fixed bottom-6 right-6 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg animate-pulse z-50">
