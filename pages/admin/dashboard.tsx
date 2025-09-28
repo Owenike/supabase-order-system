@@ -8,6 +8,11 @@ import { Button } from '@/components/ui/button'
 import ConfirmPasswordModal from '@/components/ui/ConfirmPasswordModal'
 
 /* =====================
+   常數
+===================== */
+const ADMIN_EMAIL = 'bctc4869@gmail.com'
+
+/* =====================
    型別定義
 ===================== */
 interface StoreAccountRow {
@@ -91,6 +96,8 @@ export default function AdminDashboard() {
   // 刪除二次確認（管理員密碼）
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<{ accountId: string; storeId: string } | null>(null)
+
+  // 目前登入者
   const [adminEmail, setAdminEmail] = useState<string>('')
 
   useEffect(() => {
@@ -99,6 +106,8 @@ export default function AdminDashboard() {
       if (email) setAdminEmail(email)
     })
   }, [])
+
+  const isAdmin = adminEmail.toLowerCase() === ADMIN_EMAIL
 
   /* ---------------------
      讀取 accounts + flags
@@ -204,7 +213,7 @@ export default function AdminDashboard() {
   )
 
   /* ---------------------
-     重寄驗證信（新增：useCallback 包起來）
+     重寄驗證信
   --------------------- */
   const resendSignupEmail = useCallback(async (email: string) => {
     setMutatingKey(`resend:${email}`)
@@ -355,6 +364,10 @@ export default function AdminDashboard() {
 
   // ✅ 一鍵修復（呼叫 /api/admin/repair-account）
   const repairAccount = async (email: string) => {
+    if (!isAdmin) {
+      alert('此功能僅限管理員使用，請以管理員帳號登入。')
+      return
+    }
     setMutatingKey(`repair:${email}`)
     setErr('')
     try {
@@ -362,6 +375,7 @@ export default function AdminDashboard() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          // API 會優先用 Cookie 解析目前登入者；此 header 僅作為後備，不影響安全
           'x-admin-email': adminEmail || '',
         },
         body: JSON.stringify({
@@ -427,6 +441,21 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <span className="hidden sm:inline text-sm text-white/70">
+              目前帳號：{adminEmail || '（未登入）'} {isAdmin ? '（管理員）' : ''}
+            </span>
+            <Button
+              type="button"
+              variant="soft"
+              size="sm"
+              onClick={async () => {
+                await supabase.auth.signOut()
+                window.location.href = '/login'
+              }}
+              title="切換帳號"
+            >
+              切換帳號
+            </Button>
             <Button type="button" variant="soft" size="sm" onClick={() => void fetchStores()}>
               <RefreshIcon /> 重新整理
             </Button>
@@ -580,9 +609,9 @@ export default function AdminDashboard() {
                         type="button"
                         size="sm"
                         variant="soft"
-                        disabled={!!busy || !adminEmail}
+                        disabled={!!busy || !isAdmin}
                         onClick={() => void repairAccount(s.email)}
-                        title="一鍵修復（改綁到正確門市並啟用）"
+                        title={isAdmin ? '一鍵修復（改綁到正確門市並啟用）' : '需以管理員帳號登入才能使用'}
                       >
                         {mutatingKey === `repair:${s.email}` ? '修復中…' : '一鍵修復'}
                       </Button>
