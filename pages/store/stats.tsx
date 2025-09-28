@@ -1,3 +1,4 @@
+// /pages/store/stats.tsx
 'use client'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
@@ -8,6 +9,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   CartesianGrid, ResponsiveContainer
 } from 'recharts'
+import { useGuardStoreAccount } from '@/lib/guards/useGuardStoreAccount'
 
 interface MenuItemStat { name: string; total: number; amount: number }
 interface DailyStat    { date: string; orders: number; revenue: number }
@@ -33,7 +35,9 @@ const RefreshIcon = () => (
 )
 
 export default function StoreStatsPage() {
-  const [storeId, setStoreId] = useState<string | null>(null)
+  // ✅ 改用守門 hook：未通過會自動導回 /login；通過後提供 storeId
+  const { guarding, storeId } = useGuardStoreAccount()
+
   const [inStats, setInStats] = useState<MenuItemStat[]>([])
   const [outStats, setOutStats] = useState<MenuItemStat[]>([])
   const [inRevenue, setInRevenue] = useState(0)
@@ -128,18 +132,16 @@ export default function StoreStatsPage() {
     }
   }, [filterType, startDate, endDate])
 
+  // ✅ 改為等 hook 放行後、且有 storeId 再拉資料
   useEffect(() => {
-    const id = localStorage.getItem('store_id')
-    if (!id) return
-    setStoreId(id)
-  }, [])
-
-  useEffect(() => {
-    if (!storeId) return
+    if (guarding || !storeId) return
     void fetchStats(storeId)
-  }, [storeId, filterType, startDate, endDate, fetchStats])
+  }, [guarding, storeId, filterType, startDate, endDate, fetchStats])
 
-  const manualRefresh = () => { if (storeId) void fetchStats(storeId) }
+  const manualRefresh = () => { if (!guarding && storeId) void fetchStats(storeId) }
+
+  // 守門中先不渲染內容，避免閃爍
+  if (guarding) return null
 
   return (
     <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
@@ -249,7 +251,7 @@ export default function StoreStatsPage() {
                 {section.stats.map(item => (
                   <tr key={item.name} className="border-t border-white/10">
                     <td className="px-4 py-2">{item.name}</td>
-                    <td className="px-4 py-2 text-right">{fmt(n(item.total))}</td>
+                    <td className="px-4 py-2 text-right">{n(item.total).toLocaleString('zh-TW')}</td>
                     <td className="px-4 py-2 text-right">{fmt(item.amount)}</td>
                   </tr>
                 ))}

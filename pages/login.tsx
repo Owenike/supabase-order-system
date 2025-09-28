@@ -6,6 +6,16 @@ import Image from 'next/image'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 
+function isExpired(endISO: string | null): boolean {
+  if (!endISO) return false
+  const end = new Date(endISO)
+  if (Number.isNaN(end.getTime())) return false
+  const today = new Date()
+  end.setHours(0, 0, 0, 0)
+  today.setHours(0, 0, 0, 0)
+  return end < today
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -17,7 +27,6 @@ export default function LoginPage() {
     if (loading) return
     setMsg('')
     setLoading(true)
-    let allowRedirect = false
 
     try {
       // 清掉舊的本機識別
@@ -33,63 +42,54 @@ export default function LoginPage() {
         email: cleanedEmail,
         password,
       })
-
       if (loginError || !data?.user) {
         setMsg(loginError?.message || '登入失敗，請確認帳號與密碼')
         return
       }
 
-      // 🚨 檢查是否已完成 Email 驗證
+      // 2) 驗證 Email 是否完成
       if (!data.user.email_confirmed_at) {
         setMsg('此帳號尚未完成 Email 驗證，請先到信箱點擊驗證連結')
         return
       }
 
-      // 2) 由 Email 找店家
-      const { data: storeData, error: storeError } = await supabase
-        .from('stores')
-        .select('id')
+      // 3) 用 email 從「store_accounts」找對應門市（✅ 正確的表）
+      const { data: accountRow, error: accErr } = await supabase
+        .from('store_accounts')
+        .select('id, store_id, is_active, trial_end_at')
         .eq('email', cleanedEmail)
         .maybeSingle()
 
-      if (storeError || !storeData?.id) {
-        setMsg('此帳號尚未對應到任何店家')
+      if (accErr || !accountRow?.store_id) {
+        setMsg('此帳號尚未綁定店家或帳號不存在')
         return
       }
-      try {
-        localStorage.setItem('store_id', storeData.id)
-      } catch {}
 
-      // 3) 檢查 store_accounts
-      const { data: accountData, error: accountError } = await supabase
-        .from('store_accounts')
-        .select('id')
-        .eq('store_id', storeData.id)
-        .limit(1)
-        .maybeSingle()
-
-      if (accountError || !accountData?.id) {
-        setMsg('此店家尚未啟用登入帳號')
+      // 4) 狀態與期限檢查
+      if (!accountRow.is_active) {
+        setMsg('此帳號已被停用，請聯繫管理員')
         return
       }
+      if (isExpired(accountRow.trial_end_at as string | null)) {
+        setMsg('此帳號使用期限已到期，請聯繫管理員延長期限')
+        return
+      }
+
+      // 5) 寫入 localStorage
       try {
-        localStorage.setItem('store_account_id', accountData.id)
+        localStorage.setItem('store_id', accountRow.store_id)
+        localStorage.setItem('store_account_id', accountRow.id)
       } catch {}
 
       setMsg('✅ 登入成功，正在導向後台…')
-      allowRedirect = true
+      setTimeout(() => {
+        router.replace('/store')
+      }, 250)
     } catch (err) {
       console.error('💥 登入流程錯誤:', err)
       setMsg('發生未知錯誤，請稍後再試')
     } finally {
       setLoading(false)
-      if (allowRedirect) {
-        setTimeout(() => {
-          // 你原本寫 window.location.href = '/redirect'
-          // 建議改成 router.replace('/store')，更符合 Next.js 流程
-          router.replace('/store')
-        }, 250)
-      }
     }
   }
 
@@ -123,7 +123,6 @@ export default function LoginPage() {
       `}</style>
 
       <div className="auth-card w-full max-w-sm rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl text-gray-100 shadow-[0_12px_40px_rgba(0,0,0,.35)] p-6">
-        {/* Logo */}
         <div className="flex flex-col items-center gap-4 mb-6">
           <Image
             src="/login-logo.png"
@@ -175,7 +174,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* 登入按鈕 */}
           <button
             type="submit"
             className="w-full py-2.5 rounded-xl bg-amber-400 text-black font-semibold shadow-[0_6px_20px_rgba(255,193,7,.25)] hover:bg-amber-500 hover:shadow-[0_8px_24px_rgba(255,193,7,.35)] focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:opacity-60 disabled:cursor-not-allowed transition"
@@ -184,15 +182,13 @@ export default function LoginPage() {
             {loading ? '登入中…' : '登入'}
           </button>
 
-          {/* 創辦帳號 → 指向 /store/new */}
           <a
             href="/store/new"
-            className="block w-full text-center py-2.5 rounded-xl bg-white/10 text-white border border-white/20 hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-amber-300 transition"
+            className="block w-full text-center py-2.5 rounded-xl bg白/10 text-white border border-white/20 hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-amber-300 transition"
           >
             創辦帳號
           </a>
 
-          {/* 忘記密碼 */}
           <div className="text-center">
             <a
               href="/store/forgot-password"

@@ -5,6 +5,7 @@ import { useEffect, useState, useRef, type ReactNode } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 import StoreShell from '../../components/layouts/StoreShell'
+import { useGuardStoreAccount } from '@/lib/guards/useGuardStoreAccount'
 
 interface Order {
   id: string
@@ -21,8 +22,7 @@ const langMap = {
     manageDesc:
       '在後台快速建立分類與餐點，支援多分店同步管理；消費者可透過 LINE/QR 連結下單。',
     ordersTitle: '訂單管理',
-    ordersDesc:
-      '整合訂單狀態、備註與通知，出餐流程更順、不漏單。',
+    ordersDesc: '整合訂單狀態、備註與通知，出餐流程更順、不漏單。',
     statsTitle: '銷售報表',
     statsDesc:
       '以日期與品項維度查看營收與熱門時段，協助你做分眾與再行銷決策。',
@@ -30,7 +30,6 @@ const langMap = {
     qrcodeDesc: '一鍵產生桌號 / 外帶 QRCode，支援PDF下載。',
     logoutMessage: '✅ 已成功登出',
     newOrder: '🛎️ 新訂單來囉！',
-    inactive: '此帳號已被停用，請聯繫管理員',
   },
   en: {
     pageTitle: 'From New to Loyal Customers — Omnichannel Membership Ops',
@@ -48,7 +47,6 @@ const langMap = {
       'Generate table/takeout QR codes in one click. Print or download for tiered offers.',
     logoutMessage: '✅ Logged out successfully',
     newOrder: '🛎️ New Order Received!',
-    inactive: 'This account has been deactivated. Please contact admin.',
   },
 } as const
 
@@ -59,82 +57,40 @@ export default function StoreHomePage() {
   const [, setLatestOrder] = useState<Order | null>(null)
   const [lang] = useState<Lang>('zh') // 首頁文案使用本地狀態；Header 語系由 StoreShell 控制
   const [showAlert, setShowAlert] = useState(false)
-  const [loading, setLoading] = useState(true)
   const audioRef = useRef<HTMLAudioElement>(null)
+
+  // ✅ 守門：未通過時自動導回 /login；通過後提供 storeId
+  const { guarding, storeId } = useGuardStoreAccount()
 
   const t = langMap[lang]
 
+  // 只在放行且有 storeId 後，再建立 Realtime 訂閱
   useEffect(() => {
-    const init = async () => {
-      // 1) Auth 檢查
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+    if (guarding || !storeId) return
 
-      if (!session || !session.user) {
-        router.replace('/login')
-        return
-      }
+    const channel = supabase
+      .channel('order_notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'orders',
+          filter: `store_id=eq.${storeId}`,
+        },
+        (payload) => {
+          setLatestOrder(payload.new as Order)
+          audioRef.current?.play()
+          setShowAlert(true)
+          setTimeout(() => setShowAlert(false), 3000)
+        }
+      )
+      .subscribe()
 
-      // 2) store_id 檢查
-      const storeId = localStorage.getItem('store_id')
-      if (!storeId || !/^[0-9a-f-]{36}$/.test(storeId)) {
-        localStorage.clear()
-        router.replace('/login')
-        return
-      }
-
-      // 3) 帳號啟用檢查
-      const { data: accountData } = await supabase
-        .from('store_accounts')
-        .select('id, is_active')
-        .eq('store_id', storeId)
-        .maybeSingle()
-
-      if (!accountData?.id) {
-        localStorage.clear()
-        router.replace('/login')
-        return
-      }
-
-      if (!accountData.is_active) {
-        alert(t.inactive)
-        await supabase.auth.signOut()
-        localStorage.clear()
-        router.replace('/login')
-        return
-      }
-
-      localStorage.setItem('store_account_id', accountData.id)
-      setLoading(false)
-
-      // 4) 新訂單通知（Realtime）
-      const channel = supabase
-        .channel('order_notifications')
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'orders',
-            filter: `store_id=eq.${storeId}`,
-          },
-          (payload) => {
-            setLatestOrder(payload.new as Order)
-            audioRef.current?.play()
-            setShowAlert(true)
-            setTimeout(() => setShowAlert(false), 3000)
-          }
-        )
-        .subscribe()
-
-      return () => {
-        supabase.removeChannel(channel)
-      }
+    return () => {
+      supabase.removeChannel(channel)
     }
-
-    void init()
-  }, [router, t.inactive])
+  }, [guarding, storeId])
 
   const go = (path: string) => {
     router.push(path)
@@ -173,7 +129,8 @@ export default function StoreHomePage() {
     </div>
   )
 
-  if (loading) return null
+  // 守門中先不渲染內容，避免畫面閃爍
+  if (guarding) return null
 
   return (
     <StoreShell title={t.pageTitle}>

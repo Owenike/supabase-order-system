@@ -1,7 +1,20 @@
+// /pages/store/login.tsx
+'use client'
+
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabaseClient'
 import bcrypt from 'bcryptjs'
+
+function isExpired(endISO: string | null): boolean {
+  if (!endISO) return false
+  const end = new Date(endISO)
+  if (Number.isNaN(end.getTime())) return false
+  const today = new Date()
+  end.setHours(0, 0, 0, 0)
+  today.setHours(0, 0, 0, 0)
+  return end < today
+}
 
 export default function StoreLoginPage() {
   const router = useRouter()
@@ -12,12 +25,12 @@ export default function StoreLoginPage() {
   const handleLogin = async () => {
     setError('')
 
-    // 查帳號（這裡加入 store_id 一起查出來）
+    // 查帳號（把 trial_end_at 一起查）
     const { data: account, error: accountError } = await supabase
       .from('store_accounts')
-      .select('id, password_hash, is_active, store_id') // ✅ 加入 store_id
-      .eq('email', email)
-      .single()
+      .select('id, password_hash, is_active, store_id, trial_end_at')
+      .eq('email', email.trim().toLowerCase())
+      .maybeSingle()
 
     if (accountError || !account) {
       setError('帳號不存在')
@@ -26,6 +39,11 @@ export default function StoreLoginPage() {
 
     if (!account.is_active) {
       setError('此帳號已被停用')
+      return
+    }
+
+    if (isExpired(account.trial_end_at as string | null)) {
+      setError('此帳號使用期限已到期，請聯繫管理員延長期限')
       return
     }
 
@@ -40,9 +58,10 @@ export default function StoreLoginPage() {
       return
     }
 
-    // ✅ 直接使用 store_accounts 中的 store_id 與 id 寫入 localStorage
-    localStorage.setItem('store_id', account.store_id)
-    localStorage.setItem('store_account_id', account.id)
+    try {
+      localStorage.setItem('store_id', account.store_id)
+      localStorage.setItem('store_account_id', account.id)
+    } catch {}
 
     router.push('/store')
   }

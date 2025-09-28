@@ -1,8 +1,10 @@
+// pages/store/orders.tsx
 'use client'
 
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
+import { useGuardStoreAccount } from '@/lib/guards/useGuardStoreAccount'
 
 type OptionsMap = Record<string, string | string[]>
 
@@ -57,9 +59,9 @@ const pill = (selected: boolean, tone: 'yellow' | 'green' | 'white' | 'gray' = '
   selected
     ? ({
         yellow: 'bg-yellow-400 text-black border-yellow-400',
-        green:  'bg-emerald-600 text-white border-emerald-600',
-        white:  'bg-white text-gray-900 border-white',
-        gray:   'bg-gray-200 text-gray-900 border-gray-200',
+        green: 'bg-emerald-600 text-white border-emerald-600',
+        white: 'bg-white text-gray-900 border-white',
+        gray: 'bg-gray-200 text-gray-900 border-gray-200',
       }[tone])
     : 'bg-white/10 text-white border border-white/15 hover:bg-white/15 transition'
 
@@ -154,14 +156,14 @@ function OptionEditor({
 }
 
 // ---- 固定選項（甜度/冰塊/容量/加料）操作：直接改 rows 內容 ----
-const SWEET_VALUES = ['無糖','微糖','半糖','少糖','全糖']
-const ICE_VALUES   = ['去冰','微冰','少冰','正常冰']
-const SIZE_VALUES  = ['小杯','中杯','大杯']
-const FIXED_KEYS   = ['甜度','冰塊','容量','加料'] as const
+const SWEET_VALUES = ['無糖', '微糖', '半糖', '少糖', '全糖']
+const ICE_VALUES = ['去冰', '微冰', '少冰', '正常冰']
+const SIZE_VALUES = ['小杯', '中杯', '大杯']
+const FIXED_KEYS = ['甜度', '冰塊', '容量', '加料'] as const
 type FixedKey = typeof FIXED_KEYS[number]
 
 function getRow(rows: OptionRow[], key: FixedKey) {
-  const i = rows.findIndex(r => r.key === key)
+  const i = rows.findIndex((r) => r.key === key)
   return { idx: i, row: i >= 0 ? rows[i] : undefined }
 }
 function setRow(rows: OptionRow[], key: FixedKey, value: string | string[]) {
@@ -173,15 +175,15 @@ function setRow(rows: OptionRow[], key: FixedKey, value: string | string[]) {
 }
 function FixedOptionsEditor({
   rows,
-  onChange
+  onChange,
 }: {
   rows: OptionRow[]
   onChange: (next: OptionRow[]) => void
 }) {
-  const clone = () => rows.map(r => ({ ...r }))
+  const clone = () => rows.map((r) => ({ ...r }))
   const { row: sweet } = getRow(rows, '甜度')
-  const { row: ice }   = getRow(rows, '冰塊')
-  const { row: size }  = getRow(rows, '容量')
+  const { row: ice } = getRow(rows, '冰塊')
+  const { row: size } = getRow(rows, '容量')
   const { row: addon } = getRow(rows, '加料')
 
   return (
@@ -201,7 +203,11 @@ function FixedOptionsEditor({
             className="w-full rounded px-2 py-1 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
           >
             <option value="">（不修改）</option>
-            {SWEET_VALUES.map(v => <option key={v} value={v}>{v}</option>)}
+            {SWEET_VALUES.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -218,7 +224,11 @@ function FixedOptionsEditor({
             className="w-full rounded px-2 py-1 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
           >
             <option value="">（不修改）</option>
-            {ICE_VALUES.map(v => <option key={v} value={v}>{v}</option>)}
+            {ICE_VALUES.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -235,7 +245,11 @@ function FixedOptionsEditor({
             className="w-full rounded px-2 py-1 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
           >
             <option value="">（不修改）</option>
-            {SIZE_VALUES.map(v => <option key={v} value={v}>{v}</option>)}
+            {SIZE_VALUES.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -246,9 +260,14 @@ function FixedOptionsEditor({
             onChange={(e) => {
               const next = clone()
               const raw = e.target.value
-              if (raw.trim()) setRow(next, '加料', raw.split(',').map(s => s.trim()).filter(Boolean))
+              if (raw.trim())
+                setRow(
+                  next,
+                  '加料',
+                  raw.split(',').map((s) => s.trim()).filter(Boolean)
+                )
               else {
-                const i = next.findIndex(r => r.key === '加料')
+                const i = next.findIndex((r) => r.key === '加料')
                 if (i >= 0) next.splice(i, 1)
               }
               onChange(next)
@@ -262,7 +281,39 @@ function FixedOptionsEditor({
   )
 }
 
+// === 顯示品項選項的小工具（補回缺失的 renderOptions） ===
+const translateOptionPair = (key: string, value: string | string[]): { k: string; v: string } => {
+  const toText = (x: any) => String(x ?? '').trim()
+  const V = Array.isArray(value) ? value.map(toText) : [toText(value)]
+  let k = key
+  if (key === 'fixed_sweetness') k = '甜度'
+  else if (key === 'fixed_ice') k = '冰塊'
+  else if (key === 'fixed_size') k = '容量'
+  else if (/^[0-9a-f-]{24,}$/i.test(key)) k = '加料'
+  return { k, v: V.join('、') }
+}
+function renderOptions(opts?: OptionsMap | null) {
+  if (!opts || typeof opts !== 'object') return null
+  const entries = Object.entries(opts)
+  if (!entries.length) return null
+  return (
+    <ul className="ml-4 list-disc text-white/70">
+      {entries.map(([rawK, rawV]) => {
+        const { k, v } = translateOptionPair(rawK, rawV as any)
+        return (
+          <li key={rawK} className="text-sm">
+            {k}：{v}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 export default function StoreOrdersPage() {
+  // ✅ 守門 hook
+  const { guarding, storeId } = useGuardStoreAccount()
+
   const [orders, setOrders] = useState<Order[]>([])
   const [filter, setFilter] = useState<FilterKey>('all')
   const [lang, setLang] = useState<LangKey>('zh')
@@ -270,7 +321,6 @@ export default function StoreOrdersPage() {
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
 
-  const [storeId, setStoreId] = useState<string | null>(null)
   const lastOrderCount = useRef<number | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true)
@@ -284,155 +334,6 @@ export default function StoreOrdersPage() {
   const [isSaving, setIsSaving] = useState<boolean>(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
-  // 鎖背景捲動（開啟 modal 時）
-  useEffect(() => {
-    const lock = editingOrder || deletingId
-    const prev = document.body.style.overflow
-    if (lock) document.body.style.overflow = 'hidden'
-    else document.body.style.overflow = prev || ''
-    return () => { document.body.style.overflow = prev || '' }
-  }, [editingOrder, deletingId])
-
-  // 快速篩選：桌號/外帶
-  const [tableFilter, setTableFilter] = useState<TableFilter>('ALL')
-
-  // 桌號下拉選項：外帶 + 1..20 + 目前資料中的所有桌號（去重）
-  const tableSelectOptions = useMemo(() => {
-    const set = new Set<string>()
-    set.add(TAKEOUT_VALUE)
-    for (let i = 1; i <= 30; i++) set.add(String(i))
-    orders.forEach(o => {
-      if (!isTakeoutStr(o.table_number)) {
-        const t = String(o.table_number ?? '').trim()
-        if (t) set.add(t)
-      }
-    })
-    return Array.from(set)
-  }, [orders])
-
-  const dict = useMemo(
-    () =>
-      ({
-        zh: {
-          title: '訂單管理',
-          all: '全部',
-          pending: '未處理',
-          completed: '已完成',
-          complete: '完成訂單',
-          table: '桌號',
-          takeout: '外帶',
-          items: '品項',
-          spicy: '辣度',
-          note: '備註',
-          done: '✅ 已完成',
-          noOrders: '目前沒有訂單',
-          noPending: '🔔 無未處理訂單',
-          today: '今日',
-          week: '本週',
-          custom: '自訂',
-          from: '起始日',
-          to: '結束日',
-          edit: '修改',
-          delete: '刪除',
-          saving: '儲存中…',
-          save: '儲存變更',
-          cancel: '取消',
-          status: '狀態',
-          status_pending: '未處理',
-          status_completed: '已完成',
-          addItem: '新增品項',
-          itemName: '品名',
-          itemQty: '數量',
-          confirmDeleteTitle: '確認刪除',
-          confirmDeleteText: '此操作將刪除此筆訂單，且無法復原。確定要刪除嗎？',
-          confirm: '確認',
-          back: '返回',
-          editOrder: '修改訂單',
-          actions: '操作',
-          total: '總金額',
-          refresh: '重新整理',
-          autoRefresh: '自動刷新',
-          loading: '讀取中…',
-          error: '讀取失敗，請稍後再試',
-          noStore: '尚未取得 store_id，請確認已登入且 localStorage 有 store_id',
-          options: '選項',
-          quickFilter: '快速篩選',
-        },
-        en: {
-          title: 'Order Management',
-          all: 'All',
-          pending: 'Pending',
-          completed: 'Completed',
-          complete: 'Mark Done',
-          table: 'Table',
-          takeout: 'Takeout',
-          items: 'Items',
-          spicy: 'Spicy',
-          note: 'Note',
-          done: '✅ Done',
-          noOrders: 'No orders currently',
-          noPending: '🔔 No pending orders',
-          today: 'Today',
-          week: 'This Week',
-          custom: 'Custom',
-          from: 'From',
-          to: 'To',
-          edit: 'Edit',
-          delete: 'Delete',
-          saving: 'Saving…',
-          save: 'Save Changes',
-          cancel: 'Cancel',
-          status: 'Status',
-          status_pending: 'Pending',
-          status_completed: 'Completed',
-          addItem: 'Add Item',
-          itemName: 'Name',
-          itemQty: 'Qty',
-          confirmDeleteTitle: 'Confirm Delete',
-          confirmDeleteText: 'This will permanently delete the order. Continue?',
-          confirm: 'Confirm',
-          back: 'Back',
-          editOrder: 'Edit Order',
-          actions: 'Actions',
-          total: 'Total',
-          refresh: 'Refresh',
-          autoRefresh: 'Auto Refresh',
-          loading: 'Loading…',
-          error: 'Failed to load, please try again',
-          noStore: 'store_id not found. Please ensure you are logged in and localStorage has store_id.',
-          options: 'Options',
-          quickFilter: 'Quick Filter',
-        },
-      }[lang]),
-    [lang]
-  )
-
-  // 舊資料鍵值中文化（列表顯示）
-  const translateOptionPair = (key: string, value: string | string[]): { k: string; v: string } => {
-    const toText = (x: any) => String(x ?? '').trim()
-    const V = Array.isArray(value) ? value.map(toText) : [toText(value)]
-    let k = key
-    if (key === 'fixed_sweetness') k = '甜度'
-    else if (key === 'fixed_ice') k = '冰塊'
-    else if (key === 'fixed_size') k = '容量'
-    else if (/^[0-9a-f-]{24,}$/.test(key)) k = '加料'
-    return { k, v: V.join('、') }
-  }
-
-  const renderOptions = (opts?: OptionsMap | null) => {
-    if (!opts || typeof opts !== 'object') return null
-    const entries = Object.entries(opts)
-    if (!entries.length) return null
-    return (
-      <ul className="ml-4 list-disc text-white/70">
-        {entries.map(([rawK, rawV]) => {
-          const { k, v } = translateOptionPair(rawK, rawV as any)
-          return <li key={rawK} className="text-sm">{k}：{v}</li>
-        })}
-      </ul>
-    )
-  }
-
   // 允許播放提示音
   useEffect(() => {
     const enableAudio = () => {
@@ -440,12 +341,6 @@ export default function StoreOrdersPage() {
       document.removeEventListener('click', enableAudio)
     }
     document.addEventListener('click', enableAudio, { once: true })
-  }, [])
-
-  // 讀 store_id
-  useEffect(() => {
-    const stored = localStorage.getItem('store_id')
-    if (stored) setStoreId(stored)
   }, [])
 
   // 計算時間窗
@@ -469,9 +364,9 @@ export default function StoreOrdersPage() {
     return { fromIso: start.toISOString(), toIso: end.toISOString() }
   }
 
-  // 輪詢
+  // 輪詢：放行且有 storeId 才啟動
   useEffect(() => {
-    if (!storeId) return
+    if (guarding || !storeId) return
     const doFetch = async () => {
       const win = calcRange()
       if (!win) return
@@ -482,15 +377,22 @@ export default function StoreOrdersPage() {
     if (autoRefresh) {
       if (pollRef.current) clearInterval(pollRef.current)
       pollRef.current = setInterval(doFetch, 3000)
-      return () => { if (pollRef.current) clearInterval(pollRef.current); pollRef.current = null }
+      return () => {
+        if (pollRef.current) clearInterval(pollRef.current)
+        pollRef.current = null
+      }
     } else {
-      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
     }
-  }, [storeId, range, startDate, endDate, autoRefresh])
+  }, [guarding, storeId, range, startDate, endDate, autoRefresh])
 
   // 查詢
   const fetchOrders = async (sid: string, fromIso: string, toIso: string) => {
-    setLoading(true); setErrorMsg('')
+    setLoading(true)
+    setErrorMsg('')
     const { data, error } = await supabase
       .from('orders')
       .select('*')
@@ -499,7 +401,10 @@ export default function StoreOrdersPage() {
       .lte('created_at', toIso)
       .order('created_at', { ascending: false })
     setLoading(false)
-    if (error) { setErrorMsg(error.message); return }
+    if (error) {
+      setErrorMsg(error.message)
+      return
+    }
     const list = (data || []) as Order[]
     if (lastOrderCount.current !== null && list.length > (lastOrderCount.current ?? 0)) {
       audioRef.current?.play().catch(() => {})
@@ -508,17 +413,26 @@ export default function StoreOrdersPage() {
     setOrders(list)
   }
 
-  const manualRefresh = async () => {
-    if (!storeId) return
-    const win = calcRange(); if (!win) return
-    await fetchOrders(storeId, win.fromIso, win.toIso)
-  }
-
-  // 完成訂單
+  // ✅ 補回：完成訂單（避免 ts 找不到 handleComplete）
   const handleComplete = async (id: string) => {
     const { error } = await supabase.from('orders').update({ status: 'completed' }).eq('id', id)
-    if (error) { alert('訂單更新失敗，請稍後再試'); return }
-    manualRefresh()
+    if (error) {
+      alert('訂單更新失敗，請稍後再試')
+      return
+    }
+    // 完成後重新整理
+    if (storeId) {
+      const win = calcRange()
+      if (!win) return
+      await fetchOrders(storeId, win.fromIso, win.toIso)
+    }
+  }
+
+  const manualRefresh = async () => {
+    if (guarding || !storeId) return
+    const win = calcRange()
+    if (!win) return
+    await fetchOrders(storeId, win.fromIso, win.toIso)
   }
 
   // 編輯（開啟）
@@ -532,42 +446,59 @@ export default function StoreOrdersPage() {
     }))
     setEditItems(localItems)
     const rows: Record<number, OptionRow[]> = {}
-    localItems.forEach((it, idx) => { rows[idx] = mapOptionsToRows(it.options ?? null) })
+    localItems.forEach((it, idx) => {
+      rows[idx] = mapOptionsToRows(it.options ?? null)
+    })
     setEditOptionRows(rows)
   }
 
   const updateItem = (idx: number, key: 'name' | 'quantity', value: string | number) => {
-    setEditItems(prev => {
-      const next = [...prev]; const t = { ...next[idx] }
+    setEditItems((prev) => {
+      const next = [...prev]
+      const t = { ...next[idx] }
       if (key === 'name') t.name = String(value)
-      if (key === 'quantity') { const n = Number(value); t.quantity = Number.isNaN(n) || n < 0 ? 0 : Math.floor(n) }
-      next[idx] = t; return next
+      if (key === 'quantity') {
+        const n = Number(value)
+        t.quantity = Number.isNaN(n) || n < 0 ? 0 : Math.floor(n)
+      }
+      next[idx] = t
+      return next
     })
   }
 
-  const addItem = () => setEditItems(prev => [...prev, { name: '', quantity: 1, price: 0, options: null } as OrderItem])
+  const addItem = () =>
+    setEditItems((prev) => [...prev, { name: '', quantity: 1, price: 0, options: null } as OrderItem])
 
   const removeItem = (idx: number) => {
-    setEditItems(prev => prev.filter((_, i) => i !== idx))
-    setEditOptionRows(prev => {
-      const next = { ...prev }; delete next[idx]
-      const rebuilt: Record<number, OptionRow[]> = {}; let j = 0
-      Object.keys(prev).map(Number).sort((a,b)=>a-b).forEach(k => { if (k !== idx) rebuilt[j++] = prev[k] })
+    setEditItems((prev) => prev.filter((_, i) => i !== idx))
+    setEditOptionRows((prev) => {
+      const next = { ...prev }
+      delete next[idx]
+      const rebuilt: Record<number, OptionRow[]> = {}
+      let j = 0
+      Object.keys(prev)
+        .map(Number)
+        .sort((a, b) => a - b)
+        .forEach((k) => {
+          if (k !== idx) rebuilt[j++] = prev[k]
+        })
       return rebuilt
     })
   }
 
-  const setRowsForIndex = (idx: number, rows: OptionRow[]) => setEditOptionRows(prev => ({ ...prev, [idx]: rows }))
+  const setRowsForIndex = (idx: number, rows: OptionRow[]) =>
+    setEditOptionRows((prev) => ({ ...prev, [idx]: rows }))
 
   const saveEdit = async () => {
     if (!editingOrder) return
     if (!editingOrder.table_number || !String(editingOrder.table_number).trim()) {
-      alert('請輸入桌號（或外帶）'); return
+      alert('請輸入桌號（或外帶）')
+      return
     }
 
     const cleanedItems = editItems
       .map((i, idx) => {
-        const originalPrice = (editingOrder.items?.[idx]?.price ?? i.price) || 0 // 保留原單價
+        const originalPrice = (editingOrder.items?.[idx]?.price ?? i.price) || 0
         const options = rowsToOptions(editOptionRows[idx] || [])
         return {
           name: String(i.name || '').trim(),
@@ -576,7 +507,7 @@ export default function StoreOrdersPage() {
           ...(options ? { options } : {}),
         }
       })
-      .filter(i => i.name && i.quantity > 0)
+      .filter((i) => i.name && i.quantity > 0)
 
     const payload: Record<string, any> = {
       table_number: String(editingOrder.table_number).trim(),
@@ -591,9 +522,15 @@ export default function StoreOrdersPage() {
     setIsSaving(true)
     const { error } = await supabase.from('orders').update(payload).eq('id', editingOrder.id)
     setIsSaving(false)
-    if (error) { alert(`儲存失敗：${error.message}`); return }
+    if (error) {
+      alert(`儲存失敗：${error.message}`)
+      return
+    }
 
-    setEditingOrder(null); setEditItems([]); setEditOptionRows({}); manualRefresh()
+    setEditingOrder(null)
+    setEditItems([])
+    setEditOptionRows({})
+    await manualRefresh()
   }
 
   // 刪除
@@ -601,16 +538,21 @@ export default function StoreOrdersPage() {
   const confirmDelete = async () => {
     if (!deletingId) return
     const { error } = await supabase.from('orders').delete().eq('id', deletingId)
-    if (error) { alert('刪除失敗，請稍後再試'); return }
-    setDeletingId(null); manualRefresh()
+    if (error) {
+      alert('刪除失敗，請稍後再試')
+      return
+    }
+    setDeletingId(null)
+    await manualRefresh()
   }
 
   // 桌號清單（目前查詢結果內）
+  const [tableFilter, setTableFilter] = useState<TableFilter>('ALL')
   const tableOptions = useMemo(() => {
     const map = new Map<string, { key: TableFilter; label: string }>()
     map.set('ALL', { key: 'ALL', label: '全部桌號' })
     map.set('TAKEOUT', { key: 'TAKEOUT', label: '外帶' })
-    orders.forEach(o => {
+    orders.forEach((o) => {
       if (isTakeoutStr(o.table_number)) return
       const raw = String(o.table_number ?? '').trim()
       if (!raw) return
@@ -621,7 +563,7 @@ export default function StoreOrdersPage() {
 
   // 最終篩選
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
+    return orders.filter((order) => {
       if (filter === 'pending' && order.status === 'completed') return false
       if (filter === 'completed' && order.status !== 'completed') return false
       if (tableFilter === 'ALL') return true
@@ -642,6 +584,9 @@ export default function StoreOrdersPage() {
     return t
   }
 
+  // 守門中先不渲染內容
+  if (guarding) return null
+
   return (
     <main className="bg-background min-h-screen">
       {/* Autofill & 文字顏色補丁（只作用於彈窗） */}
@@ -655,8 +600,13 @@ export default function StoreOrdersPage() {
           -webkit-text-fill-color: #fff !important;
           caret-color: #fff !important;
         }
-        .orders-modal ::placeholder { color: rgba(255,255,255,.4) !important; }
-        .orders-modal select option { background: #1f1f1f !important; color:#fff !important; }
+        .orders-modal ::placeholder {
+          color: rgba(255, 255, 255, 0.4) !important;
+        }
+        .orders-modal select option {
+          background: #1f1f1f !important;
+          color: #fff !important;
+        }
       `}</style>
 
       <div className="px-4 sm:px-6 md:px-10 pb-16 max-w-6xl mx-auto">
@@ -688,20 +638,47 @@ export default function StoreOrdersPage() {
         <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
           <div className="p-4 flex flex-wrap items-center gap-3">
             <div className="flex gap-2">
-              <button className={`px-4 py-2 rounded-full ${pill(range === 'today','yellow')}`} onClick={() => setRange('today')}>今日</button>
-              <button className={`px-4 py-2 rounded-full ${pill(range === 'week','yellow')}`} onClick={() => setRange('week')}>本週</button>
-              <button className={`px-4 py-2 rounded-full ${pill(range === 'custom','yellow')}`} onClick={() => setRange('custom')}>自訂</button>
+              <button
+                className={`px-4 py-2 rounded-full ${pill(range === 'today', 'yellow')}`}
+                onClick={() => setRange('today')}
+              >
+                今日
+              </button>
+              <button
+                className={`px-4 py-2 rounded-full ${pill(range === 'week', 'yellow')}`}
+                onClick={() => setRange('week')}
+              >
+                本週
+              </button>
+              <button
+                className={`px-4 py-2 rounded-full ${pill(range === 'custom', 'yellow')}`}
+                onClick={() => setRange('custom')}
+              >
+                自訂
+              </button>
             </div>
 
             {range === 'custom' && (
               <>
-                <input aria-label="起始日" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-white/20 p-2 rounded bg-[#1F1F1F] text-white placeholder:text-white/40" />
-                <input aria-label="結束日" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-white/20 p-2 rounded bg-[#1F1F1F] text-white placeholder:text-white/40" />
+                <input
+                  aria-label="起始日"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="border border-white/20 p-2 rounded bg-[#1F1F1F] text-white placeholder:text-white/40"
+                />
+                <input
+                  aria-label="結束日"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="border border-white/20 p-2 rounded bg-[#1F1F1F] text-white placeholder:text-white/40"
+                />
               </>
             )}
 
-            <Button className="ml-auto" variant="soft" size="sm" onClick={manualRefresh} startIcon={<RefreshIcon />} aria-label="重新整理">
-              重新整理
+            <Button className="ml-auto" variant="soft" size="sm" onClick={manualRefresh} aria-label="重新整理">
+              <RefreshIcon /> 重新整理
             </Button>
           </div>
         </div>
@@ -709,19 +686,40 @@ export default function StoreOrdersPage() {
         {/* 狀態 Tab —— 深色卡 */}
         <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-4">
           <div className="p-3 flex items-center gap-2">
-            <button className={`px-4 py-2 rounded-full ${pill(filter === 'all','white')}`} onClick={() => setFilter('all')}>全部</button>
-            <button className={`px-4 py-2 rounded-full ${pill(filter === 'pending','yellow')}`} onClick={() => setFilter('pending')}>未處理</button>
-            <button className={`px-4 py-2 rounded-full ${pill(filter === 'completed','green')}`} onClick={() => setFilter('completed')}>已完成</button>
+            <button
+              className={`px-4 py-2 rounded-full ${pill(filter === 'all', 'white')}`}
+              onClick={() => setFilter('all')}
+            >
+              全部
+            </button>
+            <button
+              className={`px-4 py-2 rounded-full ${pill(filter === 'pending', 'yellow')}`}
+              onClick={() => setFilter('pending')}
+            >
+              未處理
+            </button>
+            <button
+              className={`px-4 py-2 rounded-full ${pill(filter === 'completed', 'green')}`}
+              onClick={() => setFilter('completed')}
+            >
+              已完成
+            </button>
           </div>
         </div>
 
         {/* 快速篩選 —— 深色卡 */}
         <div className="bg-[#2B2B2B] text-white rounded-lg shadow border border-white/10 mb-6">
-          <div className="px-4 py-3 border-b border-white/10"><h3 className="text-sm font-semibold">快速篩選</h3></div>
+          <div className="px-4 py-3 border-b border-white/10">
+            <h3 className="text-sm font-semibold">快速篩選</h3>
+          </div>
           <div className="p-3 overflow-x-auto">
             <div className="flex items-center gap-2 min-w-max">
-              {tableOptions.map(opt => (
-                <button key={`${opt.key}`} onClick={() => setTableFilter(opt.key)} className={`px-3 py-1.5 rounded-full ${pill(tableFilter === opt.key,'yellow')}`}>
+              {tableOptions.map((opt) => (
+                <button
+                  key={`${opt.key}`}
+                  onClick={() => setTableFilter(opt.key)}
+                  className={`px-3 py-1.5 rounded-full ${pill(tableFilter === opt.key, 'yellow')}`}
+                >
                   {opt.label}
                 </button>
               ))}
@@ -740,16 +738,22 @@ export default function StoreOrdersPage() {
           </div>
         ) : (
           <div className="grid gap-4">
-            {filteredOrders.map(order => (
+            {filteredOrders.map((order) => (
               <div key={order.id} className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
                 <div className="flex justify-between items-center mb-2">
                   <h2 className="font-semibold">桌號：{String(displayTable(order.table_number))}</h2>
                   <div className="flex items-center gap-2">
                     {order.status === 'completed' && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-200 border border-emerald-400/30">✅ 已完成</span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-200 border border-emerald-400/30">
+                        ✅ 已完成
+                      </span>
                     )}
-                    <Button size="sm" variant="soft" startIcon={<EditIcon />} onClick={() => openEdit(order)}>修改</Button>
-                    <Button size="sm" variant="destructive" startIcon={<TrashIcon />} onClick={() => setDeletingId(order.id)}>刪除</Button>
+                    <Button size="sm" variant="soft" onClick={() => openEdit(order)}>
+                      <EditIcon /> 修改
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => setDeletingId(order.id)}>
+                      <TrashIcon /> 刪除
+                    </Button>
                   </div>
                 </div>
 
@@ -763,13 +767,23 @@ export default function StoreOrdersPage() {
                   ))}
                 </div>
 
-                <div className="text-sm"><strong>總金額：</strong> NT$ {calcTotal(order).toLocaleString('zh-TW')}</div>
-                {order.spicy_level && <div className="text-sm text-red-300"><strong>辣度：</strong> {order.spicy_level}</div>}
-                {order.note && <div className="text-sm text-white/70"><strong>備註：</strong> {order.note}</div>}
+                <div className="text-sm">
+                  <strong>總金額：</strong> NT$ {calcTotal(order).toLocaleString('zh-TW')}
+                </div>
+                {order.spicy_level && (
+                  <div className="text-sm text-red-300">
+                    <strong>辣度：</strong> {order.spicy_level}
+                  </div>
+                )}
+                {order.note && (
+                  <div className="text-sm text-white/70">
+                    <strong>備註：</strong> {order.note}
+                  </div>
+                )}
 
                 {order.status !== 'completed' && (
-                  <Button className="mt-3" variant="success" startIcon={<CheckIcon />} onClick={() => handleComplete(order.id)}>
-                    完成訂單
+                  <Button className="mt-3" variant="success" onClick={() => handleComplete(order.id)}>
+                    <CheckIcon /> 完成訂單
                   </Button>
                 )}
               </div>
@@ -777,7 +791,7 @@ export default function StoreOrdersPage() {
           </div>
         )}
 
-        {/* 編輯面板 —— 深色卡 + 白字 + 下拉式（桌號/狀態/辣度） */}
+        {/* 編輯面板 */}
         {editingOrder && (
           <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center">
             <div className="orders-modal w-[min(100%-2rem,56rem)] max-w-3xl max-h-[85vh] overflow-y-auto rounded-lg shadow-lg border border-white/10 bg-[#2B2B2B] text-white">
@@ -785,7 +799,9 @@ export default function StoreOrdersPage() {
               <div className="px-6 pt-5 pb-3 border-b border-white/10">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold">修改訂單</h3>
-                  <button className="text-sm text-white/80 hover:text-white" onClick={() => setEditingOrder(null)}>返回</button>
+                  <button className="text-sm text-white/80 hover:text-white" onClick={() => setEditingOrder(null)}>
+                    返回
+                  </button>
                 </div>
               </div>
 
@@ -796,12 +812,31 @@ export default function StoreOrdersPage() {
                   <div>
                     <label className="block text-sm text-white/90 mb-1">桌號</label>
                     <select
-                      value={editingOrder ? (isTakeoutStr(editingOrder.table_number) ? TAKEOUT_VALUE : String(editingOrder.table_number ?? '')) : ''}
-                      onChange={e => setEditingOrder(prev => prev ? { ...prev, table_number: e.target.value } : prev)}
+                      value={
+                        editingOrder
+                          ? isTakeoutStr(editingOrder.table_number)
+                            ? TAKEOUT_VALUE
+                            : String(editingOrder.table_number ?? '')
+                          : ''
+                      }
+                      onChange={(e) =>
+                        setEditingOrder((prev) => (prev ? { ...prev, table_number: e.target.value } : prev))
+                      }
                       className="w-full rounded px-3 py-2 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
                     >
-                      {tableSelectOptions.map(v => (
-                        <option key={v} value={v}>{v === TAKEOUT_VALUE ? '外帶' : v}</option>
+                      {Array.from(
+                        new Set<string>([
+                          TAKEOUT_VALUE,
+                          ...Array.from({ length: 30 }, (_, i) => String(i + 1)),
+                          ...orders
+                            .filter((o) => !isTakeoutStr(o.table_number))
+                            .map((o) => String(o.table_number ?? '').trim())
+                            .filter(Boolean),
+                        ])
+                      ).map((v) => (
+                        <option key={v} value={v}>
+                          {v === TAKEOUT_VALUE ? '外帶' : v}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -810,7 +845,9 @@ export default function StoreOrdersPage() {
                     <label className="block text-sm text-white/90 mb-1">狀態</label>
                     <select
                       value={editingOrder.status ?? 'pending'}
-                      onChange={e => setEditingOrder(prev => prev ? { ...prev, status: e.target.value as any } : prev)}
+                      onChange={(e) =>
+                        setEditingOrder((prev) => (prev ? { ...prev, status: e.target.value as any } : prev))
+                      }
                       className="w-full rounded px-3 py-2 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
                     >
                       <option value="pending">未處理</option>
@@ -822,7 +859,9 @@ export default function StoreOrdersPage() {
                     <label className="block text-sm text-white/90 mb-1">辣度</label>
                     <select
                       value={editingOrder.spicy_level ?? ''}
-                      onChange={e => setEditingOrder(prev => prev ? { ...prev, spicy_level: e.target.value || null } : prev)}
+                      onChange={(e) =>
+                        setEditingOrder((prev) => (prev ? { ...prev, spicy_level: e.target.value || null } : prev))
+                      }
                       className="w-full rounded px-3 py-2 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
                     >
                       <option value="">（不設定）</option>
@@ -838,7 +877,7 @@ export default function StoreOrdersPage() {
                     <textarea
                       autoComplete="off"
                       value={editingOrder.note ?? ''}
-                      onChange={e => setEditingOrder(prev => prev ? { ...prev, note: e.target.value } : prev)}
+                      onChange={(e) => setEditingOrder((prev) => (prev ? { ...prev, note: e.target.value } : prev))}
                       className="w-full rounded px-3 py-2 bg-[#1F1F1F] text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
                       rows={3}
                       placeholder="備註內容…"
@@ -850,7 +889,15 @@ export default function StoreOrdersPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-semibold text-white">品項</h4>
-                    <Button size="sm" variant="soft" onClick={addItem}>新增品項</Button>
+                    <Button
+                      size="sm"
+                      variant="soft"
+                      onClick={() =>
+                        setEditItems((prev) => [...prev, { name: '', quantity: 1, price: 0, options: null }])
+                      }
+                    >
+                      新增品項
+                    </Button>
                   </div>
 
                   {editItems.map((it, idx) => (
@@ -860,7 +907,9 @@ export default function StoreOrdersPage() {
                           <label className="block text-xs text-white/80 mb-1">品名</label>
                           <input
                             value={it.name}
-                            onChange={(e) => updateItem(idx, 'name', e.target.value)}
+                            onChange={(e) =>
+                              setEditItems((prev) => prev.map((p, i) => (i === idx ? { ...p, name: e.target.value } : p)))
+                            }
                             className="w-full rounded px-2 py-1 bg-[#1F1F1F] text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
                             placeholder="品名"
                           />
@@ -870,32 +919,62 @@ export default function StoreOrdersPage() {
                           <input
                             type="number"
                             value={it.quantity}
-                            onChange={(e) => updateItem(idx, 'quantity', e.target.value)}
+                            onChange={(e) => {
+                              const n = Math.max(0, Math.floor(Number(e.target.value)))
+                              setEditItems((prev) =>
+                                prev.map((p, i) => (i === idx ? { ...p, quantity: Number.isFinite(n) ? n : 0 } : p))
+                              )
+                            }}
                             className="w-full rounded px-2 py-1 bg-[#1F1F1F] text-white border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
                             min={0}
                           />
                         </div>
                         <div className="col-span-2 md:col-span-2 flex items-end">
-                          <Button size="sm" variant="destructive" onClick={() => removeItem(idx)}>刪</Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => {
+                              setEditItems((prev) => prev.filter((_, i) => i !== idx))
+                              setEditOptionRows((prev) => {
+                                const next = { ...prev }
+                                delete next[idx]
+                                const rebuilt: Record<number, OptionRow[]> = {}
+                                let j = 0
+                                Object.keys(prev)
+                                  .map(Number)
+                                  .sort((a, b) => a - b)
+                                  .forEach((k) => {
+                                    if (k !== idx) rebuilt[j++] = prev[k]
+                                  })
+                                return rebuilt
+                              })
+                            }}
+                          >
+                            刪
+                          </Button>
                         </div>
                       </div>
 
-                      {/* 固定選項（甜度/冰塊/容量/加料） */}
+                      {/* 固定選項 */}
                       <div className="mt-3">
                         <FixedOptionsEditor
                           rows={editOptionRows[idx] || []}
-                          onChange={(rows) => setRowsForIndex(idx, rows)}
+                          onChange={(rows) => setEditOptionRows((prev) => ({ ...prev, [idx]: rows }))}
                         />
                       </div>
 
-                      {/* 其他自定義選項（保留彈性） */}
+                      {/* 其他自定義選項 */}
                       <div className="mt-3">
                         <OptionEditor
                           title="其他選項"
-                          rows={(editOptionRows[idx] || []).filter(r => !['甜度','冰塊','容量','加料'].includes(r.key))}
+                          rows={(editOptionRows[idx] || []).filter(
+                            (r) => !['甜度', '冰塊', '容量', '加料'].includes(r.key)
+                          )}
                           onChange={(rows) => {
-                            const fixed = (editOptionRows[idx] || []).filter(r => ['甜度','冰塊','容量','加料'].includes(r.key as FixedKey))
-                            setRowsForIndex(idx, [...fixed, ...rows])
+                            const fixed = (editOptionRows[idx] || []).filter((r) =>
+                              ['甜度', '冰塊', '容量', '加料'].includes(r.key as FixedKey)
+                            )
+                            setEditOptionRows((prev) => ({ ...prev, [idx]: [...fixed, ...rows] }))
                           }}
                         />
                       </div>
@@ -917,15 +996,19 @@ export default function StoreOrdersPage() {
           </div>
         )}
 
-        {/* 刪除確認框 —— 深色一致 */}
+        {/* 刪除確認框 */}
         {deletingId && (
           <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center">
             <div className="w-[min(100%-2rem,32rem)] max-w-md max-h-[85vh] overflow-y-auto rounded-lg shadow-lg border border-white/10 bg-[#2B2B2B] text-white p-6">
               <h3 className="text-lg font-semibold mb-2">確認刪除</h3>
               <p className="text-sm text-white/80">此操作將刪除此筆訂單，且無法復原。確定要刪除嗎？</p>
               <div className="mt-6 flex justify-end gap-3">
-                <Button variant="secondary" onClick={() => setDeletingId(null)}>取消</Button>
-                <Button variant="destructive" onClick={confirmDelete}>確認</Button>
+                <Button variant="secondary" onClick={() => setDeletingId(null)}>
+                  取消
+                </Button>
+                <Button variant="destructive" onClick={confirmDelete}>
+                  確認
+                </Button>
               </div>
             </div>
           </div>
