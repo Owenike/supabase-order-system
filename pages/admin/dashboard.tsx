@@ -362,32 +362,33 @@ export default function AdminDashboard() {
     }
   }
 
-  // ✅ 一鍵修復（呼叫 /api/admin/repair-account）
-  const repairAccount = async (email: string) => {
+  // ✅ 一鍵修復（帶 storeId 指定核可的門市 primary）
+  const repairAccount = async (email: string, storeId: string, opts?: { autoCreateStore?: boolean }) => {
     if (!isAdmin) {
       alert('此功能僅限管理員使用，請以管理員帳號登入。')
       return
     }
-    setMutatingKey(`repair:${email}`)
+    setMutatingKey(`repair:${email}:${storeId}`)
     setErr('')
     try {
       const resp = await fetch('/api/admin/repair-account', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // API 會優先用 Cookie 解析目前登入者；此 header 僅作為後備，不影響安全
+          // API 會優先用 Cookie 解析目前登入者；此 header 僅作為後備
           'x-admin-email': adminEmail || '',
         },
         body: JSON.stringify({
           email,
-          autoCreateStore: true,
-          deleteDuplicateAccounts: false,
+          store_id: storeId,
+          // 若要啟用「找不到店就自動建店」，放開下一行或由 opts 控制
+          // autoCreateStore: opts?.autoCreateStore ?? false,
         }),
       })
       const j = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(j?.error || resp.statusText || '修復失敗')
       await fetchStores()
-      alert('✅ 修復完成')
+      alert('✅ 已核可此門市（設為 primary）。')
     } catch (e) {
       const msg = getErrorMessage(e)
       setErr(msg)
@@ -499,7 +500,7 @@ export default function AdminDashboard() {
 
         {/* 錯誤 / 載入 */}
         {err && <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">❌ {err}</div>}
-        {loading && <div className="mb-4 text-white/80">讀取中…</div>}
+        {loading && <div className="mb-4 text白/80">讀取中…</div>}
 
         {/* 清單卡片 */}
         <div className="space-y-4">
@@ -508,7 +509,7 @@ export default function AdminDashboard() {
               mutatingKey?.includes(s.account_id) ||
               mutatingKey?.includes(s.store_id) ||
               mutatingKey === `resend:${s.email}` ||
-              mutatingKey === `repair:${s.email}`
+              mutatingKey === `repair:${s.email}:${s.store_id}`
             const expired = isExpired(s.trial_end_at)
 
             return (
@@ -541,7 +542,7 @@ export default function AdminDashboard() {
                       <label className="block text-xs text-white/60 mb-1">結束日</label>
                       <input
                         type="date"
-                        className="w-full border px-3 py-2 rounded bg-white text-gray-900"
+                        className="w-full border px-3 py-2 rounded bg白 text-gray-900"
                         value={editEnd}
                         onChange={(e) => setEditEnd(e.target.value)}
                       />
@@ -558,7 +559,7 @@ export default function AdminDashboard() {
                 ) : (
                   // 顯示模式
                   <div className="space-y-3">
-                    {/* 上：店名/Email + 期限（字體放大） */}
+                    {/* 上：店名/Email + 期限 */}
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
                       <div className="pointer-events-none md:pointer-events-auto">
                         <div className="font-semibold text-base md:text-lg">{s.store_name}</div>
@@ -583,7 +584,7 @@ export default function AdminDashboard() {
                       <span className={`px-2 py-0.5 rounded text-xs border ${s.email_confirmed ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/20' : 'bg-yellow-500/15 text-yellow-200 border-yellow-400/20'}`}>
                         {s.email_confirmed ? '已驗證' : '未驗證'}
                       </span>
-                      {isExpired(s.trial_end_at) && (
+                      {expired && (
                         <span className="px-2 py-0.5 rounded text-xs border bg-red-500/15 text-red-300 border-red-400/20">
                           已過期
                         </span>
@@ -610,10 +611,10 @@ export default function AdminDashboard() {
                         size="sm"
                         variant="soft"
                         disabled={!!busy || !isAdmin}
-                        onClick={() => void repairAccount(s.email)}
-                        title={isAdmin ? '一鍵修復（改綁到正確門市並啟用）' : '需以管理員帳號登入才能使用'}
+                        title={isAdmin ? '將此門市設為核可 (primary)' : '需以管理員帳號登入才能使用'}
+                        onClick={() => void repairAccount(s.email, s.store_id)}
                       >
-                        {mutatingKey === `repair:${s.email}` ? '修復中…' : '一鍵修復'}
+                        {mutatingKey === `repair:${s.email}:${s.store_id}` ? '修復中…' : '一鍵修復'}
                       </Button>
 
                       <Button type="button" size="sm" variant="soft" disabled={!!busy} onClick={() => startEdit(s)}>
@@ -641,7 +642,7 @@ export default function AdminDashboard() {
           {/* 無資料時 */}
           {!loading && filtered.length === 0 && (
             <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
-              <p className="text-white/70">沒有符合條件的店家。</p>
+              <p className="text白/70">沒有符合條件的店家。</p>
             </div>
           )}
         </div>
