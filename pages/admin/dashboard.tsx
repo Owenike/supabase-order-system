@@ -30,6 +30,16 @@ interface StoreFeatureFlagRow {
   feature_key: 'dine_in' | 'takeout' | string
   enabled: boolean
 }
+interface StoreLiteRow {
+  id: string
+  name?: string | null
+  owner_name?: string | null
+  contact_name?: string | null
+  manager_name?: string | null
+  phone?: string | null
+  contact_phone?: string | null
+  tel?: string | null
+}
 interface StoreView {
   account_id: string
   store_id: string
@@ -43,6 +53,8 @@ interface StoreView {
   takeout_enabled: boolean
   email_confirmed: boolean
   email_confirmed_at: string | null
+  owner_name?: string | null
+  phone?: string | null
 }
 type TabKey = 'all' | 'active' | 'expired' | 'blocked'
 
@@ -70,6 +82,7 @@ function isExpired(end: string | null): boolean {
   today.setHours(0, 0, 0, 0)
   return endDate < today
 }
+const F = (s?: string | null) => (s && String(s).trim()) || '—'
 
 /* =====================
    主元件
@@ -110,12 +123,13 @@ export default function AdminDashboard() {
   const isAdmin = adminEmail.toLowerCase() === ADMIN_EMAIL
 
   /* ---------------------
-     讀取 accounts + flags
+     讀取 accounts + flags + stores 主檔（owner/phone）
   --------------------- */
   const fetchStores = useCallback(async () => {
     setLoading(true)
     setErr('')
     try {
+      // 1) 讀 store_accounts
       const { data: acc, error: accErr } = await supabase
         .from('store_accounts')
         .select('id, store_id, email, store_name, is_active, created_at, trial_start_at, trial_end_at')
@@ -123,13 +137,15 @@ export default function AdminDashboard() {
       if (accErr) throw accErr
       const accounts = (acc ?? []) as StoreAccountRow[]
 
+      // 2) 讀 flags
       const { data: flg, error: flagErr } = await supabase
         .from('store_feature_flags')
         .select('store_id, feature_key, enabled')
       if (flagErr) console.warn('read store_feature_flags failed, fallback to defaults', flagErr)
       const flags = (flg ?? []) as StoreFeatureFlagRow[]
 
-      const mergedBase = accounts.map<StoreView>((a) => {
+      // 3) 先組基本視圖
+      const base: StoreView[] = accounts.map((a) => {
         const dine = flags.find((f) => f.store_id === a.store_id && f.feature_key === 'dine_in')
         const take = flags.find((f) => f.store_id === a.store_id && f.feature_key === 'takeout')
         return {
@@ -145,11 +161,39 @@ export default function AdminDashboard() {
           takeout_enabled: take?.enabled ?? true,
           email_confirmed: false,
           email_confirmed_at: null,
+          owner_name: null,
+          phone: null,
         }
       })
 
-      // 取得驗證狀態
-      const emails = mergedBase.map((r) => r.email)
+      // 4) 讀 stores 主檔（補 owner_name + phone）
+      const storeIds = Array.from(new Set(base.map((b) => b.store_id).filter(Boolean)))
+      if (storeIds.length > 0) {
+        const { data: storeRows, error: storeErr } = await supabase
+          .from('stores')
+          .select('id, name, owner_name, contact_name, manager_name, phone, contact_phone, tel')
+          .in('id', storeIds)
+        if (storeErr) {
+          console.warn('read stores failed:', storeErr.message)
+        } else {
+          // ✅ 避免變數名與 Array.prototype.map 混淆，改名為 storeMap
+          const storeMap = new Map<string, StoreLiteRow>()
+          ;((storeRows ?? []) as StoreLiteRow[]).forEach((r: StoreLiteRow) => {
+            if (r?.id) storeMap.set(r.id, r)
+          })
+          base.forEach((b) => {
+            const m = storeMap.get(b.store_id)
+            if (m) {
+              if (!b.store_name && m.name) b.store_name = m.name
+              b.owner_name = m.owner_name || m.contact_name || m.manager_name || null
+              b.phone = m.phone || m.contact_phone || m.tel || null
+            }
+          })
+        }
+      }
+
+      // 5) 讀 Email 驗證狀態
+      const emails = base.map((r) => r.email)
       const resp = await fetch('/api/admin/user-confirmations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -157,15 +201,15 @@ export default function AdminDashboard() {
       })
       if (resp.ok) {
         const j = await resp.json()
-        const map = new Map<string, { confirmed: boolean; email_confirmed_at: string | null }>()
+        const confMap = new Map<string, { confirmed: boolean; email_confirmed_at: string | null }>()
         ;(j.rows as any[]).forEach((row) =>
-          map.set(String(row.email).toLowerCase(), {
+          confMap.set(String(row.email).toLowerCase(), {
             confirmed: Boolean(row.confirmed),
             email_confirmed_at: row.email_confirmed_at ?? null,
           })
         )
-        mergedBase.forEach((r) => {
-          const m = map.get(r.email.toLowerCase())
+        base.forEach((r) => {
+          const m = confMap.get(r.email.toLowerCase())
           if (m) {
             r.email_confirmed = m.confirmed
             r.email_confirmed_at = m.email_confirmed_at
@@ -175,7 +219,7 @@ export default function AdminDashboard() {
         console.warn('user-confirmations failed', await resp.text())
       }
 
-      setStores(mergedBase)
+      setStores(base)
     } catch (e) {
       setErr(getErrorMessage(e))
     } finally {
@@ -362,7 +406,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // ✅ 一鍵修復（帶 storeId 指定核可的門市 primary）
+  // 一鍵修復（帶 storeId 指定核可門市 primary）
   const repairAccount = async (email: string, storeId: string, opts?: { autoCreateStore?: boolean }) => {
     if (!isAdmin) {
       alert('此功能僅限管理員使用，請以管理員帳號登入。')
@@ -375,13 +419,11 @@ export default function AdminDashboard() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          // API 會優先用 Cookie 解析目前登入者；此 header 僅作為後備
           'x-admin-email': adminEmail || '',
         },
         body: JSON.stringify({
           email,
           store_id: storeId,
-          // 若要啟用「找不到店就自動建店」，放開下一行或由 opts 控制
           // autoCreateStore: opts?.autoCreateStore ?? false,
         }),
       })
@@ -416,7 +458,12 @@ export default function AdminDashboard() {
         if (s.is_active) return false
       }
       if (!kw) return true
-      return (s.store_name ?? '').toLowerCase().includes(kw) || (s.email ?? '').toLowerCase().includes(kw)
+      return (
+        (s.store_name ?? '').toLowerCase().includes(kw) ||
+        (s.email ?? '').toLowerCase().includes(kw) ||
+        (s.owner_name ?? '').toLowerCase().includes(kw) ||
+        (s.phone ?? '').toLowerCase().includes(kw)
+      )
     })
   }, [stores, activeTab, keyword])
 
@@ -493,14 +540,14 @@ export default function AdminDashboard() {
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder="搜尋店名或 Email"
+            placeholder="搜尋店名 / 負責人 / 電話 / Email"
             className="w-[280px] sm:w-[360px] h-10 rounded-full bg-white/10 text-white placeholder:text-white/50 px-4 outline-none border border-white/10 focus:border-white/30"
           />
         </div>
 
         {/* 錯誤 / 載入 */}
         {err && <div className="mb-4 rounded border border-red-400/30 bg-red-500/10 text-red-200 p-3">❌ {err}</div>}
-        {loading && <div className="mb-4 text白/80">讀取中…</div>}
+        {loading && <div className="mb-4 text-white/80">讀取中…</div>}
 
         {/* 清單卡片 */}
         <div className="space-y-4">
@@ -542,7 +589,7 @@ export default function AdminDashboard() {
                       <label className="block text-xs text-white/60 mb-1">結束日</label>
                       <input
                         type="date"
-                        className="w-full border px-3 py-2 rounded bg白 text-gray-900"
+                        className="w-full border px-3 py-2 rounded bg-white text-gray-900"
                         value={editEnd}
                         onChange={(e) => setEditEnd(e.target.value)}
                       />
@@ -559,14 +606,21 @@ export default function AdminDashboard() {
                 ) : (
                   // 顯示模式
                   <div className="space-y-3">
-                    {/* 上：店名/Email + 期限 */}
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
-                      <div className="pointer-events-none md:pointer-events-auto">
-                        <div className="font-semibold text-base md:text-lg">{s.store_name}</div>
-                        <div className="text-sm text-white/70">{s.email}</div>
+                    {/* 上：店名/Email + 期限 + 負責人/電話 */}
+                    <div className="flex flex-col gap-1">
+                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
+                        <div className="pointer-events-none md:pointer-events-auto">
+                          <div className="font-semibold text-base md:text-lg">{F(s.store_name)}</div>
+                        </div>
+                        <div className="text-sm text-white/70 pointer-events-none">
+                          期限：{formatYMD(s.trial_start_at)} ~ {formatYMD(s.trial_end_at)}
+                        </div>
                       </div>
-                      <div className="text-sm text-white/70 pointer-events-none">
-                        期限：{formatYMD(s.trial_start_at)} ~ {formatYMD(s.trial_end_at)}
+
+                      <div className="text-sm text-white/80 flex flex-wrap gap-x-4 gap-y-1">
+                        <span>負責人：{F(s.owner_name)}</span>
+                        <span>電話：{F(s.phone)}</span>
+                        <span>Email：{F(s.email)}</span>
                       </div>
                     </div>
 
@@ -642,7 +696,7 @@ export default function AdminDashboard() {
           {/* 無資料時 */}
           {!loading && filtered.length === 0 && (
             <div className="bg-[#2B2B2B] text-white rounded-lg border border-white/10 shadow p-4">
-              <p className="text白/70">沒有符合條件的店家。</p>
+              <p className="text-white/70">沒有符合條件的店家。</p>
             </div>
           )}
         </div>
